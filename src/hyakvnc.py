@@ -803,7 +803,7 @@ class LoginNode(Node):
         if self.debug:
             logging.debug(msg)
         #proc = self.run_command(["scancel", str(job_id)])
-        print(str(proc.communicate()[0], "utf-8"))
+        #print(str(proc.communicate()[0], "utf-8"))
 
     def check_port(self, port: int):
         """
