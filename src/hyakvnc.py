@@ -193,11 +193,10 @@ class Node:
     name: Shortened hostname of node.
     """
 
-    def __init__(self, name, sing_container, xstartup, debug=False):
+    def __init__(self, name, sing_container,  debug=False):
         self.debug = debug
         self.name = name
         self.sing_container = os.path.abspath(sing_container)
-        self.xstartup = os.path.abspath(xstartup)
 
     def get_sing_exec(self, args=""):
         """
@@ -208,7 +207,7 @@ class Node:
 
         Return apptainer exec string
         """
-        return f"{APPTAINER_BIN} exec {args} -B {APPTAINER_BINDPATH} {self.sing_container}"
+        return f"{APPTAINER_BIN} --writable-tmpfs -B $(mktemp -d):/tmp {args} -B {APPTAINER_BINDPATH} {self.sing_container}"
 
 
 class SubNode(Node):
@@ -228,8 +227,8 @@ class SubNode(Node):
     vnc_port: vnc_display_number + BASE_VNC_PORT.
     """
 
-    def __init__(self, name, job_id, sing_container, xstartup, debug=False):
-        super().__init__(name, sing_container, xstartup, debug)
+    def __init__(self, name, job_id, sing_container, debug=False):
+        super().__init__(name, sing_container, debug)
         self.hostname = f"{name}.hyak.local"
         self.job_id = job_id
         self.vnc_display_number = None
@@ -344,7 +343,7 @@ class SubNode(Node):
         target = ""
         if display_number is not None:
             target = f":{display_number}"
-        vnc_cmd = f"{self.get_sing_exec(extra_args)} vncserver {target} -xstartup {self.xstartup} &"
+        vnc_cmd = f"{self.get_sing_exec(extra_args)} vncserver {target} -xstartup /usr/bin/startxfce4 &"
         if not self.debug:
             print("Starting VNC server...", end="", flush=True)
         proc = self.run_command(vnc_cmd, timeout=timeout)
@@ -523,9 +522,9 @@ class LoginNode(Node):
     capabilities.
     """
 
-    def __init__(self, name, sing_container, xstartup, debug=False):
+    def __init__(self, name, sing_container, debug=False):
         assert os.path.exists(APPTAINER_BIN)
-        super().__init__(name, sing_container, xstartup, debug)
+        super().__init__(name, sing_container, debug)
         self.subnode = None
 
     def find_nodes(self, job_name="vnc"):
@@ -789,7 +788,7 @@ class LoginNode(Node):
 
         assert subnode_job_id is not None
         assert subnode_name is not None
-        self.subnode = SubNode(subnode_name, subnode_job_id, self.sing_container, self.xstartup)
+        self.subnode = SubNode(subnode_name, subnode_job_id, self.sing_container)
         return self.subnode
 
     def cancel_job(self, job_id: int):
@@ -1022,7 +1021,7 @@ class LoginNode(Node):
                     print(f"{node.name} with job ID {node.job_id} already has valid port forward")
                 else:
                     subnode = SubNode(
-                        node.name, node.job_id, self.sing_container, self.xstartup, self.debug
+                        node.name, node.job_id, self.sing_container, self.debug
                     )
                     subnode_pids = subnode.list_pids()
                     # search for vnc process
@@ -1174,14 +1173,6 @@ def create_parser():
         required=True,
         type=str,
     )
-    parser_create.add_argument(
-        "--xstartup",
-        dest="xstartup",
-        metavar="<path_to_xstartup>",
-        help="Path to xstartup script",
-        required=True,
-        type=str,
-    )
 
     # status command
     parser_status = subparsers.add_parser(
@@ -1322,10 +1313,10 @@ def main():
 
     if args.command == "create":
         assert os.path.exists(args.sing_container)
-        assert os.path.exists(args.xstartup)
+        # assert os.path.exists(args.xstartup)
 
         # create login node object
-        hyak = LoginNode(hostname, args.sing_container, args.xstartup, args.debug)
+        hyak = LoginNode(hostname, args.sing_container, args.debug)
 
         # check memory format
         assert re.match("[0-9]+[KMGT]", args.mem)
