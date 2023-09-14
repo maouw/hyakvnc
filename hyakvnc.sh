@@ -22,12 +22,33 @@ export ARG_SALLOC_NTASKS="${ARG_SALLOC_NTASKS:=4}"
 
 # Check if command exists:
 function _command_exists {
-	command -v "$1" >/dev/null 2>&1
+	command -v "$1" >/dev/null
 }
 
 # Check if the current host is a login node:
 function _is_login_node {
 	echo "${LOGIN_NODE_LIST[@]}" | grep -q "${CURRENT_HOSTNAME}"
+}
+
+APPTAINER_INSTANCES_DIR=${APPTAINER_INSTANCES_DIR:=${HOME}/.apptainer/instances}
+
+function _find_vnc_instance_pid_files {
+	# Make sure globstar is enabled
+	shopt -s globstar
+	for f in "$APPTAINER_INSTANCES_DIR"/app/**/*.json; do
+		logOutPath=$(python3 -c'import json, sys;print(json.load(open(sys.argv[1]))["logOutPath"])' "$f" 2>/dev/null)
+		[ -z "$logOutPath" ] && continue
+		[ ! -f "$logOutPath" ] && continue
+
+		vncPidFile=$(sed -E '/Log file is/!d; s/^.*[/]//; s/[.]log$/.pid/' "${logOutPath}")
+		vncPidPath="${HOME}/.vnc/${vncPidFile}"
+		if [ ! -f "$vncPidPath" ]; then
+			echo "Could not find vncPidFile at ${vncPidPath}"
+			continue
+		fi
+		echo $vncPidFile
+	done
+	shopt -u globstar
 }
 
 _ANSI_BLUE=
@@ -155,7 +176,7 @@ function launch {
 	ARGS_TO_SALLOC="${ARGS_TO_SALLOC/  /}" # Remove double spaces
 
 	_log INFO "Launching job with sif file ${SIF_FILE} and args ${ARGS_TO_SALLOC}"
-	COMMAND_TO_RUN="salloc ${ARGS_TO_SALLOC} srun --job-name \"${SIF_BASENAME}\" --pty apptainer run --writable-tmpfs --cleanenv \"${SIF_FILE}\""
+	COMMAND_TO_RUN="salloc ${ARGS_TO_SALLOC} srun --job-name ${SIF_BASENAME} --pty apptainer run --writable-tmpfs --cleanenv ${SIF_FILE}"
 	_log INFO "Will run the following command:"
 	echo "${COMMAND_TO_RUN}"
 
