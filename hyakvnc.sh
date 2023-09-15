@@ -13,12 +13,12 @@ CURRENT_HOSTNAME=$(hostname)
 LOGIN_NODE_LIST='klone-login01 klone1.hyak.uw.edu klone2.hyak.uw.edu'
 
 # Slurm configuration variables:
-export SALLOC_ACCOUNT="${SALLOC_ACCOUNT:=escience}"
-export SALLOC_DEBUG="${SALLOC_DEBUG:=0}"
-export SALLOC_GPUS="${SALLOC_GPUS:=0}"
-export SALLOC_PARTITION="${SALLOC_PARTITION:=gpu-a40}"
-export SALLOC_TIMELIMIT="${SALLOC_TIMELIMIT:=1:00:00}"
-export ARG_SALLOC_NTASKS="${ARG_SALLOC_NTASKS:=4}"
+export SBATCH_ACCOUNT="${SBATCH_ACCOUNT:=escience}"
+export SBATCH_DEBUG="${SBATCH_DEBUG:=0}"
+export SBATCH_GPUS="${SBATCH_GPUS:=0}"
+export SBATCH_PARTITION="${SBATCH_PARTITION:=gpu-a40}"
+export SBATCH_TIMELIMIT="${SBATCH_TIMELIMIT:=1:00:00}"
+export ARG_SBATCH_NTASKS="${ARG_SBATCH_NTASKS:=4}"
 
 # Check if command exists:
 function _command_exists {
@@ -51,33 +51,21 @@ function _find_vnc_instance_pid_files {
 	shopt -u globstar
 }
 
-_ANSI_BLUE=
-_ANSI_BOLD=
-_ANSI_CYAN=
-_ANSI_GREEN=
-_ANSI_MAGENTA=
-_ANSI_RED=
-_ANSI_RESET=
-_ANSI_UNDERLINE=
-_ANSI_YELLOW=
-
 _log() {
-	if [ -z "${_colors_initialized}" ]; then
-		[[ "${BASH_SOURCE[0]:-}" != "${0}" ]] && sourced=1 || sourced=0
-		[[ -t 1 ]] && piped=0 || piped=1 # detect if output is piped
-		if [[ $piped -eq 0 ]]; then
-			_ANSI_GREEN="\033[92m"
-			_ANSI_RED="\033[91m"
-			_ANSI_CYAN="\033[36m"
-			_ANSI_YELLOW="\033[93m"
-			_ANSI_MAGENTA="\033[95m"
-			_ANSI_BLUE="\033[94m"
-			_ANSI_RESET="\033[0m"
-			_ANSI_BOLD="\033[1m"
-			_ANSI_UNDERLINE="\033[4m"
-		fi
+	_ANSI_BLUE= _ANSI_BOLD= _ANSI_CYAN= _ANSI_GREEN= _ANSI_MAGENTA= _ANSI_RED= _ANSI_RESET= _ANSI_UNDERLINE= _ANSI_YELLOW=
+	[[ "${BASH_SOURCE[0]:-}" != "${0}" ]] && sourced=1 || sourced=0
+	[[ -t 1 ]] && piped=0 || piped=1 # detect if output is piped
+	if [[ $piped -eq 0 ]]; then
+		_ANSI_GREEN="\033[92m"
+		_ANSI_RED="\033[91m"
+		_ANSI_CYAN="\033[36m"
+		_ANSI_YELLOW="\033[93m"
+		_ANSI_MAGENTA="\033[95m"
+		_ANSI_BLUE="\033[94m"
+		_ANSI_RESET="\033[0m"
+		_ANSI_BOLD="\033[1m"
+		_ANSI_UNDERLINE="\033[4m"
 	fi
-
 	level="${1}"
 	color="${_ANSI_RESET}"
 	shift
@@ -92,7 +80,7 @@ _log() {
 		color="${_ANSI_RED}"
 		;;
 	esac
-	printf "$(date --rfc-3339=s) ${_ANSI_BOLD}${color}${level}${_ANSI_RESET}: ${color}$* ${_ANSI_RESET}\n" 1>&2
+	printf "$(date --rfc-3339=s) ${_ANSI_BOLD}${color}${level}${_ANSI_RESET}: ${color}$* ${_ANSI_RESET}\n"
 }
 
 function list_vnc_pids {
@@ -138,9 +126,11 @@ function build {
 	_log ERROR "build task not implemented"
 }
 
+sbatch -A escience --job-name thing2 -p gpu-a40 -c 1 --mem=1G --time=1:00:00 --wrap "apptainer instance start $(realpath ~/code/apptainer-test/looping/looping.sif) thing2 && while true; do sleep 10; done"
+
 function launch {
-	ARGS_TO_SALLOC=""
-	NTASK_ARGUMENT="--ntasks=${ARG_SALLOC_NTASKS}"
+	ARGS_TO_SBATCH=""
+	NTASK_ARGUMENT="--ntasks=${ARG_SBATCH_NTASKS}"
 	for i in "$@"; do
 		case $i in
 		--dry-run)
@@ -162,27 +152,31 @@ function launch {
 			shift # past argument=value
 			;;
 		*)
-			ARGS_TO_SALLOC="${ARGS_TO_SALLOC} $1"
+			ARGS_TO_SBATCH="${ARGS_TO_SBATCH} $1"
 			shift
 			;;
 		esac
 	done
 	[ -z "$SIF_FILE" ] && _log ERROR "Requires a --sif argument specifying the path to the container image" && exit 1
-	SIF_FILE=$(realpath "${SIF_FILE}")
-	SIF_BASENAME=$(basename "${SIF_FILE}")
-	[ ! -f "$SIF_FILE" ] && _log ERROR "--sif requires a file to be present at ${SIF_FILE}" && exit 1
+	SIF_PATH=$(realpath "${SIF_FILE}")
+	SIF_BASENAME="$(basename "${SIF_FILE}")"
+	SIF_NAME="${SIF_BASENAME%.*}"
 
-	ARGS_TO_SALLOC="${NTASK_ARGUMENT} ${ARGS_TO_SALLOC}"
-	ARGS_TO_SALLOC="${ARGS_TO_SALLOC/  /}" # Remove double spaces
+	[ ! -f "$SIF_PATH" ] && _log ERROR "--sif requires a file to be present at ${SIF_FILE}" && exit 1
 
-	_log INFO "Launching job with sif file ${SIF_FILE} and args ${ARGS_TO_SALLOC}"
-	COMMAND_TO_RUN="salloc ${ARGS_TO_SALLOC} srun --job-name ${SIF_BASENAME} --pty apptainer run --writable-tmpfs --cleanenv ${SIF_FILE}"
+	ARGS_TO_SBATCH="${NTASK_ARGUMENT} ${ARGS_TO_SBATCH}"
+	ARGS_TO_SBATCH="${ARGS_TO_SBATCH/  /}" # Remove double spaces
+
+	_log INFO "Launching job with sif file ${SIF_FILE} and args ${ARGS_TO_SBATCH}"
+
+	#sbatch -A escience --job-name thing2 -p gpu-a40 -c 1 --mem=1G --time=1:00:00 --wrap "apptainer instance start $(realpath ~/code/apptainer-test/looping/looping.sif) thing2 && while true; do sleep 10; done"
+	COMMAND_TO_RUN="sbatch ${ARGS_TO_SBATCH} --job-name ${SIF_NAME} --wrap \"apptainer instance start ${SIF_PATH} ${SIF_NAME}-\$SLURM_JOBID && while true; do sleep 10; done\""
 	_log INFO "Will run the following command:"
 	echo "${COMMAND_TO_RUN}"
 
 	if [ ! "$DRY_RUN" ]; then
-		! _command_exists salloc && echo "ERROR: salloc not found" && exit 1
-		! _is_login_node && echo "ERROR: You must run salloc from a login node. This is not a login node." && exit 1
+		! _command_exists sbatch && echo "ERROR: sbatch not found" && exit 1
+		! _is_login_node && echo "ERROR: You must run this from a login node. This is not a login node." && exit 1
 		${COMMAND_TO_RUN}
 	fi
 }
