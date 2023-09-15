@@ -170,14 +170,17 @@ function launch {
 	_log INFO "Launching job with sif file ${SIF_FILE} and args ${ARGS_TO_SBATCH}"
 
 	#sbatch -A escience --job-name thing2 -p gpu-a40 -c 1 --mem=1G --time=1:00:00 --wrap "apptainer instance start $(realpath ~/code/apptainer-test/looping/looping.sif) thing2 && while true; do sleep 10; done"
-	COMMAND_TO_RUN="sbatch ${ARGS_TO_SBATCH} --job-name ${SIF_NAME} --wrap \"apptainer instance start ${SIF_PATH} ${SIF_NAME}-\$SLURM_JOBID && while true; do sleep 10; done\""
+	COMMAND_TO_RUN=
 	_log INFO "Will run the following command:"
 	echo "${COMMAND_TO_RUN}"
 
 	if [ ! "$DRY_RUN" ]; then
 		! _command_exists sbatch && echo "ERROR: sbatch not found" && exit 1
 		! _is_login_node && echo "ERROR: You must run this from a login node. This is not a login node." && exit 1
-		${COMMAND_TO_RUN}
+		sbatch ${ARGS_TO_SBATCH} --job-name ${SIF_NAME} --wrap "apptainer instance start ${SIF_PATH} ${SIF_NAME}-\$SLURM_JOBID && while true; do sleep 10; done"
+	else
+		_log INFO "Dry run. Not running sbatch."
+		_log INFO "Would have run sbatch ${ARGS_TO_SBATCH} --job-name ${SIF_NAME} --wrap \"apptainer instance start ${SIF_PATH} ${SIF_NAME}-\$SLURM_JOBID && while true; do sleep 10; done\""
 	fi
 }
 
