@@ -19,7 +19,7 @@ requires = ["pdm-pep517"]
 build-backend = "pdm.pep517.api"
 
 [tool.setuptools.packages.find]
-where = ["hyakvnc"]
+where = ["src"]
 
 [project.scripts]
 hyakvnc = "hyakvnc:__main__"

@@ -5,6 +5,10 @@ import subprocess
 import re
 from typing import Optional, Iterable, Union, List
 
+from .config import APPTAINER_CONFIGDIR
+import json
+from pathlib import Path
+
 
 def get_slurmd_config():
     cmd = f"slurmd -C".split()
@@ -44,7 +48,8 @@ def get_slurm_partitions(user: Optional[str] = None, account: Optional[str] = No
         raise ValueError(f"Could not find partitions for user '{user}' and account '{account}' on cluster '{cluster}'")
 
 
-def get_slurm_job_details(user: Optional[str] = None, jobs: Optional[Union[int, list[int]]] = None, me: bool = True, cluster: Optional[str] = None,
+def get_slurm_job_details(user: Optional[str] = None, jobs: Optional[Union[int, list[int]]] = None, me: bool = True,
+                          cluster: Optional[str] = None,
                           fields=(
                               'JobId', 'Partition', 'Name', 'State', 'TimeUsed', 'TimeLimit', 'NumNodes', 'NodeList')):
     if me and not user:
@@ -63,6 +68,5 @@ def get_slurm_job_details(user: Optional[str] = None, jobs: Optional[Union[int, 
         jobs = ','.join([str(x) for x in jobs])
         cmds += ['--jobs', jobs]
     res = subprocess.run(cmds, capture_output=True, encoding="utf-8").stdout.splitlines()
-    out = { x["JobId"]: x for x in  [dict(zip(fields, line.split())) for line in res if line.strip()] }
+    out = {x["JobId"]: x for x in [dict(zip(fields, line.split())) for line in res if line.strip()]}
     return out
-
