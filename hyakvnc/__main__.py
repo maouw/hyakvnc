@@ -9,10 +9,9 @@ from typing import Optional, Iterable, Union, List
 import re
 import logging
 import subprocess
+import shlex
+import time
 
-
-from dataclasses import dataclass
-from .version import VERSION
 from slurmutil import get_slurm_cluster, get_slurm_partitions, get_slurm_default_account, get_slurm_job_details
 
 # Base VNC port cannot be changed due to vncserver not having a stable argument
@@ -70,6 +69,7 @@ if any(SBATCH_PARTITION := x for x in get_slurm_partitions(account=SBATCH_ACCOUN
 
 SBATCH_GPUS = os.environ.setdefault("SBATCH_GPUS", "0")
 SBATCH_TIMELIMIT = os.environ.setdefault("SBATCH_TIMELIMIT", "1:00:00")
+SBATCH_MEM = os.environ.setdefault("SBATCH_MEM", "8G")
 
 HYAKVNC_SLURM_JOBNAME_PREFIX = os.getenv("HYAKVNC_SLURM_JOBNAME_PREFIX", "hyakvnc-")
 HYAKVNC_APPTAINER_INSTANCE_PREFIX = os.getenv("HYAKVNC_APPTAINER_INSTANCE_PREFIX", "hyakvnc-vncserver-")
@@ -164,14 +164,74 @@ def get_openssh_connection_string_for_instance(instance: dict, login_host: str,
 
 
 
-def create_job_with_container(container_path: str):
-    #sbatch -A escience --job-name hyakvnc-xubuntu -p gpu-a40 -c 4 --mem=8G --time=1:00:00 --wrap "apptainer instance start --cleanenv --writable-tmpfs
+APPTAINER_WRITABLE_TMPFS = os.environ.setdefault("APPTAINER_WRITABLE_TMPFS", "1")
+APPTAINER_CLEANENV = os.environ.setdefault("APPTAINER_CLEANENV", "1")
 
-    cmds = ["sbatch"]
+def get_slurm_job_status(jobid: int):
+    cmd = ["squeue", "-j", str(jobid), "-ho", "%T"]
+    res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, encoding="utf-8")
+    if res.returncode != 0:
+        raise ValueError(f"Could not get status for job {jobid}:\n{res.stderr}")
+    return res.stdout.strip()
+
+def create_job_with_container(container_path: str, cpus_per_task: Optional[int] = None, squeue_poll_interval: int = 3):
+
+    if re.match(r"(?P<container_type>library|docker|shub|oras)://(?P<container_path>.*)", container_path):
+        container_name = Path(container_path).stem
+
+    else:
+        container_path = container_path.expanduser().resolve()
+        container_name = container_path.stem
+        assert container_path.exists(), f"Could not find container at {container_path}"
+
+
+    cmds = ["sbatch", "--parsable"]
+    if cpus_per_task:
+        cmds += ["-c", str(cpus_per_task)]
+
+
+    os.environ["SBATCH_JOB_NAME"] = f"{HYAKVNC_SLURM_JOBNAME_PREFIX}{container_name}"
+
+    # Set up apptainer variables and command:
+    APPTAINER_CLEANENV = os.environ.setdefault("APPTAINER_CLEANENV", "1")
+    APPTAINER_WRITABLE_TMPFS = os.environ.setdefault("APPTAINER_WRITABLE_TMPFS", "1")
+    apptainer_env_vars = {k: v for k, v in os.environ.items() if k.startswith("APPTAINER_") or k.startswith("SINGULARITY_") or k.startswith("SINGULARITYENV_") or k.startswith("APPTAINERENV_")}
+    apptainer_env_vars_str = [ f"{k}={shlex.quote(v)}" for k, v in apptainer_env_vars.items()]
+    apptainer_cmd = f"{apptainer_env_vars_str} apptainer instance start --cleanenv --writable-tmpfs {container_path} && while true; do sleep 10; done"
+    cmds += ["--wrap", apptainer_cmd]
+
+    # Launch sbatch process:
+    res = subprocess.run(cmds, stdout=subprocess.PIPE, stderr=subprocess.PIPE, encoding="utf-8")
+    if res.returncode != 0:
+        raise ValueError(f"Could not create job with container {container_path}:\n{res.stderr}")
+
+    try:
+        jobid = res.stdout.strip().split(":")
+    except (ValueError, IndexError):
+        raise RuntimeError(f"Could not parse jobid from sbatch output: {res.stdout}")
+
+    while True:
+        job_status = get_slurm_job_status(jobid)
+        if job_status == "RUNNING":
+            vnc_instances = get_apptainer_vnc_instances()
+            inst_name = f"{HYAKVNC_APPTAINER_INSTANCE_PREFIX}{container_name}"
+            vinst = [ x for x in vnc_instances if x['name'] == f"{HYAKVNC_APPTAINER_INSTANCE_PREFIX}{container_name}"]
+
+        elif job_status in  [    "CONFIGURING",
+    "PENDING",
+    "RESV_DEL_HOLD",
+    "REQUEUE_FED",
+    "REQUEUE_HOLD",
+    "REQUEUED",
+    "RESIZING",
+    "SIGNALING"]:
+            logging.debug(f"Job {jobid} is {job_status} - waiting {squeue_poll_interval} seconds")
+            time.sleep(squeue_poll_interval)
+        else:
+            raise RuntimeError(f"Job {jobid} unable to grant launch request - status is {job_status}")
 
 
 
 
-    cmd = f"ssh {host} ps -p {pid} && nc -z localhost {port}".split()
     res = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     return res.returncode == 0

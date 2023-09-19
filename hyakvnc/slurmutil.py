@@ -68,3 +68,74 @@ def get_slurm_job_details(user: Optional[str] = None, jobs: Optional[Union[int, 
     res = subprocess.run(cmds, stdout=subprocess.PIPE, stderr=subprocess.PIPE, encoding="utf-8").stdout.splitlines()
     out = {x["JobId"]: x for x in [dict(zip(fields, line.split())) for line in res if line.strip()]}
     return out
+
+SLURM_RUNNING_STATES = [
+    "CONFIGURING",
+    "PENDING",
+    "RESV_DEL_HOLD",
+    "REQUEUE_FED",
+    "REQUEUE_HOLD",
+    "REQUEUED",
+    "RESIZING",
+    "SIGNALING",
+    "STAGE_OUT",
+    "SUSPENDED",
+    "STOPPED",
+]
+
+SLURM_SUCCESS_STATES = [
+    "CG",
+    "COMPLETING",
+    "CD",
+    "COMPLETED",
+]
+
+SLURM_CANCELLED_STATES = ["CA", "CANCELLED", "RV", "REVOKED"]
+
+SLURM_TIMEOUT_STATES = ["DL", "DEADLINE", "TO", "TIMEOUT"]
+
+SLURM_FAILURE_STATES = [
+    "BF",
+    "BOOT_FAIL",
+    "F",
+    "FAILED",
+    "NF",
+    "NODE_FAIL",
+    "OOM",
+    "OUT_OF_MEMORY",
+    "PR",
+    "PREEMPTED",
+]
+
+
+def is_success(status):
+    return status in SLURM_SUCCESS_STATES
+
+
+def is_failure(status):
+    return status in SLURM_FAILURE_STATES
+
+
+def is_timeout(status):
+    return status in SLURM_TIMEOUT_STATES
+
+
+def is_cancelled(status):
+    return status in SLURM_CANCELLED_STATES
+
+
+def is_complete(status):
+    return (
+        is_success(status)
+        or is_failure(status)
+        or is_timeout(status)
+        or is_cancelled(status)
+    )
+
+
+def get_slurm_job_status(jobid: int):
+    cmd = ["squeue", "-j", jobid, "-ho", "%T"]
+    res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, encoding="utf-8")
+    if res.returncode != 0:
+        raise ValueError(f"Could not get status for job {jobid}:\n{res.stderr}")
+    return res.stdout.strip()
