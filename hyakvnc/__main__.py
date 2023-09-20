@@ -50,7 +50,7 @@ def get_apptainer_vnc_instances(read_apptainer_config: bool = False):
                 d.pop("config", None)
             else:
                 d['config'] = json.loads(base64.b64decode(d['config']).decode('utf-8'))
-
+            d['slurm_compute_node'] = p.relative_to(app_dir).parts[0]
             d['slurm_job_id'] = name_meta['jobid']
 
             with open(logOutPath, 'r') as lf:
