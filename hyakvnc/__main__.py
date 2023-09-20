@@ -13,10 +13,10 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Optional
 
-from .version import VERSION
 from .config import HyakVncConfig
 from .slurmutil import wait_for_job_status, get_job
 from .util import check_remote_pid_exists_and_port_open
+from .version import VERSION
 
 app_config = HyakVncConfig()
 
@@ -101,7 +101,7 @@ def get_openssh_connection_string_for_instance(instance: dict, login_host: str,
     return s
 
 
-def cmd_create(container_path):
+def cmd_create(container_path, dry_run=False):
     container_name = Path(container_path).stem
 
     if not re.match(r"(?P<container_type>library|docker|shub|oras)://(?P<container_path>.*)", container_path):
@@ -148,7 +148,7 @@ def cmd_create(container_path):
 
     try:
         wait_for_job_status(job_id, states=["RUNNING"], timeout=app_config.sbatch_post_timeout,
-                                    poll_interval=app_config.sbatch_post_poll_interval)
+                            poll_interval=app_config.sbatch_post_poll_interval)
     except TimeoutError:
         raise TimeoutError(f"Job {job_id} did not start running within {app_config.sbatch_post_timeout} seconds")
 
@@ -188,6 +188,7 @@ def create_arg_parser():
 
     # command: create
     parser_create = subparsers.add_parser('create', help='Create VNC session')
+    parser_create.add_argument('--dry-run', dest='dry_run', action='store_true', help='Dry run (do not submit job)')
     parser_create.add_argument('-p', '--partition', dest='partition', metavar='<partition>', help='Slurm partition',
                                type=str)
     parser_create.add_argument('-A', '--account', dest='account', metavar='<account>', help='Slurm account', type=str)
@@ -199,7 +200,7 @@ def create_arg_parser():
     parser_create.add_argument('-c', '--cpus', dest='cpus', metavar='<num_cpus>', help='Subnode cpu count', default=1,
                                type=int)
     parser_create.add_argument('-G', '--gpus', dest='gpus', metavar='[type:]<num_gpus>', help='Subnode gpu count',
-                               default="0", type = str)
+                               default="0", type=str)
     parser_create.add_argument('--mem', dest='mem', metavar='<NUM[K|M|G|T]>', help='Subnode memory amount with units',
                                type=str)
     parser_create.add_argument('--container', dest='container', metavar='<path_to_container.sif>',
@@ -212,7 +213,7 @@ def create_arg_parser():
     parser_stop = subparsers.add_parser('stop', help='Stop specified job')
 
     parser_stop.add_argument('job_id', metavar='<job_id>',
-                            help='Kill specified VNC session, cancel its VNC job, and exit', type=int)
+                             help='Kill specified VNC session, cancel its VNC job, and exit', type=int)
 
     parser_stop_all = subparsers.add_parser('stop_all', help='Stop all VNC sessions and exit')
     return parser
@@ -238,7 +239,7 @@ if args.print_version:
     exit(0)
 
 if args.command == 'create':
-    cmd_create(args.container)
+    cmd_create(args.container, dry_run=args.dry_run)
     exit(0)
 
 if args.command == 'status':
