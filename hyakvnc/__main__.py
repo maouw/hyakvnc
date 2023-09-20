@@ -131,6 +131,11 @@ def cmd_create(container_path, dry_run=False):
 
     # Launch sbatch process:
     logging.info("Launching sbatch process with command:\n" + " ".join(cmds))
+
+    if dry_run:
+        print(f"Woud have run: {' '.join(cmds)}")
+        return
+
     res = subprocess.run(cmds, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     if res.returncode != 0:
         raise RuntimeError(f"Could not launch sbatch job:\n{res.stderr}")
