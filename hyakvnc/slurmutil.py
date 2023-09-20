@@ -42,7 +42,7 @@ def get_default_account(user: Optional[str] = None, cluster: Optional[str] = Non
 
 def get_partitions(user: Optional[str] = None,
                    account: Optional[str] = None,
-                   cluster: Optional[str] = None) -> set[str]:
+                   cluster: Optional[str] = None) -> list[str]:
     """
     Gets the SLURM partitions for the specified user and account on the specified cluster.
 
@@ -59,7 +59,7 @@ def get_partitions(user: Optional[str] = None,
     res = subprocess.run(cmd.split(), stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True).stdout.splitlines()
 
     if any(partitions := x for x in res):
-        return {x.strip(f"{account}-") for x in partitions.split(',')}
+        return sorted([x.strip(f"{account}-") for x in partitions.split(',')])
     else:
         raise LookupError(f"Could not find partitions for user '{user}' and account '{account}' on cluster '{cluster}'")
 
