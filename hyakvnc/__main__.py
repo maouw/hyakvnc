@@ -13,7 +13,7 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Optional
 
-from version import VERSION
+from .version import VERSION
 from .config import HyakVncConfig
 from .slurmutil import wait_for_job_status, get_job
 from .util import check_remote_pid_exists_and_port_open
