@@ -177,7 +177,7 @@ def cmd_status():
 
 
 def create_arg_parser():
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(description='HyakVNC: VNC on Hyak', prog="hyakvnc")
     subparsers = parser.add_subparsers(dest='command')
 
     # general arguments
@@ -220,7 +220,6 @@ def create_arg_parser():
 
 
 arg_parser = create_arg_parser()
-arg_parser.prog = "hyakvnc"
 args = arg_parser.parse_args()
 
 if args.debug:
