@@ -134,7 +134,7 @@ def cmd_create(container_path: Union[str, Path], dry_run=False) -> SlurmJob:
     apptainer_env_vars_string = "" if apptainer_env_vars_quoted else (" ".join(apptainer_env_vars_quoted) + " ")
 
     # needs to match rf'(?P<prefix>{app_config.apptainer_instance_prefix})(?P<jobid>\d+)-(?P<appinstance>.*)'):
-    apptainer_instance_name = rf"{app_config.apptainer_instance_prefix}-\$SLURM_JOB_ID-{container_name}"
+    apptainer_instance_name = rf"{app_config.apptainer_instance_prefix}\$SLURM_JOB_ID-{container_name}"
 
     apptainer_cmd = apptainer_env_vars_string + rf"apptainer instance start {container_path} {apptainer_instance_name}"
     apptainer_cmd_with_rest = rf"{apptainer_cmd} && while true; do sleep 10; done"
