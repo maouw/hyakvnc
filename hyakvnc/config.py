@@ -5,8 +5,7 @@ from dataclasses import dataclass, asdict
 from pathlib import Path
 from typing import Optional, Iterable, Union
 
-import slurmutil
-
+from .slurmutil import get_default_cluster, get_default_account, get_default_partition
 
 def get_first_env(env_vars: Iterable[str], default: Optional[str] = None, allow_blank: bool = True) -> str:
     """
@@ -63,12 +62,12 @@ class HyakVncConfig:
         :return: None
         """
         self.cluster = self.cluster or get_first_env(["HYAKVNC_SLURM_CLUSTER", "SBATCH_CLUSTER"],
-                                                     slurmutil.get_default_cluster(), allow_blank=False)
+                                                     get_default_cluster(), allow_blank=False)
         self.account = self.account or get_first_env(["HYAKVNC_SLURM_ACCOUNT", "SBATCH_ACCOUNT"],
-                                                     slurmutil.get_default_account(cluster=self.cluster),
+                                                     get_default_account(cluster=self.cluster),
                                                      allow_blank=False)
         self.partition = self.partition or get_first_env(["HYAKVNC_SLURM_PARTITION", "SBATCH_PARTITION"],
-                                                         slurmutil.get_default_partition(cluster=self.cluster,
+                                                         get_default_partition(cluster=self.cluster,
                                                                                          account=self.account),
                                                          allow_blank=False)
         self.gpus = self.gpus or get_first_env(["HYAKVNC_SLURM_GPUS", "SBATCH_GPUS"], None)
