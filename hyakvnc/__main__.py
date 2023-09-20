@@ -1,89 +1,39 @@
 #! /usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-import os
-import json
-import base64
-from pathlib import Path
-from typing import Optional, Iterable, Union, List
-import re
-import logging
-import subprocess
-from copy import deepcopy
-from pprint import pformat
-import shlex
-import time
-import tenacity
 import argparse
-from dataclasses import dataclass, asdict
+import base64
+import json
+import logging
+import os
+import re
+import shlex
+import subprocess
+from dataclasses import asdict
+from pathlib import Path
+from typing import Optional
+
+from version import VERSION
+from .config import HyakVncConfig
+from .slurmutil import wait_for_job_status, get_job
+from .util import check_remote_pid_exists_and_port_open
+
+app_config = HyakVncConfig()
 
 
-from .slurmutil import get_default_cluster, get_default_account, get_partitions, wait_for_job_status
-from .util import repeat_until, wait_for_file, check_remote_pid_exists_and_port_open
+def get_apptainer_vnc_instances(read_apptainer_config: bool = False):
+    app_dir = Path(app_config.apptainer_config_dir).expanduser() / 'instances' / 'app'
+    assert app_dir.exists(), f"Could not find apptainer instances dir at {app_dir}"
 
-# Name of Apptainer binary (formerly Singularity)
-APPTAINER_BIN = os.environ.setdefault("HYAKVNC_APPTAINER_BIN", "apptainer")
-
-# Checked to see if klone is authorized for intracluster access
-AUTH_KEYS_FILEPATH = Path(os.environ.setdefault("HYAKVNC_AUTH_KEYS_FILEPATH", "~/.ssh/authorized_keys")).expanduser()
-
-
-
-
-@dataclass
-class HyakVncConfig:
-    # script attributes
-    job_prefix: str = "hyakvnc-"
-    # apptainer config
-    apptainer_config_dir: str = "~/.apptainer"
-    apptainer_instance_prefix: str = "hyakvnc-"
-    apptainer_env_vars: Optional[dict] = None
-
-    sbatch_post_timeout: float = 120.0
-    sbatch_post_poll_interval: float = 1.0
-
-    # ssh config
-    ssh_host = "klone.hyak.uw.edu"
-
-    # slurm attributes
-    ## sbatch environment variables
-    account: Optional[str] = None # -a, --account
-    partition: Optional[str] = None # -p, --partition
-    cluster: Optional[str] = None # --clusters, SBATCH_CLUSTERS
-    gpus: Optional[str] = None # -G, --gpus, SBATCH_GPUS
-    timelimit: Optional[str] = None # -t, --time, SBATCH_TIMELIMIT
-    mem: Optional[str] = None # --mem, SBATCH_MEM
-    cpus: Optional[int] = None # -c, --cpus-per-task (not settable by environment variable)
-
-    def to_json(self):
-        return json.dumps({k: v for k, v in asdict(self).items() if v is not None})
-    @staticmethod
-    def from_json(path):
-        if not Path(path).is_file():
-            raise ValueError(f"Invalid path to configuration file: {path}")
-
-        with open(path, "r") as f:
-            contents = json.load(f)
-            return HyakVncConfig(**contents)
-    @staticmethod
-    def from_jsons(s: str):
-        return HyakVncConfig(**json.loads(s))
-
-
-
-def get_apptainer_vnc_instances(cfg: HyakVncConfig, read_apptainer_config: bool = False):
-    appdir = Path(apptainer_config_dir).expanduser() / 'instances' / 'app'
-    assert appdir.exists(), f"Could not find apptainer instances dir at {appdir}"
-
-    needed_keys = {'pid', 'user', 'name', 'image', }
+    needed_keys = {'pid', 'user', 'name', 'image'}
     if read_apptainer_config:
         needed_keys.add('config')
 
-    all_instance_json_files = appdir.rglob(cfg.apptainer_instance_prefix + '*.json')
+    all_instance_json_files = app_dir.rglob(app_config.apptainer_instance_prefix + '*.json')
 
     running_hyakvnc_json_files = {p: r.groupdict() for p in all_instance_json_files if (
-        r := re.match(rf'(?P<prefix>{cfg.apptainer_instance_prefix})(?P<jobid>\d+)-(?P<appinstance>.*)\.json', p.name))
-                                  }
+        r := re.match(rf'(?P<prefix>{app_config.apptainer_instance_prefix})(?P<jobid>\d+)-(?P<appinstance>.*)\.json',
+                      p.name))}
     outs = []
     #    frr := re.search(r'\s+-rfbport\s+(?P<rfbport>\d+\b', fr)
 
@@ -101,7 +51,7 @@ def get_apptainer_vnc_instances(cfg: HyakVncConfig, read_apptainer_config: bool 
             else:
                 d['config'] = json.loads(base64.b64decode(d['config']).decode('utf-8'))
 
-            d['slurm_compute_node'] = slurm_compute_node = p.relative_to(appdir).parts[0]
+            d['slurm_compute_node'] = slurm_compute_node = p.relative_to(app_dir).parts[0]
             d['slurm_job_id'] = name_meta['jobid']
 
             with open(logOutPath, 'r') as f:
@@ -152,152 +102,153 @@ def get_openssh_connection_string_for_instance(instance: dict, login_host: str,
     return s
 
 
+def cmd_create(container_path):
+    container_name = Path(container_path).stem
 
-def create_job_with_container(container_path, cfg: HyakVncConfig):
-    if re.match(r"(?P<container_type>library|docker|shub|oras)://(?P<container_path>.*)", container_path):
-        container_name = Path(container_path).stem
-
-    else:
+    if not re.match(r"(?P<container_type>library|docker|shub|oras)://(?P<container_path>.*)", container_path):
         container_path = container_path.expanduser().resolve()
         container_name = container_path.stem
         assert container_path.exists(), f"Could not find container at {container_path}"
 
+    cmds = ["sbatch", "--parsable", "--job-name", app_config.job_prefix + container_name]
 
-    cmds = ["sbatch", "--parsable", "--job-name", cfg.job_prefix + container_name]
-
-    sbatch_optinfo = {"account": "-A", "partition": "-p", "gpus": "-G", "timelimit": "--time", "mem": "--mem", "cpus": "-c"}
-    sbatch_options = [item for pair in [(sbatch_optinfo[k], v) for k, v in asdict(cfg).items() if k in sbatch_optinfo.keys() and v is not None]
-            for item in pair]
+    sbatch_optinfo = {"account": "-A", "partition": "-p", "gpus": "-G", "timelimit": "--time", "mem": "--mem",
+                      "cpus": "-c"}
+    sbatch_options = [item for pair in [(sbatch_optinfo[k], v) for k, v in asdict(app_config).items() if
+                                        k in sbatch_optinfo.keys() and v is not None] for item in pair]
 
     cmds += sbatch_options
 
-    apptainer_env_vars = {k: v for k, v in os.environ.items() if k.startswith("APPTAINER_") or k.startswith("SINGULARITY_") or k.startswith("SINGULARITYENV_") or k.startswith("APPTAINERENV_")}
-    apptainer_env_vars_str = [ f"{k}={shlex.quote(v)}" for k, v in apptainer_env_vars.items()]
+    apptainer_env_vars_quoted = [f"{k}={shlex.quote(v)}" for k, v in app_config.apptainer_env_vars.items()]
+    apptainer_env_vars_string = "" if apptainer_env_vars_quoted else (" ".join(apptainer_env_vars_quoted) + " ")
 
-    apptainer_cmd = f"{apptainer_env_vars_str} apptainer instance start {container_path}  && while true; do sleep 10; done"
-    cmds += ["--wrap", apptainer_cmd]
+    # needs to match rf'(?P<prefix>{app_config.apptainer_instance_prefix})(?P<jobid>\d+)-(?P<appinstance>.*)'):
+    apptainer_instance_name = rf"{app_config.apptainer_instance_prefix}-\$SLURM_JOB_ID-{container_name}"
 
+    apptainer_cmd = apptainer_env_vars_string + rf"apptainer instance start {container_path} {container_name}"
+    apptainer_cmd_with_rest = rf"{apptainer_cmd} && while true; do sleep 10; done"
 
+    cmds += ["--wrap", apptainer_cmd_with_rest]
 
     # Launch sbatch process:
     logging.info("Launching sbatch process with command:\n" + " ".join(cmds))
-    res = subprocess.run(cmds, stdout=subprocess.PIPE, stderr=subprocess.hPIPE, encoding="utf-8")
+    res = subprocess.run(cmds, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    if res.returncode != 0:
+        raise RuntimeError(f"Could not launch sbatch job:\n{res.stderr}")
+
+    if not res.stdout:
+        raise RuntimeError(f"No sbatch output")
 
     try:
-        job_id = int(res.stdout.strip().split(":")
+        job_id = int(res.stdout.strip().split(":")[0])
     except (ValueError, IndexError, TypeError):
         raise RuntimeError(f"Could not parse jobid from sbatch output: {res.stdout}")
 
+    logging.info(f"Launched sbatch job {job_id}")
+    logging.info("Waiting for job to start running")
 
-    s = wait_for_job_status(job_id, states= { "RUNNING" }, timeout=cfg.sbatch_post_timeout, cfg.sbatch_post_poll_interval)
-    if not s:
-        raise RuntimeError(f"Job {job_id} did not start running within {cfg.sbatch_post_timeout} seconds")
+    try:
+        state = wait_for_job_status(job_id, states={"RUNNING"}, timeout=app_config.sbatch_post_timeout,
+                                    poll_interval=app_config.sbatch_post_poll_interval)
+    except TimeoutError:
+        raise TimeoutError(f"Job {job_id} did not start running within {app_config.sbatch_post_timeout} seconds")
+
+    job = get_job(job_id)
+    if not job:
+        raise RuntimeError(f"Could not get job {job_id} after it started running")
+
+    logging.info(f"Job {job_id} is now running")
 
 
-
-
-
-
-def kill(jobid: Optional[int] = None, all: bool = False):
-    if all:
+def cmd_stop(job_id: Optional[int] = None, stop_all: bool = False):
+    if stop_all:
         vnc_instances = get_apptainer_vnc_instances()
         for vnc_instance in vnc_instances:
             subprocess.run(["scancel", str(vnc_instance['slurm_job_id'])])
         return
 
-    if jobid:
-        subprocess.run(["scancel", str(jobid)])
+    if job_id:
+        subprocess.run(["scancel", str(job_id)])
         return
 
-    raise ValueError("Must specify either --all or <jobid>")
+
+def cmd_status():
+    vnc_instances = get_apptainer_vnc_instances(read_apptainer_config=True)
+    print(json.dumps(vnc_instances, indent=2))
+
 
 def create_arg_parser():
     parser = argparse.ArgumentParser()
     subparsers = parser.add_subparsers(dest='command')
 
     # general arguments
-    parser.add_argument('-d', '--debug',
-                        dest='debug',
-                        action='store_true',
-                        help='Enable debug logging')
+    parser.add_argument('-d', '--debug', dest='debug', action='store_true', help='Enable debug logging')
 
-    parser.add_argument('-v', '--version',
-                        dest='print_version',
-                        action='store_true',
+    parser.add_argument('-v', '--version', dest='print_version', action='store_true',
                         help='Print program version and exit')
 
     # command: create
-    parser_create = subparsers.add_parser('create',
-                                          help='Create VNC session')
-    parser_create.add_argument('-p', '--partition',
-                               dest='partition',
-                               metavar='<partition>',
-                               help='Slurm partition',
+    parser_create = subparsers.add_parser('create', help='Create VNC session')
+    parser_create.add_argument('-p', '--partition', dest='partition', metavar='<partition>', help='Slurm partition',
                                type=str)
-    parser_create.add_argument('-A', '--account',
-                               dest='account',
-                               metavar='<account>',
-                               help='Slurm account',
-                               type=str)
-    parser_create.add_argument('--timeout',
-                               dest='timeout',
-                               metavar='<time_in_seconds>',
+    parser_create.add_argument('-A', '--account', dest='account', metavar='<account>', help='Slurm account', type=str)
+    parser_create.add_argument('--timeout', dest='timeout', metavar='<time_in_seconds>',
                                help='[default: 120] Slurm node allocation and VNC startup timeout length (in seconds)',
-                               default=120,
+                               default=120, type=int)
+    parser_create.add_argument('-t', '--time', dest='time', metavar='<time_in_hours>',
+                               help='Subnode reservation time (in hours)', type=int)
+    parser_create.add_argument('-c', '--cpus', dest='cpus', metavar='<num_cpus>', help='Subnode cpu count', default=1,
                                type=int)
-    parser_create.add_argument('-t', '--time',
-                               dest='time',
-                               metavar='<time_in_hours>',
-                               help='Subnode reservation time (in hours)',
-                               type=int)
-    parser_create.add_argument('-c', '--cpus',
-                               dest='cpus',
-                               metavar='<num_cpus>',
-                               help='Subnode cpu count',
-                               default=1,
-                               type=int)
-    parser_create.add_argument('-G', '--gpus',
-                               dest='gpus',
-                               metavar='[type:]<num_gpus>',
-                               help='Subnode gpu count',
+    parser_create.add_argument('-G', '--gpus', dest='gpus', metavar='[type:]<num_gpus>', help='Subnode gpu count',
                                default="0"
+    type = str)
+    parser_create.add_argument('--mem', dest='mem', metavar='<NUM[K|M|G|T]>', help='Subnode memory amount with units',
                                type=str)
-    parser_create.add_argument('--mem',
-                               dest='mem',
-                               metavar='<NUM[K|M|G|T]>',
-                               help='Subnode memory amount with units',
-                               type=str)
-    parser_create.add_argument('--container',
-                               dest='sing_container',
-                               metavar='<path_to_container.sif>',
-                               help='Path to VNC Apptainer/Singularity Container (.sif)',
-                               required=True,
-                               type=str)
+    parser_create.add_argument('--container', dest='container', metavar='<path_to_container.sif>',
+                               help='Path to VNC Apptainer/Singularity Container (.sif)', required=True, type=str)
 
     # status command
-    parser_status = subparsers.add_parser('status',
-                                          help='Print details of all VNC jobs with given job name and exit')
+    parser_status = subparsers.add_parser('status', help='Print details of all VNC jobs with given job name and exit')
 
     # kill command
-    parser_kill = subparsers.add_parser('kill',
-                                        help='Kill specified job')
+    parser_stop = subparsers.add_parser('stop', help='Stop specified job')
 
-    kiLl_group = parser_kill.add_mutually_exclusive_group(required=True)
-    kiLl_group.add_argument('job_id',
-                             metavar='<job_id>',
-                             help='Kill specified VNC session, cancel its VNC job, and exit',
-                             type=int)
+    stop_group = parser_stop.add_mutually_exclusive_group(required=True)
+    stop_group.add_argument('job_id', metavar='<job_id>',
+                            help='Kill specified VNC session, cancel its VNC job, and exit', type=int)
 
-    kiLl_group.add_argument('-a', '--all',
-                             action='store_true',
-                            dest='kill_all',
-                             help='Stop all VNC sessions and exit')
+    stop_group.add_argument('-a', '--all', action='store_true', dest='stop_all', help='Stop all VNC sessions and exit')
 
-    parser_kill.set_defaults(func=kill)
-
+    return parser
 
 
 arg_parser = create_arg_parser()
 args = (arg_parser).parse_args()
 
-print(args.func(*args.operands))
+if args.debug:
+    os.environ["HYAKVNC_LOG_LEVEL"] = "DEBUG"
+
+log_level = logging.__dict__.get(os.environ.setdefault("HYAKVNC_LOG_LEVEL", "INFO").upper(), logging.INFO)
+
+log_format = '%(asctime)s - %(levelname)s - %(funcName)s() - %(message)s'
+
+if log_level == logging.DEBUG:
+    log_format += " - %(pathname)s:%(lineno)d"
+
+logging.basicConfig(level=log_level, format=log_format)
+
+if args.print_version:
+    print(VERSION)
+    exit(0)
+
+if args.command == 'create':
+    cmd_create(args.container)
+    exit(0)
+
+if args.command == 'status':
+    cmd_status()
+
+if args.command == 'stop':
+    cmd_stop(args.job_id, args.stop_all)
+
+exit(0)

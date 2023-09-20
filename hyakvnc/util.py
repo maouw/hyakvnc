@@ -10,8 +10,9 @@ def repeat_until(func: Callable, condition: Callable[[int], bool], timeout: Opti
     assert poll_interval > 0, "Poll interval must be greater than zero"
     timeout = timeout or -1.0
     while time.time() < begin_time + timeout:
-        if condition(func()):
-            return True
+        res = func()
+        if condition(res):
+            return res
         time.sleep(poll_interval)
     return False
 
