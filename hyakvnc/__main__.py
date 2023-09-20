@@ -211,12 +211,10 @@ def create_arg_parser():
     # kill command
     parser_stop = subparsers.add_parser('stop', help='Stop specified job')
 
-    stop_group = parser_stop.add_mutually_exclusive_group(required=True)
-    stop_group.add_argument('job_id', metavar='<job_id>',
+    parser_stop.add_argument('job_id', metavar='<job_id>',
                             help='Kill specified VNC session, cancel its VNC job, and exit', type=int)
 
-    stop_group.add_argument('-a', '--all', action='store_true', dest='stop_all', help='Stop all VNC sessions and exit')
-
+    parser_stop_all = subparsers.add_parser('stop_all', help='Stop all VNC sessions and exit')
     return parser
 
 
@@ -247,6 +245,9 @@ if args.command == 'status':
     cmd_status()
 
 if args.command == 'stop':
-    cmd_stop(args.job_id, args.stop_all)
+    cmd_stop(args.job_id)
+
+if args.command == 'stop_all':
+    cmd_stop(stop_all=True)
 
 exit(0)
