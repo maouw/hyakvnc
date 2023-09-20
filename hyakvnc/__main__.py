@@ -111,13 +111,15 @@ def cmd_create(container_path: Union[str, Path], dry_run=False) -> SlurmJob:
     container_path = Path(container_path)
     container_name = container_path.stem
 
-    if not re.match(r"(?P<container_type>library|docker|shub|oras)://(?P<container_path>.*)", container_path):
-        container_path = container_path.expanduser()
-        assert(container_path.is_file()), f"Could not find container at {container_path}"
+    if not container_path.is_file():
+        container_path = str(container_path)
+        assert re.match(r"(?P<container_type>library|docker|shub|oras)://(?P<container_path>.*)", container_path), \
+            f"Container path {container_path} is not a valid URI"
 
     else:
-        container_path = str(container_path)
-        logging.debug(f"Container path {container_path} is a URI, not checking for file existence")
+        container_path = container_path.expanduser()
+        assert container_path.exists(), f"Container path {container_path} does not exist"
+        assert container_path.is_file(), f"Container path {container_path} is not a file"
 
     cmds = ["sbatch", "--parsable", "--job-name", app_config.job_prefix + container_name]
 
