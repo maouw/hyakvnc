@@ -75,13 +75,11 @@ class HyakVncConfig:
         self.mem = self.mem or get_first_env(["HYAKVNC_SLURM_MEM", "SBATCH_MEM"], None)
         self.cpus = self.cpus or get_first_env(["HYAKVNC_SLURM_CPUS", "SBATCH_CPUS_PER_TASK"], None)
 
-        if self.apptainer_env_vars is None:
-            self.apptainer_env_vars = {}
-
+        self.apptainer_env_vars = self.apptainer_env_vars or dict()
         all_apptainer_env_vars = {x: os.environ.get(x, "") for x in os.environ.keys() if
                                   x.startswith("APPTAINER_") or x.startswith("APPTAINERENV_") or x.startswith(
                                       "SINGULARITY_") or x.startswith("SINGULARITYENV_")}
-        self.apptainer_env_vars = self.apptainer_env_vars.update(all_apptainer_env_vars)
+        self.apptainer_env_vars.update(all_apptainer_env_vars)
 
         if self.apptainer_use_writable_tmpfs is not None:
             self.apptainer_env_vars["APPTAINER_WRITABLE_TMPFS"] = "1" if self.apptainer_use_writable_tmpfs else "0"
