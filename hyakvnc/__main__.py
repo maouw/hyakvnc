@@ -11,10 +11,10 @@ import shlex
 import subprocess
 from dataclasses import asdict
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Union
 
 from .config import HyakVncConfig
-from .slurmutil import wait_for_job_status, get_job
+from .slurmutil import wait_for_job_status, get_job, SlurmJob, get_job_status
 from .util import check_remote_pid_exists_and_port_open
 from .version import VERSION
 
@@ -101,13 +101,23 @@ def get_openssh_connection_string_for_instance(instance: dict, login_host: str,
     return s
 
 
-def cmd_create(container_path, dry_run=False):
-    container_name = Path(container_path).stem
+def cmd_create(container_path: Union[str, Path], dry_run=False) -> SlurmJob:
+    """
+    Allocates a compute node, starts a container, and launches a VNC session on it.
+    :param container_path: Path to container to run
+    :param dry_run: Whether to do a dry run (do not actually submit job)
+    :return: None
+    """
+    container_path = Path(container_path)
+    container_name = container_path.stem
 
     if not re.match(r"(?P<container_type>library|docker|shub|oras)://(?P<container_path>.*)", container_path):
-        container_path = container_path.expanduser().resolve()
-        container_name = container_path.stem
-        assert container_path.exists(), f"Could not find container at {container_path}"
+        container_path = container_path.expanduser()
+        assert(container_path.is_file()), f"Could not find container at {container_path}"
+
+    else:
+        container_path = str(container_path)
+        logging.debug(f"Container path {container_path} is a URI, not checking for file existence")
 
     cmds = ["sbatch", "--parsable", "--job-name", app_config.job_prefix + container_name]
 
@@ -162,6 +172,8 @@ def cmd_create(container_path, dry_run=False):
         raise RuntimeError(f"Could not get job {job_id} after it started running")
 
     logging.info(f"Job {job_id} is now running")
+    return job
+
 
 
 def cmd_stop(job_id: Optional[int] = None, stop_all: bool = False):
