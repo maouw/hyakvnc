@@ -1,58 +1,60 @@
 # -*- coding: utf-8 -*-
-import sys
 import os
 import subprocess
-import re
-from typing import Optional, Iterable, Union, List
+import sys
+from typing import Optional, Union, Container
 
-import json
-from pathlib import Path
-
-
-def get_slurmd_config():
-    cmd = f"slurmd -C".split()
-    res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, encoding='utf-8').stdout.splitlines()
-    return dict([re.match(r'([^=]+)+=(.*)', k).groups() for k in res.split()])
+from .util import repeat_until
 
 
-def get_slurm_cluster():
+def get_default_cluster() -> str:
     cmd = f"sacctmgr show cluster -nPs format=Cluster".split()
-    res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, encoding='utf-8').stdout.splitlines()
-    if any(cluster := x for x in res):
-        return cluster
+    res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                         encoding=sys.getdefaultencoding()).stdout.splitlines()
+    if res:
+        return res[0]
     else:
-        raise ValueError("Could not find cluster name")
+        raise LookupError("Could not find default cluster")
 
-def get_slurm_default_account(user: Optional[str] = None, cluster: Optional[str] = None):
+
+def get_default_account(user: Optional[str] = None, cluster: Optional[str] = None) -> str:
     user = user or os.getlogin()
-    cluster = cluster or get_slurm_cluster()
-    cmd = f"sacctmgr show user -nPs {user} format=defaultaccount where cluster={cluster}".split()
-    res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,  encoding='utf-8').stdout.splitlines()
+    cluster = cluster or get_default_cluster()
+
+    cmd = f"sacctmgr show user -nPs {user} format=defaultaccount where cluster={cluster}"
+
+    res = subprocess.run(cmd.split(), stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                         encoding=sys.getdefaultencoding()).stdout.splitlines()
+
     if any(default_account := x for x in res):
         return default_account
     else:
-        raise ValueError(f"Could not find default account for user '{user}' on cluster '{cluster}'")
+        raise LookupError(f"Could not find default account for user '{user}' on cluster '{cluster}'")
 
 
-def get_slurm_partitions(user: Optional[str] = None, account: Optional[str] = None, cluster: Optional[str] = None):
+def get_partitions(user: Optional[str] = None, account: Optional[str] = None, cluster: Optional[str] = None) -> set[
+    str]:
     user = user or os.getlogin()
-    cluster = cluster or get_slurm_cluster()
-    account = account or get_slurm_default_account(user=user, cluster=cluster)
-    cmd = f"sacctmgr show -nPs user {user} format=qos where account={account} cluster={cluster}".split()
-    res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,  encoding='utf-8').stdout.splitlines()
+    cluster = cluster or get_default_cluster()
+    account = account or get_default_account(user=user, cluster=cluster)
+    cmd = f"sacctmgr show -nPs user {user} format=qos where account={account} cluster={cluster}"
+    res = subprocess.run(cmd.split(), stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                         encoding=sys.getdefaultencoding()).stdout.splitlines()
+
     if any(partitions := x for x in res):
         return {x.strip(f"{account}-") for x in partitions.split(',')}
     else:
         raise ValueError(f"Could not find partitions for user '{user}' and account '{account}' on cluster '{cluster}'")
 
 
-def get_slurm_job_details(user: Optional[str] = None, jobs: Optional[Union[int, list[int]]] = None, me: bool = True,
-                          cluster: Optional[str] = None,
-                          fields=(
-                              'JobId', 'Partition', 'Name', 'State', 'TimeUsed', 'TimeLimit', 'NumNodes', 'NodeList')):
+def get_job_details(user: Optional[str] = None, jobs: Optional[Union[int, list[int]]] = None, me: bool = True,
+                    cluster: Optional[str] = None,
+                    fields=(
+                        'JobId', 'Partition', 'Name', 'State', 'TimeUsed', 'TimeLimit', 'NumNodes',
+                        'NodeList')) -> dict:
     if me and not user:
         user = os.getlogin()
-    cluster = cluster or get_slurm_cluster()
+    cluster = cluster or get_default_cluster()
 
     cmds: list[str] = ['squeue', '--noheader']
     fields_str = ','.join(fields)
@@ -65,77 +67,22 @@ def get_slurm_job_details(user: Optional[str] = None, jobs: Optional[Union[int, 
             jobs = [jobs]
         jobs = ','.join([str(x) for x in jobs])
         cmds += ['--jobs', jobs]
-    res = subprocess.run(cmds, stdout=subprocess.PIPE, stderr=subprocess.PIPE, encoding="utf-8").stdout.splitlines()
+    res = subprocess.run(cmds, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                         encoding=sys.getdefaultencoding()).stdout.splitlines()
     out = {x["JobId"]: x for x in [dict(zip(fields, line.split())) for line in res if line.strip()]}
     return out
 
-SLURM_RUNNING_STATES = [
-    "CONFIGURING",
-    "PENDING",
-    "RESV_DEL_HOLD",
-    "REQUEUE_FED",
-    "REQUEUE_HOLD",
-    "REQUEUED",
-    "RESIZING",
-    "SIGNALING",
-    "STAGE_OUT",
-    "SUSPENDED",
-    "STOPPED",
-]
 
-SLURM_SUCCESS_STATES = [
-    "CG",
-    "COMPLETING",
-    "CD",
-    "COMPLETED",
-]
-
-SLURM_CANCELLED_STATES = ["CA", "CANCELLED", "RV", "REVOKED"]
-
-SLURM_TIMEOUT_STATES = ["DL", "DEADLINE", "TO", "TIMEOUT"]
-
-SLURM_FAILURE_STATES = [
-    "BF",
-    "BOOT_FAIL",
-    "F",
-    "FAILED",
-    "NF",
-    "NODE_FAIL",
-    "OOM",
-    "OUT_OF_MEMORY",
-    "PR",
-    "PREEMPTED",
-]
-
-
-def is_success(status):
-    return status in SLURM_SUCCESS_STATES
-
-
-def is_failure(status):
-    return status in SLURM_FAILURE_STATES
-
-
-def is_timeout(status):
-    return status in SLURM_TIMEOUT_STATES
-
-
-def is_cancelled(status):
-    return status in SLURM_CANCELLED_STATES
-
-
-def is_complete(status):
-    return (
-        is_success(status)
-        or is_failure(status)
-        or is_timeout(status)
-        or is_cancelled(status)
-    )
-
-
-def get_slurm_job_status(jobid: int):
-    cmd = ["squeue", "-j", jobid, "-ho", "%T"]
-    res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, encoding="utf-8")
+def get_job_status(jobid: int) -> str:
+    cmd = f"squeue -j {jobid} -h -o %T"
+    res = subprocess.run(cmd.split(), stdout=subprocess.PIPE, stderr=subprocess.PIPE, encoding=sys.getdefaultencoding())
     if res.returncode != 0:
         raise ValueError(f"Could not get status for job {jobid}:\n{res.stderr}")
     return res.stdout.strip()
+
+
+def wait_for_job_status(job_id: int, states: Container[str], timeout: Optional[float] = None,
+                        poll_interval: float = 1.0) -> bool:
+    """Waits for the specified job state to be reached"""
+    return repeat_until(lambda: get_job_status(job_id), lambda x: x in states, timeout=timeout,
+                        poll_interval=poll_interval)
