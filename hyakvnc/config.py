@@ -1,5 +1,4 @@
 import json
-import json
 import logging
 import os
 from dataclasses import dataclass, asdict
@@ -50,7 +49,6 @@ class HyakVncConfig:
     ssh_host = "klone.hyak.uw.edu"  # intermediate host address between local machine and compute node
 
     # slurm attributes
-    ## sbatch environment variables
     account: Optional[str] = None  # account to use for sbatch jobs | -A, --account, SBATCH_ACCOUNT
     partition: Optional[str] = None  # partition to use for sbatch jobs | -p, --partition, SBATCH_PARTITION
     cluster: Optional[str] = None  # cluster to use for sbatch jobs |  --clusters, SBATCH_CLUSTERS
@@ -88,7 +86,7 @@ class HyakVncConfig:
             self.apptainer_env_vars["APPTAINER_WRITABLE_TMPFS"] = "1" if self.apptainer_use_writable_tmpfs else "0"
 
         if self.apptainer_cleanenv is not None:
-            self.apptainer_env_vars[["APPTAINER_CLEANENV"] = "1" if self.apptainer_cleanenv else "0"
+            self.apptainer_env_vars["APPTAINER_CLEANENV"] = "1" if self.apptainer_cleanenv else "0"
 
             if self.apptainer_set_bind_paths is not None:
                 self.apptainer_env_vars["APPTAINER_BINDPATH"] = self.apptainer_set_bind_paths

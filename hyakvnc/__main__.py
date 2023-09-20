@@ -40,7 +40,7 @@ def get_apptainer_vnc_instances(read_apptainer_config: bool = False):
     for p, name_meta in running_hyakvnc_json_files.items():
         with open(p, 'r') as f:
             d = json.load(f)
-            assert needed_keys <= d.keys(), f"Missing keys {needed_keys - d.keys()} in {jf}"
+            assert needed_keys <= d.keys(), f"Missing keys {needed_keys - d.keys()} in {d}"
 
             logOutPath = Path(d['logOutPath']).expanduser()
             if not logOutPath.exists():
@@ -51,11 +51,10 @@ def get_apptainer_vnc_instances(read_apptainer_config: bool = False):
             else:
                 d['config'] = json.loads(base64.b64decode(d['config']).decode('utf-8'))
 
-            d['slurm_compute_node'] = slurm_compute_node = p.relative_to(app_dir).parts[0]
             d['slurm_job_id'] = name_meta['jobid']
 
-            with open(logOutPath, 'r') as f:
-                logOutFile_contents = f.read()
+            with open(logOutPath, 'r') as lf:
+                logOutFile_contents = lf.read()
                 rfbports = re.findall(r'\s+-rfbport\s+(?P<rfbport>\d+)\b', logOutFile_contents)
                 if not rfbports:
                     continue
@@ -63,7 +62,7 @@ def get_apptainer_vnc_instances(read_apptainer_config: bool = False):
                 vnc_port = rfbports[-1]
 
                 vnc_log_file_paths = re.findall(
-                    rf'(?m)Log file is\s*(?P<logfilepath>.*[/]{d["slurm_compute_node"]}.*:{vnc_port}\.log)$',
+                    rf'(?m)Log file is\s*(?P<logfilepath>.*/{d["slurm_compute_node"]}.*:{vnc_port}\.log)$',
                     logOutFile_contents)
                 if not vnc_log_file_paths:
                     continue
@@ -125,7 +124,7 @@ def cmd_create(container_path):
     # needs to match rf'(?P<prefix>{app_config.apptainer_instance_prefix})(?P<jobid>\d+)-(?P<appinstance>.*)'):
     apptainer_instance_name = rf"{app_config.apptainer_instance_prefix}-\$SLURM_JOB_ID-{container_name}"
 
-    apptainer_cmd = apptainer_env_vars_string + rf"apptainer instance start {container_path} {container_name}"
+    apptainer_cmd = apptainer_env_vars_string + rf"apptainer instance start {container_path} {apptainer_instance_name}"
     apptainer_cmd_with_rest = rf"{apptainer_cmd} && while true; do sleep 10; done"
 
     cmds += ["--wrap", apptainer_cmd_with_rest]
@@ -148,7 +147,7 @@ def cmd_create(container_path):
     logging.info("Waiting for job to start running")
 
     try:
-        state = wait_for_job_status(job_id, states={"RUNNING"}, timeout=app_config.sbatch_post_timeout,
+        wait_for_job_status(job_id, states=["RUNNING"], timeout=app_config.sbatch_post_timeout,
                                     poll_interval=app_config.sbatch_post_poll_interval)
     except TimeoutError:
         raise TimeoutError(f"Job {job_id} did not start running within {app_config.sbatch_post_timeout} seconds")
@@ -200,8 +199,7 @@ def create_arg_parser():
     parser_create.add_argument('-c', '--cpus', dest='cpus', metavar='<num_cpus>', help='Subnode cpu count', default=1,
                                type=int)
     parser_create.add_argument('-G', '--gpus', dest='gpus', metavar='[type:]<num_gpus>', help='Subnode gpu count',
-                               default="0"
-    type = str)
+                               default="0", type = str)
     parser_create.add_argument('--mem', dest='mem', metavar='<NUM[K|M|G|T]>', help='Subnode memory amount with units',
                                type=str)
     parser_create.add_argument('--container', dest='container', metavar='<path_to_container.sif>',
@@ -223,7 +221,7 @@ def create_arg_parser():
 
 
 arg_parser = create_arg_parser()
-args = (arg_parser).parse_args()
+args = arg_parser.parse_args()
 
 if args.debug:
     os.environ["HYAKVNC_LOG_LEVEL"] = "DEBUG"

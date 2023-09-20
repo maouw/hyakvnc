@@ -40,8 +40,9 @@ def get_default_account(user: Optional[str] = None, cluster: Optional[str] = Non
     raise LookupError(f"Could not find default account for user '{user}' on cluster '{cluster}'")
 
 
-def get_partitions(user: Optional[str] = None, account: Optional[str] = None, cluster: Optional[str] = None) -> set[
-    str]:
+def get_partitions(user: Optional[str] = None,
+                   account: Optional[str] = None,
+                   cluster: Optional[str] = None) -> set[str]:
     """
     Gets the SLURM partitions for the specified user and account on the specified cluster.
 
@@ -89,7 +90,7 @@ def node_range_to_list(s: str) -> list[str]:
     :return: list of SLURM nodes
     :raises ValueError: if the node range could not be converted to a list of nodes
     """
-    output = subproces.run(f"scontrol show hostnames {s}", stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    output = subprocess.run(f"scontrol show hostnames {s}", stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     if output.returncode != 0:
         raise ValueError(f"Could not convert node range '{s}' to list of nodes:\n{output.stderr}")
     return output.stdout.rstrip().splitlines()
@@ -150,9 +151,11 @@ class SlurmJob:
         return SlurmJob(**field_dict)
 
 
-def get_job(user: Optional[str] = os.getlogin(), jobs: Optional[Union[int, list[int]]] = None,
-            cluster: Optional[str] = None, field_names: Optional[Container[str]] = None) -> Union[
-    SlurmJob, list[SlurmJob], None]:
+def get_job(jobs: Optional[Union[int, list[int]]] = None,
+            user: Optional[str] = os.getlogin(),
+            cluster: Optional[str] = None,
+            field_names: Optional[Container[str]] = None
+            ) -> Union[SlurmJob, list[SlurmJob], None]:
     """
     Gets the specified slurm job(s).
     :param user: User to get jobs for
@@ -177,7 +180,8 @@ def get_job(user: Optional[str] = os.getlogin(), jobs: Optional[Union[int, list[
         cmds += ['--jobs', jobs]
 
     slurm_job_fields = [f for f in fields(SlurmJob) if f.name in field_names]
-    squeue_format_fields = [f.metadata.get("squeue_field", "") for f in slurm_job_fields].join()
+    assert len(slurm_job_fields) > 0, "Must specify at least one field to get for slurm jobs"
+    squeue_format_fields = ",".join([f.metadata.get("squeue_field", "") for f in slurm_job_fields])
 
     cmds += ['--Format', squeue_format_fields]
     res = subprocess.run(cmds, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
