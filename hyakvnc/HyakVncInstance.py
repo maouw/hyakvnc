@@ -99,7 +99,7 @@ class HyakVncInstance:
         port_on_client = port_on_client or port_on_node
         assert port_on_client is not None, "Could not determine a port to open on the client"
         s_base = f"ssh -v -f -o StrictHostKeyChecking=no -J {login_host} {compute_node} -L {port_on_client}:localhost:{port_on_node}"
-        s = f"{s_base} sleep 10; vncviewer localhost:{port_on_client}" if not apple_rdp else s = f"{s_base} sleep 10; open rdp://localhost:{port_on_client}"
+        s = f"{s_base} sleep 10; vncviewer localhost:{port_on_client}" if not apple_rdp else  f"{s_base} sleep 10; open rdp://localhost:{port_on_client}"
         return s
 
     def cancel(self):
