@@ -159,6 +159,7 @@ def cmd_stop(job_id: Optional[int] = None, stop_all: bool = False):
 
 
 def cmd_status():
+    logger.info("Finding running VNC jobs")
     vnc_instances = HyakVncInstance.find_running_instances(instance_prefix=app_config.apptainer_instance_prefix,
                                                            apptainer_config_dir=app_config.apptainer_config_dir)
     for instance in vnc_instances:

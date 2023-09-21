@@ -122,7 +122,6 @@ class HyakVncInstance:
             logger.info(f"Removing PID file {self.vnc_pid_file_path}")
             Path(self.vnc_pid_file_path).expanduser().unlink()
 
-
     def __repr__(self):
         return f"HyakVncInstance({self.apptainer_instance_info}, instance_prefix={self.instance_prefix}, apptainer_config_dir={self.apptainer_config_dir})"
 
