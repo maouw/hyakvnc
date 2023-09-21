@@ -8,6 +8,9 @@ from datetime import datetime, timedelta
 from typing import Optional, Union
 
 
+from . import logger
+
+
 def get_default_cluster() -> str:
     """
     Gets the default SLURM cluster.
@@ -155,7 +158,7 @@ class SlurmJob:
             try:
                 field_dict["node_list"] = node_range_to_list(field_dict["node_list"])
             except (ValueError, TypeError, KeyError, FileNotFoundError):
-                logging.debug(f"Could not convert node range '{field_dict['node_list']}' to list of nodes")
+                logger.debug(f"Could not convert node range '{field_dict['node_list']}' to list of nodes")
                 field_dict["node_list"] = None
 
         if field_dict.get("command") == "(null)":

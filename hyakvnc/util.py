@@ -3,7 +3,8 @@ import subprocess
 import time
 from pathlib import Path
 from typing import Callable, Optional, Union
-
+import logging
+from . import logger
 
 def repeat_until(func: Callable, condition: Callable[[int], bool], timeout: Optional[float] = None,
                  poll_interval: float = 1.0):
@@ -25,7 +26,7 @@ def wait_for_file(path: Union[Path, str], timeout: Optional[float] = None,
     Waits for the specified file to be present.
     """
     path = Path(path)
-    logging.debug(f"Waiting for file `{path}` to exist")
+    logger.debug(f"Waiting for file `{path}` to exist")
     return repeat_until(lambda: path.exists(), lambda exists: exists, timeout=timeout, poll_interval=poll_interval)
 
 

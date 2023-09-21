@@ -3,6 +3,8 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional, Union
+import logging
+from . import logger
 
 
 @dataclass
@@ -19,7 +21,7 @@ class ApptainerInstanceInfo:
     logOutPath: Optional[str] = None
     checkpoint: Optional[str] = None
     config: Optional[dict] = None
-    instance_path: Optional[Path] = None
+    instance_path: Optional[str] = None
     instance_name: Optional[str] = None
 
     @staticmethod
@@ -40,6 +42,6 @@ class ApptainerInstanceInfo:
                 contents.pop("config", None)
             else:
                 contents['config'] = json.loads(base64.b64decode(contents['config']).decode('utf-8'))
-            contents['instance_path'] = path
-            contents['instance_name'] = path.stem
+            contents['instance_path'] = str(path)
+            contents['instance_name'] = str(path.stem)
             return ApptainerInstanceInfo(**contents)

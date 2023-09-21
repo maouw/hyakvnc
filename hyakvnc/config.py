@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Optional, Iterable, Union
 
 from .slurmutil import get_default_cluster, get_default_account, get_default_partition
+from . import logger
 
 
 def get_first_env(env_vars: Iterable[str], default: Optional[str] = None, allow_blank: bool = False) -> str:
@@ -20,9 +21,9 @@ def get_first_env(env_vars: Iterable[str], default: Optional[str] = None, allow_
     no_match = [None] if allow_blank else [None, ""]
     for x in env_vars:
         if (res := os.environ.get(x)) not in no_match:
-            logging.debug(rf"Using environment variable {x}={res}")
+            logger.debug(rf"Using environment variable {x}={res}")
             return res
-    logging.debug(rf"Using default value {default}")
+    logger.debug(rf"Using default value {default}")
     return default
 
 

@@ -1,12 +1,16 @@
+import json
 import logging
 import os
+import pprint
 import re
+from dataclasses import asdict
 from pathlib import Path
 from typing import Optional, Union
 
 from .apptainer import ApptainerInstanceInfo
 from .slurmutil import get_job, cancel_job
 from .util import check_remote_pid_exists_and_port_open, check_remote_pid_exists, check_remote_port_open
+from . import logger
 
 
 class HyakVncInstance:
@@ -24,7 +28,7 @@ class HyakVncInstance:
         app_dir = self.apptainer_config_dir / 'instances' / 'app'
         assert app_dir.is_dir(), f"Could not find apptainer app dir at {app_dir}"
 
-        self.compute_node = self.apptainer_instance_info.instance_path.relative_to(app_dir).parts[0]
+        self.compute_node = Path(self.apptainer_instance_info.instance_path).relative_to(app_dir).parts[0]
         try:
             name_meta = re.match(rf'(?P<prefix>{instance_prefix})-(?P<jobid>\d+)-(?P<appinstance>.*)',
                                  self.apptainer_instance_info.instance_name).groupdict()
@@ -38,11 +42,11 @@ class HyakVncInstance:
 
         logOutPath = self.apptainer_instance_info.logOutPath
         if not logOutPath:
-            logging.warning("No logOutPath for apptainer instance")
+            logger.warning("No logOutPath for apptainer instance")
             return
         logOutPath = Path(logOutPath).expanduser()
         if not logOutPath.is_file():
-            logging.warning(f"Could not find log file at {logOutPath}")
+            logger.warning(f"Could not find log file at {logOutPath}")
             return
 
         with open(logOutPath, 'r') as lf:
@@ -51,7 +55,7 @@ class HyakVncInstance:
             try:
                 vnc_port = int(rfbports[-1])
             except (ValueError, IndexError, TypeError):
-                logging.warning(f"Could not parse VNC port from log file at {logOutPath}")
+                logger.warning(f"Could not parse VNC port from log file at {logOutPath}")
                 return
             self.vnc_port = vnc_port
 
@@ -62,15 +66,15 @@ class HyakVncInstance:
             try:
                 vnc_log_file_path = Path(vnc_log_file_paths[-1]).expanduser()
             except (ValueError, IndexError, TypeError):
-                logging.warning(f"Could not parse VNC log file path from log file at {logOutPath}")
+                logger.warning(f"Could not parse VNC log file path from log file at {logOutPath}")
                 return
             if not vnc_log_file_path.is_file():
-                logging.debug(f"Could not find vnc log file at {vnc_log_file_path}")
+                logger.debug(f"Could not find vnc log file at {vnc_log_file_path}")
                 return
             self.vnc_log_file_path = vnc_log_file_path
             vnc_pid_file_path = self.vnc_log_file_path.parent / (str(self.vnc_log_file_path.stem) + '.pid')
             if not vnc_pid_file_path.is_file():
-                logging.debug(f"Could not find vnc PID file at {vnc_pid_file_path}")
+                logger.debug(f"Could not find vnc PID file at {vnc_pid_file_path}")
                 return
             self.vnc_pid_file_path = vnc_pid_file_path
         return
@@ -105,6 +109,23 @@ class HyakVncInstance:
     def cancel(self):
         cancel_job(self.job_id)
 
+    def __repr__(self):
+        return f"HyakVncInstance({self.apptainer_instance_info}, instance_prefix={self.instance_prefix}, apptainer_config_dir={self.apptainer_config_dir})"
+
+    def __str__(self):
+        dct = {
+            "apptainer_instance_info":  asdict(self.apptainer_instance_info),
+            "instance_prefix": str(self.instance_prefix),
+            "apptainer_config_dir": str(self.apptainer_config_dir),
+            "vnc_port": self.vnc_port,
+            "vnc_log_file_path": str(self.vnc_log_file_path),
+            "vnc_pid_file_path": str(self.vnc_pid_file_path),
+            "job_id": str(self.job_id),
+            "compute_node": str(self.compute_node)
+        }
+        s = pprint.pformat(dct, indent=2, width=120)
+        return f"{self.__class__.__name__}:\n{s}"
+
     @staticmethod
     def load_instance(instance_prefix: str, instance_name: Optional[str] = None,
                       path: Optional[Union[str, Path]] = None, read_apptainer_config: Optional[bool] = False,
@@ -115,7 +136,13 @@ class HyakVncInstance:
             path = Path(
                 apptainer_config_dir).expanduser() / 'instances' / 'app' / instance_name / f"{instance_name}.json"
         else:
-            apptainer_config_dir = apptainer_config_dir or Path(path).expanduser().parent.parent.parent
+            if not apptainer_config_dir:
+                pth = str(Path(path))
+                m = re.match(r'^.+/instances/app/', pth)
+                if not m:
+                    raise ValueError(f"Could not determine apptainer config dir from path {path}")
+                apptainer_config_dir = Path(m.group(0)).expanduser().parent.parent
+            apptainer_config_dir = Path(apptainer_config_dir).expanduser()
 
         assert apptainer_config_dir.is_dir(), f"Could not find apptainer config dir at {apptainer_config_dir}"
         app_dir = Path(apptainer_config_dir).expanduser() / 'instances' / 'app'
@@ -124,7 +151,7 @@ class HyakVncInstance:
 
         assert path.is_file(), f"Could not find apptainer instance file at {path}"
 
-        apptainer_instance_info = ApptainerInstanceInfo.ApptainerInstanceInfo.from_json(path, read_config=read_apptainer_config)
+        apptainer_instance_info = ApptainerInstanceInfo.from_json(path, read_config=read_apptainer_config)
         hyakvnc_instance = HyakVncInstance(apptainer_instance_info=apptainer_instance_info,
                                            instance_prefix=instance_prefix, apptainer_config_dir=apptainer_config_dir)
         return hyakvnc_instance
@@ -144,11 +171,13 @@ class HyakVncInstance:
             [f for fs in [p.rglob(instance_prefix + '*.json') for p in compute_directories] for f in fs])
         vnc_instance_files = set([p for p in all_instance_files if re.match(rf"^{instance_prefix}-\d+", p.name)])
         for p in vnc_instance_files:
-            instance_info = ApptainerInstanceInfo.ApptainerInstanceInfo.from_json(p)
+            logger.debug(f"Found instance file {p}")
+            instance_info = ApptainerInstanceInfo.from_json(p)
             instance = HyakVncInstance(instance_info, instance_prefix=instance_prefix,
                                        apptainer_config_dir=apptainer_config_dir)
             if instance.is_alive():
+                logger.debug(f"Found instance {instance.apptainer_instance_info.instance_name} and it is alive")
                 outs.append(instance)
             else:
-                logging.debug(f"Found instance {instance.apptainer_instance_info.instance_name} but it is not alive")
+                logger.debug(f"Found instance {instance.apptainer_instance_info.instance_name} but it is not alive")
         return outs

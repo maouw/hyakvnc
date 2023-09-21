@@ -13,14 +13,14 @@ from dataclasses import asdict
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, Union
-
+import logging
 from .apptainer import ApptainerInstanceInfo
 from .vnc_instance import HyakVncInstance
 from .config import HyakVncConfig
 from .slurmutil import wait_for_job_status, get_job, get_historical_job, cancel_job
 from .util import wait_for_file, repeat_until
 from .version import VERSION
-
+from . import logger
 app_config = HyakVncConfig()
 app_started = datetime.now()
 app_job_ids = []
@@ -74,7 +74,7 @@ def cmd_create(container_path: Union[str, Path], dry_run=False) -> Union[HyakVnc
     cmds += ["--wrap", apptainer_cmd_with_rest]
 
     # Launch sbatch process:
-    logging.info("Launching sbatch process with command:\n" + repr(cmds))
+    logger.info("Launching sbatch process with command:\n" + repr(cmds))
 
     if dry_run:
         print(f"Would have run: {' '.join(cmds)}")
@@ -93,8 +93,8 @@ def cmd_create(container_path: Union[str, Path], dry_run=False) -> Union[HyakVnc
     except (ValueError, IndexError, TypeError):
         raise RuntimeError(f"Could not parse jobid from sbatch output: {res.stdout}")
 
-    logging.info(f"Launched sbatch job {job_id}")
-    logging.info("Waiting for job to start running")
+    logger.info(f"Launched sbatch job {job_id}")
+    logger.info("Waiting for job to start running")
 
     try:
         wait_for_job_status(job_id, states=["RUNNING"], timeout=app_config.sbatch_post_timeout,
@@ -117,19 +117,20 @@ def cmd_create(container_path: Union[str, Path], dry_run=False) -> Union[HyakVnc
             state = job.state
         raise RuntimeError(f"Job {job_id} is not running. Last state was {state}")
 
-    logging.info(f"Job {job_id} is now running")
+    logger.info(f"Job {job_id} is now running")
 
     real_instance_name = f"{app_config.apptainer_instance_prefix}-{job.job_id}-{container_name}"
     instance_file = (Path(app_config.apptainer_config_dir) / 'instances' / 'app' / job.node_list[
         0] / job.user_name / real_instance_name / f"{real_instance_name}.json").expanduser()
 
+    logger.info("Waiting for Apptainer instance to start running")
     if wait_for_file(str(instance_file), timeout=app_config.sbatch_post_timeout):
         time.sleep(10)  # sleep to wait for apptainer to actually start vncserver <FIXME>
 
         instance = HyakVncInstance.load_instance(instance_prefix=app_config.apptainer_instance_prefix,
                                                  path=instance_file, read_apptainer_config=False)
         if not repeat_until(lambda: instance.is_alive(), lambda alive: alive, timeout=app_config.sbatch_post_timeout):
-            logging.info("Could not find a running VNC session for the instance {instance}")
+            logger.info("Could not find a running VNC session for the instance {instance}")
             instance.cancel()
             raise RuntimeError(f"Could not find a running VNC session for the instance {instance}")
         else:
@@ -139,9 +140,9 @@ def cmd_create(container_path: Union[str, Path], dry_run=False) -> Union[HyakVnc
             print(" " + instance.get_openssh_connection_string(login_host=app_config.ssh_host, apple_rdp=True))
             return instance
     else:
-        logging.info(f"Could not find instance file at {instance_file} before timeout")
+        logger.info(f"Could not find instance file at {instance_file} before timeout")
         cancel_job(job_id)
-        logging.info(f"Canceled job {job_id} before timeout")
+        logger.info(f"Canceled job {job_id} before timeout")
         raise TimeoutError(f"Could not find instance file at {instance_file} before timeout")
 
 
@@ -162,7 +163,7 @@ def cmd_status():
     vnc_instances = HyakVncInstance.find_running_instances(instance_prefix=app_config.apptainer_instance_prefix,
                                                            apptainer_config_dir=app_config.apptainer_config_dir)
     for instance in vnc_instances:
-        pprint.pp(instance, indent=2)
+        print(f"Instance {instance.apptainer_instance_info.instance_name} running as SLURM job {instance.job_id} with port {instance.vnc_port}")
 
 
 def create_arg_parser():
@@ -204,8 +205,8 @@ def create_arg_parser():
     parser_stop.add_argument('job_id', metavar='<job_id>',
                              help='Kill specified VNC session, cancel its VNC job, and exit', type=int)
 
-    parser_stop_all = subparsers.add_parser('stop_all', help='Stop all VNC sessions and exit')
-    parser_print_config = subparsers.add_parser('print_config', help='Print app configuration and exit')
+    parser_stop_all = subparsers.add_parser('stop-all', help='Stop all VNC sessions and exit')
+    parser_print_config = subparsers.add_parser('print-config', help='Print app configuration and exit')
 
     return parser
 
@@ -219,7 +220,8 @@ if args.debug:
     os.environ["HYAKVNC_LOG_LEVEL"] = "DEBUG"
 
 log_level = logging.__dict__.get(os.getenv("HYAKVNC_LOG_LEVEL").upper(), logging.INFO)
-logging.getLogger().setLevel(log_level)
+
+logger.setLevel(log_level)
 
 if args.print_version:
     print(VERSION)
@@ -229,7 +231,7 @@ if args.command == 'create':
     try:
         cmd_create(args.container, dry_run=args.dry_run)
     except (TimeoutError, RuntimeError) as e:
-        logging.error(f"Error: {e}")
+        logger.error(f"Error: {e}")
         exit(1)
     exit(0)
 
@@ -239,10 +241,10 @@ if args.command == 'status':
 if args.command == 'stop':
     cmd_stop(args.job_id)
 
-if args.command == 'stop_all':
+if args.command == 'stop-all':
     cmd_stop(stop_all=True)
 
-if args.command == 'print_config':
+if args.command == 'print-config':
     pprint.pp(asdict(app_config), indent=2, width=79)
 
 exit(0)
