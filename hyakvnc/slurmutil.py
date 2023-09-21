@@ -4,7 +4,8 @@ import os
 import subprocess
 import time
 from dataclasses import dataclass, fields, field
-from typing import Optional, Union, Container
+from datetime import datetime, timedelta
+from typing import Optional, Union
 
 
 def get_default_cluster() -> str:
@@ -100,22 +101,22 @@ def node_range_to_list(s: str) -> list[str]:
 
 @dataclass
 class SlurmJob:
-    job_id: int = field(metadata={"squeue_field": "%i"})
-    job_name: str = field(metadata={"squeue_field": "%j"})
-    account: str = field(metadata={"squeue_field": "%a"})
-    partition: str = field(metadata={"squeue_field": "%P"})
-    user_name: str = field(metadata={"squeue_field": "%u"})
-    state: str = field(metadata={"squeue_field": "%T"})
-    time_used: str = field(metadata={"squeue_field": "%M"})
-    time_limit: str = field(metadata={"squeue_field": "%l"})
-    cpus: int = field(metadata={"squeue_field": "%C"})
-    min_memory: str = field(metadata={"squeue_field": "%m"})
-    num_nodes: int = field(metadata={"squeue_field": "%D"})
-    node_list: str = field(metadata={"squeue_field": "%N"})
-    command: str = field(metadata={"squeue_field": "%o"})
+    job_id: int = field(metadata={"squeue_field": "%i", "sacct_field": "JobID"})
+    job_name: str = field(metadata={"squeue_field": "%j", "sacct_field": "JobName"})
+    account: str = field(metadata={"squeue_field": "%a", "sacct_field": "Account"})
+    partition: str = field(metadata={"squeue_field": "%P", "sacct_field": "Partition"})
+    user_name: str = field(metadata={"squeue_field": "%u", "sacct_field": "User"})
+    state: str = field(metadata={"squeue_field": "%T", "sacct_field": "State"})
+    time_used: str = field(metadata={"squeue_field": "%M", "sacct_field": "Elapsed"})
+    time_limit: str = field(metadata={"squeue_field": "%l", "sacct_field": "Timelimit"})
+    cpus: int = field(metadata={"squeue_field": "%C", "sacct_field": "AllocCPUS"})
+    min_memory: str = field(metadata={"squeue_field": "%m", "sacct_field": "ReqMem"})
+    num_nodes: int = field(metadata={"squeue_field": "%D", "sacct_field": "NNodes"})
+    node_list: str = field(metadata={"squeue_field": "%N", "sacct_field": "NodeList"})
+    command: str = field(metadata={"squeue_field": "%o", "sacct_field": "SubmitLine"})
 
     @staticmethod
-    def from_squeue_line(line: str, field_order=None) -> "SlurmJob":
+    def from_squeue_line(line: str, field_order=None, delimiter: Optional[str] = None) -> "SlurmJob":
         """
         Creates a SlurmJob from an squeue command
         :param line: output line from squeue command
@@ -126,9 +127,18 @@ class SlurmJob:
         valid_field_names = [x.name for x in fields(SlurmJob)]
         if field_order is None:
             field_order = valid_field_names
-        all_fields_dict = {field_order[i]: x for i, x in enumerate(line.split())}
+
+        if delimiter is None:
+            all_fields_dict = {field_order[i]: x for i, x in enumerate(line.split())}
+        else:
+            all_fields_dict = {field_order[i]: x for i, x in enumerate(line.split(delimiter))}
+
         field_dict = {k: v for k, v in all_fields_dict.items() if k in valid_field_names}
 
+        try:
+            field_dict["job_id"] = int(field_dict["job_id"])
+        except (ValueError, TypeError, KeyError):
+            field_dict["job_id"] = None
         try:
             field_dict["num_nodes"] = int(field_dict["num_nodes"])
         except (ValueError, TypeError, KeyError):
@@ -226,3 +236,72 @@ def wait_for_job_status(job_id: int, states: list[str], timeout: Optional[float]
             return res
         time.sleep(poll_interval)
     raise TimeoutError(f"Timed out waiting for job {job_id} to be in one of the following states: {states}")
+
+
+def get_historical_job(after: Optional[Union[datetime, timedelta]] = None,
+                       before: Optional[Union[datetime, timedelta]] = None, job_id: Optional[int] = None,
+                       user: Optional[str] = os.getlogin(),
+                       cluster: Optional[str] = None) -> list[SlurmJob]:
+    """
+    Gets the slurm jobs since the specified time.
+    :param after: Time after which to get jobs
+    :param before: Time before which to get jobs
+    :param job_id: Job id to get
+    :param user: User to get jobs for
+    :param cluster: Cluster to get jobs for
+    :return: the slurm jobs since the specified time as a list of SlurmJobs
+    """
+    now = datetime.now()
+    assert isinstance(after, (datetime, timedelta, type(None))), "after must be a datetime or timedelta or None"
+    assert isinstance(before, (datetime, timedelta, type(None))), "before must be a datetime or timedelta or None"
+
+    after_abs = now - after if isinstance(after, timedelta) else after
+    before_abs = now - before if isinstance(before, timedelta) else before
+
+    cmds: list[str] = ['sacct', '--noheader', '-X', '--parsable2']
+    if user:
+        cmds += ['--user', user]
+    if cluster:
+        cmds += ['--clusters', cluster]
+    if after_abs:
+        cmds += ["--starttime", after_abs.isoformat(timespec="seconds")]
+    if before_abs:
+        cmds += ["--endtime", before_abs.isoformat(timespec="seconds")]
+    if job_id:
+        cmds += ["--jobs", str(job_id)]
+
+    sacct_format_fields = ",".join([f.metadata.get("sacct_field", "") for f in fields(SlurmJob)])
+    cmds += ['--format', sacct_format_fields]
+    res = subprocess.run(cmds, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, shell=False)
+    if res.returncode != 0:
+        raise ValueError(f"Could not get slurm jobs via `sacct`:\n{res.stderr}")
+
+    jobs = [SlurmJob.from_squeue_line(line, delimiter="|") for x in res.stdout.splitlines() if (line := x.strip())]
+    return jobs
+
+
+def cancel_job(jobs: Optional[Union[int, list[int]]] = None,
+               user: Optional[str] = os.getlogin(),
+               cluster: Optional[str] = None
+               ):
+    """
+    Cancels the specified jobs.
+    :param jobs: Jobs to cancel
+    :param user: User to cancel jobs for
+    :param cluster: Cluster to cancel jobs for
+    :return: None
+    """
+    assert jobs or user or cluster, "Must specify at least one of jobs, user, or cluster"
+    cmds = ["scancel"]
+    if user:
+        cmds += ['--user', user]
+    if cluster:
+        cmds += ['--clusters', cluster]
+    if jobs:
+        if isinstance(jobs, int):
+            jobs = [jobs]
+        cmds += [str(x) for x in jobs]
+
+    res = subprocess.run(cmds, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, shell=False)
+    if res.returncode != 0:
+        raise ValueError(f"Could not cancel jobs {jobs}:\n{res.stderr}")

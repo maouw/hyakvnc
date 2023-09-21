@@ -7,6 +7,7 @@ from typing import Optional, Iterable, Union
 
 from .slurmutil import get_default_cluster, get_default_account, get_default_partition
 
+
 def get_first_env(env_vars: Iterable[str], default: Optional[str] = None, allow_blank: bool = False) -> str:
     """
     Gets the first environment variable that is set, or the default value if none are set.
@@ -43,6 +44,7 @@ class HyakVncConfig:
     apptainer_env_vars: Optional[dict[str]] = None  # environment variables to set for apptainer instances
     sbatch_post_timeout: float = 120.0  # timeout for waiting for sbatch to return
     sbatch_post_poll_interval: float = 1.0  # poll interval for waiting for sbatch to return
+    sbatch_output_path: Optional[str] = None  # path to write sbatch output to
 
     # ssh config
     ssh_host = "klone.hyak.uw.edu"  # intermediate host address between local machine and compute node
@@ -61,16 +63,20 @@ class HyakVncConfig:
         Post-initialization hook for HyakVncConfig. Sets default values for unset attributes.
         :return: None
         """
-        self.cluster = self.cluster or get_first_env(["HYAKVNC_SLURM_CLUSTER", "SBATCH_CLUSTER"], default=get_default_cluster())
+        self.cluster = self.cluster or get_first_env(["HYAKVNC_SLURM_CLUSTER", "SBATCH_CLUSTER"],
+                                                     default=get_default_cluster())
         self.account = self.account or get_first_env(["HYAKVNC_SLURM_ACCOUNT", "SBATCH_ACCOUNT"],
                                                      get_default_account(cluster=self.cluster))
         self.partition = self.partition or get_first_env(["HYAKVNC_SLURM_PARTITION", "SBATCH_PARTITION"],
                                                          get_default_partition(cluster=self.cluster,
-                                                                                         account=self.account))
+                                                                               account=self.account))
         self.gpus = self.gpus or get_first_env(["HYAKVNC_SLURM_GPUS", "SBATCH_GPUS"], None)
         self.timelimit = self.timelimit or get_first_env(["HYAKVNC_SLURM_TIMELIMIT", "SBATCH_TIMELIMIT"], None)
         self.mem = self.mem or get_first_env(["HYAKVNC_SLURM_MEM", "SBATCH_MEM"], None)
         self.cpus = int(self.cpus or get_first_env(["HYAKVNC_SLURM_CPUS", "SBATCH_CPUS_PER_TASK"]))
+
+        self.sbatch_output_path = self.sbatch_output_path or get_first_env(
+            ["HYAKVNC_SBATCH_OUTPUT_PATH", "SBATCH_OUTPUT"], "/dev/stdout")
 
         self.apptainer_env_vars = self.apptainer_env_vars or dict()
         all_apptainer_env_vars = {x: os.environ.get(x, "") for x in os.environ.keys() if

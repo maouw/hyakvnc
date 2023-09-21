@@ -1,8 +1,10 @@
-import time
-from typing import Callable, Optional, Union
 import logging
-from pathlib import Path
 import subprocess
+import time
+from pathlib import Path
+from typing import Callable, Optional, Union
+
+
 def repeat_until(func: Callable, condition: Callable[[int], bool], timeout: Optional[float] = None,
                  poll_interval: float = 1.0):
     begin_time = time.time()
@@ -18,7 +20,7 @@ def repeat_until(func: Callable, condition: Callable[[int], bool], timeout: Opti
 
 
 def wait_for_file(path: Union[Path, str], timeout: Optional[float] = None,
-                 poll_interval: float = 1.0):
+                  poll_interval: float = 1.0):
     """
     Waits for the specified file to be present.
     """
@@ -26,7 +28,20 @@ def wait_for_file(path: Union[Path, str], timeout: Optional[float] = None,
     logging.debug(f"Waiting for file `{path}` to exist")
     return repeat_until(lambda: path.exists(), lambda exists: exists, timeout=timeout, poll_interval=poll_interval)
 
+
 def check_remote_pid_exists_and_port_open(host: str, pid: int, port: int) -> bool:
     cmd = f"ssh {host} ps -p {pid} && nc -z localhost {port}".split()
+    res = subprocess.run(cmd, shell=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    return res.returncode == 0
+
+
+def check_remote_pid_exists(host: str, pid: int) -> bool:
+    cmd = f"ssh {host} ps -p {pid}".split()
+    res = subprocess.run(cmd, shell=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    return res.returncode == 0
+
+
+def check_remote_port_open(host: str, port: int) -> bool:
+    cmd = f"ssh {host} nc -z localhost {port}".split()
     res = subprocess.run(cmd, shell=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     return res.returncode == 0

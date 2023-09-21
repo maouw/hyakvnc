@@ -2,108 +2,30 @@
 # -*- coding: utf-8 -*-
 
 import argparse
-import base64
-import json
 import logging
 import os
+import pprint
 import re
 import shlex
 import subprocess
 import time
 from dataclasses import asdict
+from datetime import datetime
 from pathlib import Path
 from typing import Optional, Union
-import pprint
+
+from .HyakVncInstance import HyakVncInstance
 from .config import HyakVncConfig
-from .slurmutil import wait_for_job_status, get_job, SlurmJob, get_job_status
-from .util import check_remote_pid_exists_and_port_open, wait_for_file
+from .slurmutil import wait_for_job_status, get_job, get_historical_job, cancel_job
+from .util import wait_for_file, repeat_until
 from .version import VERSION
 
-
 app_config = HyakVncConfig()
+app_started = datetime.now()
+app_job_ids = []
 
 
-def get_apptainer_vnc_instances(read_apptainer_config: bool = False):
-    app_dir = Path(app_config.apptainer_config_dir).expanduser() / 'instances' / 'app'
-    assert app_dir.exists(), f"Could not find apptainer instances dir at {app_dir}"
-
-    needed_keys = {'pid', 'user', 'name', 'image'}
-    if read_apptainer_config:
-        needed_keys.add('config')
-
-    all_instance_json_files = app_dir.rglob(app_config.apptainer_instance_prefix + '*.json')
-
-    running_hyakvnc_json_files = {p: r.groupdict() for p in all_instance_json_files if (
-        r := re.match(rf'(?P<prefix>{app_config.apptainer_instance_prefix})-(?P<jobid>\d+)-(?P<appinstance>.*)\.json',
-                      p.name))}
-    outs = []
-    #    frr := re.search(r'\s+-rfbport\s+(?P<rfbport>\d+\b', fr)
-
-    for p, name_meta in running_hyakvnc_json_files.items():
-        with open(p, 'r') as f:
-            d = json.load(f)
-            assert needed_keys <= d.keys(), f"Missing keys {needed_keys - d.keys()} in {d}"
-
-            logOutPath = Path(d['logOutPath']).expanduser()
-            if not logOutPath.exists():
-                continue
-
-            if not read_apptainer_config:
-                d.pop("config", None)
-            else:
-                d['config'] = json.loads(base64.b64decode(d['config']).decode('utf-8'))
-            d['slurm_compute_node'] = p.relative_to(app_dir).parts[0]
-            d['slurm_job_id'] = name_meta['jobid']
-
-            with open(logOutPath, 'r') as lf:
-                logOutFile_contents = lf.read()
-                rfbports = re.findall(r'\s+-rfbport\s+(?P<rfbport>\d+)\b', logOutFile_contents)
-                if not rfbports:
-                    continue
-
-                vnc_port = rfbports[-1]
-
-                vnc_log_file_paths = re.findall(
-                    rf'(?m)Log file is\s*(?P<logfilepath>.*/{d["slurm_compute_node"]}.*:{vnc_port}\.log)$',
-                    logOutFile_contents)
-                if not vnc_log_file_paths:
-                    continue
-                vnc_log_file_path = Path(vnc_log_file_paths[-1])
-                if not vnc_log_file_path.exists():
-                    logging.debug(f"Could not find vnc log file at {vnc_log_file_path}")
-                    continue
-
-                vnc_pid_file_path = Path(str(vnc_log_file_path).rstrip(".log") + '.pid')
-                if not vnc_pid_file_path.exists():
-                    logging.debug(f"Could not find vnc pid file at {vnc_pid_file_path}")
-                    continue
-
-                d['vnc_log_file_path'] = vnc_log_file_path
-                d['vnc_pid_file_path'] = vnc_pid_file_path
-                d['vnc_port'] = vnc_port
-
-                logging.debug(
-                    f"Checking port open on {d['slurm_compute_node']}:{vnc_port} for apptainer instance file {p}")
-
-                if not check_remote_pid_exists_and_port_open(d['slurm_compute_node'], d['pid'], vnc_port):
-                    logging.debug(
-                        f"Could not find open port running on node {d['slurm_compute_node']}:{vnc_port} for apptainer instance file {p}")
-                    continue
-
-            outs.append(d)
-    return outs
-
-
-def get_openssh_connection_string_for_instance(instance: dict, login_host: str,
-                                               port_on_client: Optional[int] = None) -> str:
-    port_on_node = instance["vnc_port"]
-    compute_node = instance["slurm_compute_node"]
-    port_on_client = port_on_client or port_on_node
-    s = f"ssh -v -f -o StrictHostKeyChecking=no -J {login_host} {compute_node} -L {port_on_client}:localhost:{port_on_node} sleep 10; vncviewer localhost:{port_on_client}"
-    return s
-
-
-def cmd_create(container_path: Union[str, Path], dry_run=False) -> SlurmJob:
+def cmd_create(container_path: Union[str, Path], dry_run=False) -> Union[HyakVncInstance, None]:
     """
     Allocates a compute node, starts a container, and launches a VNC session on it.
     :param container_path: Path to container to run
@@ -125,22 +47,30 @@ def cmd_create(container_path: Union[str, Path], dry_run=False) -> SlurmJob:
 
     cmds = ["sbatch", "--parsable", "--job-name", app_config.job_prefix + '-' + container_name]
 
+    cmds += ["--output", app_config.sbatch_output_path]
+
     sbatch_optinfo = {"account": "-A", "partition": "-p", "gpus": "-G", "timelimit": "--time", "mem": "--mem",
                       "cpus": "-c"}
-    sbatch_options = [str(item )for pair in [(sbatch_optinfo[k], v) for k, v in asdict(app_config).items() if
-                                        k in sbatch_optinfo.keys() and v is not None] for item in pair]
+    sbatch_options = [str(item) for pair in [(sbatch_optinfo[k], v) for k, v in asdict(app_config).items() if
+                                             k in sbatch_optinfo.keys() and v is not None] for item in pair]
 
     cmds += sbatch_options
 
+    # Set up the environment variables to pass to Apptainer:
     apptainer_env_vars_quoted = [f"{k}={shlex.quote(v)}" for k, v in app_config.apptainer_env_vars.items()]
     apptainer_env_vars_string = "" if not apptainer_env_vars_quoted else (" ".join(apptainer_env_vars_quoted) + " ")
 
-    # needs to match rf'(?P<prefix>{app_config.apptainer_instance_prefix})(?P<jobid>\d+)-(?P<appinstance>.*)'):
+    # Template to name the apptainer instance:
     apptainer_instance_name = f"{app_config.apptainer_instance_prefix}-$SLURM_JOB_ID-{container_name}"
 
+    # Command to start the apptainer instance:
     apptainer_cmd = f"apptainer instance start {container_path} {apptainer_instance_name}"
+
+    # Command to start the apptainer instance and keep it running:
     apptainer_cmd_with_rest = apptainer_env_vars_string + f"{apptainer_cmd} && while true; do sleep 10; done"
-    cmds += ["--wrap",apptainer_cmd_with_rest]
+
+    # The sbatch wrap functionality allows submitting commands without an sbatch script:t
+    cmds += ["--wrap", apptainer_cmd_with_rest]
 
     # Launch sbatch process:
     logging.info("Launching sbatch process with command:\n" + repr(cmds))
@@ -157,7 +87,8 @@ def cmd_create(container_path: Union[str, Path], dry_run=False) -> SlurmJob:
         raise RuntimeError(f"No sbatch output")
 
     try:
-        job_id = int(res.stdout.strip().split(":")[0])
+        job_id = int(res.stdout.strip().split(";")[0])
+        app_job_ids.append(job_id)
     except (ValueError, IndexError, TypeError):
         raise RuntimeError(f"Could not parse jobid from sbatch output: {res.stdout}")
 
@@ -168,45 +99,69 @@ def cmd_create(container_path: Union[str, Path], dry_run=False) -> SlurmJob:
         wait_for_job_status(job_id, states=["RUNNING"], timeout=app_config.sbatch_post_timeout,
                             poll_interval=app_config.sbatch_post_poll_interval)
     except TimeoutError:
-        raise TimeoutError(f"Job {job_id} did not start running within {app_config.sbatch_post_timeout} seconds")
+        job = get_historical_job(job_id=job_id)
+        state = "unknown"
+        if job and len(job) > 0:
+            job = job[0]
+            state = job.state
+        raise TimeoutError(
+            f"Job {job_id} did not start running within {app_config.sbatch_post_timeout} seconds. Last state was {state}")
 
-    job = get_job(job_id)
+    job = get_job(jobs=job_id)
     if not job:
-        raise RuntimeError(f"Could not get job {job_id} after it started running")
+        job = get_historical_job(job_id=job_id)
+        state = "unknown"
+        if job and len(job) > 0:
+            job = job[0]
+            state = job.state
+        raise RuntimeError(f"Job {job_id} is not running. Last state was {state}")
 
     logging.info(f"Job {job_id} is now running")
 
-    instance_file = '/mmfs1/home/altan/.apptainer/instances/a/g3071/altan/hyakvnc-14673571-ubuntu22.04_xubuntu.err'
     real_instance_name = f"{app_config.apptainer_instance_prefix}-{job.job_id}-{container_name}"
-    instance_file = (Path(app_config.apptainer_config_dir) / 'instances' / 'app' / job.node_list[0] / job.user_name / real_instance_name / f"{real_instance_name}.json").expanduser()
+    instance_file = (Path(app_config.apptainer_config_dir) / 'instances' / 'app' / job.node_list[
+        0] / job.user_name / real_instance_name / f"{real_instance_name}.json").expanduser()
 
     if wait_for_file(str(instance_file), timeout=app_config.sbatch_post_timeout):
-        time.sleep(10) # sleep to wait for apptainer to actually start vncserver <FIXME>
-        instances = { instance["name"]: instance for instance in get_apptainer_vnc_instances() }
-        if real_instance_name not in instances:
-            raise TimeoutError(f"Could not find VNC session for job {job_id}")
-        instance = instances[real_instance_name]
-        print(get_openssh_connection_string_for_instance(instance, app_config.ssh_host))
-    else:
-        logging.info(f"Could not find VNC session for job {job_id}")
+        time.sleep(10)  # sleep to wait for apptainer to actually start vncserver <FIXME>
 
+        instance = HyakVncInstance.load_instance(instance_prefix=app_config.apptainer_instance_prefix,
+                                                 path=instance_file, read_apptainer_config=False)
+        if not repeat_until(lambda: instance.is_alive(), lambda alive: alive, timeout=app_config.sbatch_post_timeout):
+            logging.info("Could not find a running VNC session for the instance {instance}")
+            instance.cancel()
+            raise RuntimeError(f"Could not find a running VNC session for the instance {instance}")
+        else:
+            print("OpenSSH string for VNC session:")
+            print("  " + instance.get_openssh_connection_string(login_host=app_config.ssh_host, apple_rdp=False))
+            print("OpenSSH string for VNC session using the built-in viewer on macOS:")
+            print(" " + instance.get_openssh_connection_string(login_host=app_config.ssh_host, apple_rdp=True))
+            return instance
+    else:
+        logging.info(f"Could not find instance file at {instance_file} before timeout")
+        cancel_job(job_id)
+        logging.info(f"Canceled job {job_id} before timeout")
+        raise TimeoutError(f"Could not find instance file at {instance_file} before timeout")
 
 
 def cmd_stop(job_id: Optional[int] = None, stop_all: bool = False):
+    assert ((job_id is not None) ^ (stop_all)), "Must specify either a job id or stop all"
     if stop_all:
-        vnc_instances = get_apptainer_vnc_instances()
-        for vnc_instance in vnc_instances:
-            subprocess.run(["scancel", str(vnc_instance['slurm_job_id'])])
-        return
-
-    if job_id:
-        subprocess.run(["scancel", str(job_id)])
-        return
+        vnc_instances = HyakVncInstance.find_running_instances(instance_prefix=app_config.apptainer_instance_prefix,
+                                                               apptainer_config_dir=app_config.apptainer_config_dir)
+        for instance in vnc_instances:
+            instance.cancel()
+            print(f"Canceled job {instance.job_id}")
+    else:
+        cancel_job(job_id)
+        print(f"Canceled job {job_id}")
 
 
 def cmd_status():
-    vnc_instances = get_apptainer_vnc_instances(read_apptainer_config=True)
-    pprint.pp(json.dumps(vnc_instances, indent=2))
+    vnc_instances = HyakVncInstance.find_running_instances(instance_prefix=app_config.apptainer_instance_prefix,
+                                                           apptainer_config_dir=app_config.apptainer_config_dir)
+    for instance in vnc_instances:
+        pprint.pp(instance, indent=2)
 
 
 def create_arg_parser():
@@ -270,7 +225,11 @@ if args.print_version:
     exit(0)
 
 if args.command == 'create':
-    cmd_create(args.container, dry_run=args.dry_run)
+    try:
+        cmd_create(args.container, dry_run=args.dry_run)
+    except (TimeoutError, RuntimeError) as e:
+        logging.error(f"Error: {e}")
+        exit(1)
     exit(0)
 
 if args.command == 'status':
