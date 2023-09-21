@@ -9,14 +9,16 @@ import os
 import re
 import shlex
 import subprocess
+import time
 from dataclasses import asdict
 from pathlib import Path
 from typing import Optional, Union
-
+import pprint
 from .config import HyakVncConfig
 from .slurmutil import wait_for_job_status, get_job, SlurmJob, get_job_status
-from .util import check_remote_pid_exists_and_port_open
+from .util import check_remote_pid_exists_and_port_open, wait_for_file
 from .version import VERSION
+
 
 app_config = HyakVncConfig()
 
@@ -32,7 +34,7 @@ def get_apptainer_vnc_instances(read_apptainer_config: bool = False):
     all_instance_json_files = app_dir.rglob(app_config.apptainer_instance_prefix + '*.json')
 
     running_hyakvnc_json_files = {p: r.groupdict() for p in all_instance_json_files if (
-        r := re.match(rf'(?P<prefix>{app_config.apptainer_instance_prefix})(?P<jobid>\d+)-(?P<appinstance>.*)\.json',
+        r := re.match(rf'(?P<prefix>{app_config.apptainer_instance_prefix})-(?P<jobid>\d+)-(?P<appinstance>.*)\.json',
                       p.name))}
     outs = []
     #    frr := re.search(r'\s+-rfbport\s+(?P<rfbport>\d+\b', fr)
@@ -121,34 +123,33 @@ def cmd_create(container_path: Union[str, Path], dry_run=False) -> SlurmJob:
         assert container_path.exists(), f"Container path {container_path} does not exist"
         assert container_path.is_file(), f"Container path {container_path} is not a file"
 
-    cmds = ["sbatch", "--parsable", "--job-name", app_config.job_prefix + container_name]
+    cmds = ["sbatch", "--parsable", "--job-name", app_config.job_prefix + '-' + container_name]
 
     sbatch_optinfo = {"account": "-A", "partition": "-p", "gpus": "-G", "timelimit": "--time", "mem": "--mem",
                       "cpus": "-c"}
-    sbatch_options = [item for pair in [(sbatch_optinfo[k], v) for k, v in asdict(app_config).items() if
+    sbatch_options = [str(item )for pair in [(sbatch_optinfo[k], v) for k, v in asdict(app_config).items() if
                                         k in sbatch_optinfo.keys() and v is not None] for item in pair]
 
     cmds += sbatch_options
 
     apptainer_env_vars_quoted = [f"{k}={shlex.quote(v)}" for k, v in app_config.apptainer_env_vars.items()]
-    apptainer_env_vars_string = "" if apptainer_env_vars_quoted else (" ".join(apptainer_env_vars_quoted) + " ")
+    apptainer_env_vars_string = "" if not apptainer_env_vars_quoted else (" ".join(apptainer_env_vars_quoted) + " ")
 
     # needs to match rf'(?P<prefix>{app_config.apptainer_instance_prefix})(?P<jobid>\d+)-(?P<appinstance>.*)'):
-    apptainer_instance_name = rf"{app_config.apptainer_instance_prefix}\$SLURM_JOB_ID-{container_name}"
+    apptainer_instance_name = f"{app_config.apptainer_instance_prefix}-$SLURM_JOB_ID-{container_name}"
 
-    apptainer_cmd = apptainer_env_vars_string + rf"apptainer instance start {container_path} {apptainer_instance_name}"
-    apptainer_cmd_with_rest = rf"{apptainer_cmd} && while true; do sleep 10; done"
-
-    cmds += ["--wrap", apptainer_cmd_with_rest]
+    apptainer_cmd = f"apptainer instance start {container_path} {apptainer_instance_name}"
+    apptainer_cmd_with_rest = apptainer_env_vars_string + f"{apptainer_cmd} && while true; do sleep 10; done"
+    cmds += ["--wrap",apptainer_cmd_with_rest]
 
     # Launch sbatch process:
-    logging.info("Launching sbatch process with command:\n" + " ".join(cmds))
+    logging.info("Launching sbatch process with command:\n" + repr(cmds))
 
     if dry_run:
-        print(f"Woud have run: {' '.join(cmds)}")
+        print(f"Would have run: {' '.join(cmds)}")
         return
 
-    res = subprocess.run(cmds, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    res = subprocess.run(cmds, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=False)
     if res.returncode != 0:
         raise RuntimeError(f"Could not launch sbatch job:\n{res.stderr}")
 
@@ -174,7 +175,20 @@ def cmd_create(container_path: Union[str, Path], dry_run=False) -> SlurmJob:
         raise RuntimeError(f"Could not get job {job_id} after it started running")
 
     logging.info(f"Job {job_id} is now running")
-    return job
+
+    instance_file = '/mmfs1/home/altan/.apptainer/instances/a/g3071/altan/hyakvnc-14673571-ubuntu22.04_xubuntu.err'
+    real_instance_name = f"{app_config.apptainer_instance_prefix}-{job.job_id}-{container_name}"
+    instance_file = (Path(app_config.apptainer_config_dir) / 'instances' / 'app' / job.node_list[0] / job.user_name / real_instance_name / f"{real_instance_name}.json").expanduser()
+
+    if wait_for_file(str(instance_file), timeout=app_config.sbatch_post_timeout):
+        time.sleep(10) # sleep to wait for apptainer to actually start vncserver <FIXME>
+        instances = { instance["name"]: instance for instance in get_apptainer_vnc_instances() }
+        if real_instance_name not in instances:
+            raise TimeoutError(f"Could not find VNC session for job {job_id}")
+        instance = instances[real_instance_name]
+        print(get_openssh_connection_string_for_instance(instance, app_config.ssh_host))
+    else:
+        logging.info(f"Could not find VNC session for job {job_id}")
 
 
 
@@ -192,7 +206,7 @@ def cmd_stop(job_id: Optional[int] = None, stop_all: bool = False):
 
 def cmd_status():
     vnc_instances = get_apptainer_vnc_instances(read_apptainer_config=True)
-    print(json.dumps(vnc_instances, indent=2))
+    pprint.pp(json.dumps(vnc_instances, indent=2))
 
 
 def create_arg_parser():
@@ -235,23 +249,21 @@ def create_arg_parser():
                              help='Kill specified VNC session, cancel its VNC job, and exit', type=int)
 
     parser_stop_all = subparsers.add_parser('stop_all', help='Stop all VNC sessions and exit')
+    parser_print_config = subparsers.add_parser('print_config', help='Print app configuration and exit')
+
     return parser
 
 
 arg_parser = create_arg_parser()
 args = arg_parser.parse_args()
 
+os.environ.setdefault("HYAKVNC_LOG_LEVEL", "INFO")
+
 if args.debug:
     os.environ["HYAKVNC_LOG_LEVEL"] = "DEBUG"
 
-log_level = logging.__dict__.get(os.environ.setdefault("HYAKVNC_LOG_LEVEL", "INFO").upper(), logging.INFO)
-
-log_format = '%(asctime)s - %(levelname)s - %(funcName)s() - %(message)s'
-
-if log_level == logging.DEBUG:
-    log_format += " - %(pathname)s:%(lineno)d"
-
-logging.basicConfig(level=log_level, format=log_format)
+log_level = logging.__dict__.get(os.getenv("HYAKVNC_LOG_LEVEL").upper(), logging.INFO)
+logging.getLogger().setLevel(log_level)
 
 if args.print_version:
     print(VERSION)
@@ -269,5 +281,8 @@ if args.command == 'stop':
 
 if args.command == 'stop_all':
     cmd_stop(stop_all=True)
+
+if args.command == 'print_config':
+    pprint.pp(asdict(app_config), indent=2, width=79)
 
 exit(0)

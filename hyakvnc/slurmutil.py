@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import logging
 import os
 import subprocess
 import time
@@ -90,7 +91,8 @@ def node_range_to_list(s: str) -> list[str]:
     :return: list of SLURM nodes
     :raises ValueError: if the node range could not be converted to a list of nodes
     """
-    output = subprocess.run(f"scontrol show hostnames {s}", stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    cmds = ["scontrol", "show", "hostnames", s]
+    output = subprocess.run(cmds, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     if output.returncode != 0:
         raise ValueError(f"Could not convert node range '{s}' to list of nodes:\n{output.stderr}")
     return output.stdout.rstrip().splitlines()
@@ -98,20 +100,19 @@ def node_range_to_list(s: str) -> list[str]:
 
 @dataclass
 class SlurmJob:
-    job_id: int = field(metadata={"squeue_field": "JobID"})
-    job_name: str = field(metadata={"squeue_field": "JobName"})
-    account: str = field(metadata={"squeue_field": "Account"})
-    partition: str = field(metadata={"squeue_field": "Partition"})
-    user_name: str = field(metadata={"squeue_field": "UserName"})
-    state: str = field(metadata={"squeue_field": "State"})
-    time_used: str = field(metadata={"squeue_field": "TimeUsed"})
-    time_limit: str = field(metadata={"squeue_field": "TimeLimit"})
-    num_nodes: int = field(metadata={"squeue_field": "NumNodes"})
-    node_list: str = field(metadata={"squeue_field": "NodeList"})
-    command: str = field(metadata={"squeue_field": "Command"})
-    cpus_per_task: int = field(metadata={"squeue_field": "cpus-per-task"})
-    num_cpus: int = field(metadata={"squeue_field": "NumCPUs"})
-    min_memory: str = field(metadata={"squeue_field": "MinMemory"})
+    job_id: int = field(metadata={"squeue_field": "%i"})
+    job_name: str = field(metadata={"squeue_field": "%j"})
+    account: str = field(metadata={"squeue_field": "%a"})
+    partition: str = field(metadata={"squeue_field": "%P"})
+    user_name: str = field(metadata={"squeue_field": "%u"})
+    state: str = field(metadata={"squeue_field": "%T"})
+    time_used: str = field(metadata={"squeue_field": "%M"})
+    time_limit: str = field(metadata={"squeue_field": "%l"})
+    cpus: int = field(metadata={"squeue_field": "%C"})
+    min_memory: str = field(metadata={"squeue_field": "%m"})
+    num_nodes: int = field(metadata={"squeue_field": "%D"})
+    node_list: str = field(metadata={"squeue_field": "%N"})
+    command: str = field(metadata={"squeue_field": "%o"})
 
     @staticmethod
     def from_squeue_line(line: str, field_order=None) -> "SlurmJob":
@@ -125,8 +126,6 @@ class SlurmJob:
         valid_field_names = [x.name for x in fields(SlurmJob)]
         if field_order is None:
             field_order = valid_field_names
-
-        #
         all_fields_dict = {field_order[i]: x for i, x in enumerate(line.split())}
         field_dict = {k: v for k, v in all_fields_dict.items() if k in valid_field_names}
 
@@ -134,34 +133,36 @@ class SlurmJob:
             field_dict["num_nodes"] = int(field_dict["num_nodes"])
         except (ValueError, TypeError, KeyError):
             field_dict["num_nodes"] = None
-        try:
-            field_dict["cpus_per_task"] = int(field_dict["cpus_per_task"])
-        except (ValueError, TypeError, KeyError):
-            field_dict["cpus_per_task"] = None
-        try:
-            field_dict["num_cpus"] = int(field_dict["num_cpus"])
-        except (ValueError, TypeError, KeyError):
-            field_dict["num_cpus"] = None
 
         try:
-            field_dict["node_list"] = node_range_to_list(field_dict["node_list"])
+            field_dict["cpus"] = int(field_dict["cpus"])
         except (ValueError, TypeError, KeyError):
+            field_dict["cpus"] = None
+
+        if field_dict.get("node_list") == "(null)":
             field_dict["node_list"] = None
+        else:
+            try:
+                field_dict["node_list"] = node_range_to_list(field_dict["node_list"])
+            except (ValueError, TypeError, KeyError, FileNotFoundError):
+                logging.debug(f"Could not convert node range '{field_dict['node_list']}' to list of nodes")
+                field_dict["node_list"] = None
+
+        if field_dict.get("command") == "(null)":
+            field_dict["command"] = None
 
         return SlurmJob(**field_dict)
 
 
 def get_job(jobs: Optional[Union[int, list[int]]] = None,
             user: Optional[str] = os.getlogin(),
-            cluster: Optional[str] = None,
-            field_names: Optional[Container[str]] = None
+            cluster: Optional[str] = None
             ) -> Union[SlurmJob, list[SlurmJob], None]:
     """
     Gets the specified slurm job(s).
     :param user: User to get jobs for
     :param jobs: Job(s) to get
     :param cluster: Cluster to get jobs for
-    :param field_names: Fields to get for jobs (defaults to all fields in SlurmJob)
     :return: the specified slurm job(s) as a SlurmJob object or list of SlurmJobs, or None if no jobs were found
     """
     cmds: list[str] = ['squeue', '--noheader']
@@ -175,16 +176,13 @@ def get_job(jobs: Optional[Union[int, list[int]]] = None,
     if jobs:
         if job_is_int:
             jobs = [jobs]
-        else:
-            jobs = ','.join([str(x) for x in jobs])
+
+        jobs = ','.join([str(x) for x in jobs])
         cmds += ['--jobs', jobs]
 
-    slurm_job_fields = [f for f in fields(SlurmJob) if f.name in field_names]
-    assert len(slurm_job_fields) > 0, "Must specify at least one field to get for slurm jobs"
-    squeue_format_fields = ",".join([f.metadata.get("squeue_field", "") for f in slurm_job_fields])
-
-    cmds += ['--Format', squeue_format_fields]
-    res = subprocess.run(cmds, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    squeue_format_fields = "\t".join([f.metadata.get("squeue_field", "") for f in fields(SlurmJob)])
+    cmds += ['--format', squeue_format_fields]
+    res = subprocess.run(cmds, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, shell=False)
     if res.returncode != 0:
         raise ValueError(f"Could not get slurm jobs:\n{res.stderr}")
 

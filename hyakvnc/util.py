@@ -28,5 +28,5 @@ def wait_for_file(path: Union[Path, str], timeout: Optional[float] = None,
 
 def check_remote_pid_exists_and_port_open(host: str, pid: int, port: int) -> bool:
     cmd = f"ssh {host} ps -p {pid} && nc -z localhost {port}".split()
-    res = subprocess.run(cmd, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    res = subprocess.run(cmd, shell=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     return res.returncode == 0

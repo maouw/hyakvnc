@@ -7,7 +7,7 @@ from typing import Optional, Iterable, Union
 
 from .slurmutil import get_default_cluster, get_default_account, get_default_partition
 
-def get_first_env(env_vars: Iterable[str], default: Optional[str] = None, allow_blank: bool = True) -> str:
+def get_first_env(env_vars: Iterable[str], default: Optional[str] = None, allow_blank: bool = False) -> str:
     """
     Gets the first environment variable that is set, or the default value if none are set.
     :param env_vars: list of environment variables to check
@@ -16,7 +16,7 @@ def get_first_env(env_vars: Iterable[str], default: Optional[str] = None, allow_
     :return: the first environment variable that is set, or the default value if none are set
     """
 
-    no_match = [None] if allow_blank else ["None", ""]
+    no_match = [None] if allow_blank else [None, ""]
     for x in env_vars:
         if (res := os.environ.get(x)) not in no_match:
             logging.debug(rf"Using environment variable {x}={res}")
@@ -31,13 +31,13 @@ class HyakVncConfig:
     Configuration for hyakvnc.
     """
     # script attributes
-    job_prefix: str = "hyakvnc-"  # prefix for job names
+    job_prefix: str = "hyakvnc"  # prefix for job names
     # apptainer config
     apptainer_bin: str = "apptainer"  # path to apptainer binary
     apptainer_config_dir: str = "~/.apptainer"  # directory where apptainer config files are stored
-    apptainer_instance_prefix: str = "hyakvnc-"  # prefix for apptainer instance names
-    apptainer_use_writable_tmpfs: Optional[bool] = None  # whether to mount a writable tmpfs for apptainer instances
-    apptainer_cleanenv: Optional[bool] = None  # whether to use clean environment for apptainer instances
+    apptainer_instance_prefix: str = "hyakvnc"  # prefix for apptainer instance names
+    apptainer_use_writable_tmpfs: Optional[bool] = True  # whether to mount a writable tmpfs for apptainer instances
+    apptainer_cleanenv: Optional[bool] = True  # whether to use clean environment for apptainer instances
     apptainer_set_bind_paths: Optional[
         str] = None  # comma-separated list of paths to bind mount for apptainer instances
     apptainer_env_vars: Optional[dict[str]] = None  # environment variables to set for apptainer instances
@@ -53,27 +53,24 @@ class HyakVncConfig:
     cluster: Optional[str] = None  # cluster to use for sbatch jobs |  --clusters, SBATCH_CLUSTERS
     gpus: Optional[str] = None  # number of gpus to use for sbatch jobs | -G, --gpus, SBATCH_GPUS
     timelimit: Optional[str] = None  # time limit for sbatch jobs | --time, SBATCH_TIMELIMIT
-    mem: Optional[str] = None  # memory limit for sbatch jobs | --mem, SBATCH_MEM
-    cpus: Optional[int] = None  # number of cpus to use for sbatch jobs | -c, --cpus-per-task (not settable by env var)
+    mem: Optional[str] = "8G"  # memory limit for sbatch jobs | --mem, SBATCH_MEM
+    cpus: Optional[int] = 4  # number of cpus to use for sbatch jobs | -c, --cpus-per-task (not settable by env var)
 
-    def __post_init__(self) -> None:
+    def __post_init__(self):
         """
         Post-initialization hook for HyakVncConfig. Sets default values for unset attributes.
         :return: None
         """
-        self.cluster = self.cluster or get_first_env(["HYAKVNC_SLURM_CLUSTER", "SBATCH_CLUSTER"],
-                                                     get_default_cluster(), allow_blank=False)
+        self.cluster = self.cluster or get_first_env(["HYAKVNC_SLURM_CLUSTER", "SBATCH_CLUSTER"], default=get_default_cluster())
         self.account = self.account or get_first_env(["HYAKVNC_SLURM_ACCOUNT", "SBATCH_ACCOUNT"],
-                                                     get_default_account(cluster=self.cluster),
-                                                     allow_blank=False)
+                                                     get_default_account(cluster=self.cluster))
         self.partition = self.partition or get_first_env(["HYAKVNC_SLURM_PARTITION", "SBATCH_PARTITION"],
                                                          get_default_partition(cluster=self.cluster,
-                                                                                         account=self.account),
-                                                         allow_blank=False)
+                                                                                         account=self.account))
         self.gpus = self.gpus or get_first_env(["HYAKVNC_SLURM_GPUS", "SBATCH_GPUS"], None)
         self.timelimit = self.timelimit or get_first_env(["HYAKVNC_SLURM_TIMELIMIT", "SBATCH_TIMELIMIT"], None)
         self.mem = self.mem or get_first_env(["HYAKVNC_SLURM_MEM", "SBATCH_MEM"], None)
-        self.cpus = self.cpus or get_first_env(["HYAKVNC_SLURM_CPUS", "SBATCH_CPUS_PER_TASK"], None)
+        self.cpus = int(self.cpus or get_first_env(["HYAKVNC_SLURM_CPUS", "SBATCH_CPUS_PER_TASK"]))
 
         self.apptainer_env_vars = self.apptainer_env_vars or dict()
         all_apptainer_env_vars = {x: os.environ.get(x, "") for x in os.environ.keys() if
