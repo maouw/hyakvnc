@@ -10,7 +10,7 @@ from .util import check_remote_pid_exists_and_port_open, check_remote_pid_exists
 
 
 class HyakVncInstance:
-    def __init__(self, apptainer_instance_info: ApptainerInstanceInfo.ApptainerInstanceInfo, instance_prefix: str = None,
+    def __init__(self, apptainer_instance_info: ApptainerInstanceInfo, instance_prefix: str = None,
                  apptainer_config_dir: Optional[Union[str, Path]] = None):
         self.apptainer_instance_info = apptainer_instance_info
         apptainer_config_dir = apptainer_config_dir or Path("~/.apptainer")
