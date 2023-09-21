@@ -103,8 +103,8 @@ class HyakVncInstance:
         assert self.is_alive(), "Instance is not alive"
 
         debug_connection_str = "-v" if debug_connection else ""
-        foreground_str = "" if fork_ssh else "-f"
-        s_base = f"ssh {debug_connection_str} {foreground_str} -o StrictHostKeyChecking=no -J {login_host} {compute_node} -L {port_on_client}:localhost:{port_on_node}"
+        fork_ssh_str = "-f" if fork_ssh else ""
+        s_base = f"ssh {debug_connection_str} {fork_ssh_str} -o StrictHostKeyChecking=no -J {login_host} {compute_node} -L {port_on_client}:localhost:{port_on_node}"
 
         apple_bundles = ["com.tigervnc.tigervnc", "com.realvnc.vncviewer"]
         apple_cmds = [f"open -b {bundle} --args localhost:{port_on_client} 2>/dev/null" for bundle in apple_bundles]
@@ -114,7 +114,14 @@ class HyakVncInstance:
         return s
 
     def cancel(self):
+        assert self.job_id is not None, "Could not find job ID"
+        logger.info(f"Cancelling job {self.job_id}")
         cancel_job(self.job_id)
+        logger.info("Job {self.job_id} cancelled")
+        if Path(self.vnc_pid_file_path).expanduser().is_file():
+            logger.info(f"Removing PID file {self.vnc_pid_file_path}")
+            Path(self.vnc_pid_file_path).expanduser().unlink()
+
 
     def __repr__(self):
         return f"HyakVncInstance({self.apptainer_instance_info}, instance_prefix={self.instance_prefix}, apptainer_config_dir={self.apptainer_config_dir})"
