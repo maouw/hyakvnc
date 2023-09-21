@@ -176,9 +176,10 @@ def print_connection_string(job_id: Optional[int] = None, instance: Optional[Hya
     assert instance is not None, "Could not find instance"
 
     print("OpenSSH string for VNC session:")
-    print("  " +     instance.get_openssh_connection_string(login_host=app_config.ssh_host, apple=False)
+    print("  " +     instance.get_openssh_connection_string(login_host=app_config.ssh_host, apple=False))
     print("OpenSSH string for VNC session on macOS:")
     print(" " + instance.get_openssh_connection_string(login_host=app_config.ssh_host, apple=True))
+
 
 def create_arg_parser():
     parser = argparse.ArgumentParser(description='HyakVNC: VNC on Hyak', prog="hyakvnc")
