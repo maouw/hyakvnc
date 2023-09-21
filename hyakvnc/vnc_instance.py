@@ -4,13 +4,13 @@ import re
 from pathlib import Path
 from typing import Optional, Union
 
-from .ApptainerInstanceInfo import ApptainerInstanceInfo
+from .apptainer import ApptainerInstanceInfo
 from .slurmutil import get_job, cancel_job
 from .util import check_remote_pid_exists_and_port_open, check_remote_pid_exists, check_remote_port_open
 
 
 class HyakVncInstance:
-    def __init__(self, apptainer_instance_info: ApptainerInstanceInfo, instance_prefix: str = None,
+    def __init__(self, apptainer_instance_info: ApptainerInstanceInfo.ApptainerInstanceInfo, instance_prefix: str = None,
                  apptainer_config_dir: Optional[Union[str, Path]] = None):
         self.apptainer_instance_info = apptainer_instance_info
         apptainer_config_dir = apptainer_config_dir or Path("~/.apptainer")
@@ -124,7 +124,7 @@ class HyakVncInstance:
 
         assert path.is_file(), f"Could not find apptainer instance file at {path}"
 
-        apptainer_instance_info = ApptainerInstanceInfo.from_json(path, read_config=read_apptainer_config)
+        apptainer_instance_info = ApptainerInstanceInfo.ApptainerInstanceInfo.from_json(path, read_config=read_apptainer_config)
         hyakvnc_instance = HyakVncInstance(apptainer_instance_info=apptainer_instance_info,
                                            instance_prefix=instance_prefix, apptainer_config_dir=apptainer_config_dir)
         return hyakvnc_instance
@@ -144,7 +144,7 @@ class HyakVncInstance:
             [f for fs in [p.rglob(instance_prefix + '*.json') for p in compute_directories] for f in fs])
         vnc_instance_files = set([p for p in all_instance_files if re.match(rf"^{instance_prefix}-\d+", p.name)])
         for p in vnc_instance_files:
-            instance_info = ApptainerInstanceInfo.from_json(p)
+            instance_info = ApptainerInstanceInfo.ApptainerInstanceInfo.from_json(p)
             instance = HyakVncInstance(instance_info, instance_prefix=instance_prefix,
                                        apptainer_config_dir=apptainer_config_dir)
             if instance.is_alive():

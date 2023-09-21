@@ -14,7 +14,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional, Union
 
-from .HyakVncInstance import HyakVncInstance
+from .apptainer import ApptainerInstanceInfo
+from .vnc_instance import HyakVncInstance
 from .config import HyakVncConfig
 from .slurmutil import wait_for_job_status, get_job, get_historical_job, cancel_job
 from .util import wait_for_file, repeat_until
