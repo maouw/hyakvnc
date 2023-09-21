@@ -1,5 +1,3 @@
-import json
-import logging
 import os
 import pprint
 import re
@@ -95,15 +93,24 @@ class HyakVncInstance:
 
     def get_openssh_connection_string(self, login_host: str, port_on_client: Optional[int] = None,
                                       debug_connection: Optional[bool] = False,
-                                      apple_rdp: Optional[bool] = False) -> str:
+                                      apple: Optional[bool] = False, fork_ssh: Optional[bool] = True) -> str:
         port_on_node = self.vnc_port
         assert port_on_node is not None, "Could not find VNC port"
         compute_node = self.compute_node
         assert compute_node is not None, "Could not find compute node"
         port_on_client = port_on_client or port_on_node
         assert port_on_client is not None, "Could not determine a port to open on the client"
-        s_base = f"ssh -v -f -o StrictHostKeyChecking=no -J {login_host} {compute_node} -L {port_on_client}:localhost:{port_on_node}"
-        s = f"{s_base} sleep 10; vncviewer localhost:{port_on_client}" if not apple_rdp else  f"{s_base} sleep 10; open rdp://localhost:{port_on_client}"
+        assert self.is_alive(), "Instance is not alive"
+
+        debug_connection_str = "-v" if debug_connection else ""
+        foreground_str = "" if fork_ssh else "-f"
+        s_base = f"ssh {debug_connection_str} {foreground_str} -o StrictHostKeyChecking=no -J {login_host} {compute_node} -L {port_on_client}:localhost:{port_on_node}"
+
+        apple_bundles = ["com.tigervnc.tigervnc", "com.realvnc.vncviewer"]
+        apple_cmds = [f"open -b {bundle} --args localhost:{port_on_client} 2>/dev/null" for bundle in apple_bundles]
+        apple_cmds += ["echo 'Cannot find an installed VNC viewer on macOS && echo Please install one from https://www.realvnc.com/en/connect/download/viewer/ or https://tigervnc.org/' && echo 'Alternatively, try entering the address localhost:{port_on_client} into your VNC application'"]
+        apple_cmds_pasted = " || ".join(apple_cmds)
+        s = f"{s_base} sleep 10; vncviewer localhost:{port_on_client}" if not apple else (f"{s_base} sleep 10; " + apple_cmds_pasted)
         return s
 
     def cancel(self):

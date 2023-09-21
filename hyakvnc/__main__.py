@@ -26,6 +26,26 @@ app_started = datetime.now()
 app_job_ids = []
 
 
+def get_openssh_connection_string(instance, login_host: str, port_on_client: Optional[int] = None,
+                                  debug_connection: Optional[bool] = False,
+                                  apple_rdp: Optional[bool] = False) -> str:
+    port_on_node = instance.vnc_port
+    assert port_on_node is not None, "Could not find VNC port"
+    compute_node = instance.compute_node
+    assert compute_node is not None, "Could not find compute node"
+    port_on_client = port_on_client or port_on_node
+    assert port_on_client is not None, "Could not determine a port to open on the client"
+    assert instance.is_alive(), "Instance is not alive"
+
+    s_base = f"ssh -v -f -o StrictHostKeyChecking=no -J {login_host} {compute_node} -L {port_on_client}:localhost:{port_on_node}"
+
+    apple_bundles = ["com.tigervnc.tigervnc", "com.realvnc.vncviewer"]
+    apple_cmds = [f"open -b {bundle} --args localhost:{port_on_client} 2>/dev/null" for bundle in apple_bundles]
+    apple_cmds_pasted = " || ".join(apple_cmds) + f" || echo 'Cannot find an installed VNC viewer on macOS && echo Please install one from https://www.realvnc.com/en/connect/download/viewer/ or https://tigervnc.org/' && echo 'Alternatively, try entering the address localhost:{port_on_client} into your VNC application'"
+    apple_cmd = f"open -b com.tigervnc.tigervnc --args localhost:{port_on_client} 2>/dev/null || open -b com.realvnc.vncviewer --args localhost:5905 2>/dev/null || echo fail
+    s = f"{s_base} sleep 10; vncviewer localhost:{port_on_client}" if not apple_rdp else f"{s_base} sleep 10; open rdp://localhost:{port_on_client}"
+    return s
+
 def cmd_create(container_path: Union[str, Path], dry_run=False) -> Union[HyakVncInstance, None]:
     """
     Allocates a compute node, starts a container, and launches a VNC session on it.
@@ -135,9 +155,9 @@ def cmd_create(container_path: Union[str, Path], dry_run=False) -> Union[HyakVnc
             raise RuntimeError(f"Could not find a running VNC session for the instance {instance}")
         else:
             print("OpenSSH string for VNC session:")
-            print("  " + instance.get_openssh_connection_string(login_host=app_config.ssh_host, apple_rdp=False))
+            print("  " + instance.get_openssh_connection_string(login_host=app_config.ssh_host, apple=False))
             print("OpenSSH string for VNC session using the built-in viewer on macOS:")
-            print(" " + instance.get_openssh_connection_string(login_host=app_config.ssh_host, apple_rdp=True))
+            print(" " + instance.get_openssh_connection_string(login_host=app_config.ssh_host, apple=True))
             return instance
     else:
         logger.info(f"Could not find instance file at {instance_file} before timeout")
@@ -165,6 +185,21 @@ def cmd_status():
     for instance in vnc_instances:
         print(f"Instance {instance.apptainer_instance_info.instance_name} running as SLURM job {instance.job_id} with port {instance.vnc_port}")
 
+
+def print_connection_string(job_id: Optional[int] = None, instance: Optional[HyakVncInstance] = None):
+    assert ((job_id is not None) ^ (instance is not None)), "Must specify either a job id or instance"
+    if job_id:
+        instances = HyakVncInstance.find_running_instances(instance_prefix=app_config.apptainer_instance_prefix, apptainer_config_dir=app_config.apptainer_config_dir)
+        instance = [instance for instance in instances if instance.job_id == job_id]
+        if len(instance) == 0:
+            raise ValueError(f"Could not find instance with job id {job_id}")
+        instance = instance[0]
+    assert instance is not None, "Could not find instance"
+
+    print("OpenSSH string for VNC session:")
+    print("  " +     instance.get_openssh_connection_string(login_host=app_config.ssh_host, apple=False)
+    print("OpenSSH string for VNC session on macOS:")
+    print(" " + instance.get_openssh_connection_string(login_host=app_config.ssh_host, apple=True))
 
 def create_arg_parser():
     parser = argparse.ArgumentParser(description='HyakVNC: VNC on Hyak', prog="hyakvnc")
@@ -207,6 +242,11 @@ def create_arg_parser():
 
     parser_stop_all = subparsers.add_parser('stop-all', help='Stop all VNC sessions and exit')
     parser_print_config = subparsers.add_parser('print-config', help='Print app configuration and exit')
+    parser_print_connection_stringp = subparsers.add_parser('print-connection-string', help='Stop specified job')
+
+    parser_print_connection_stringp.add_argument('job_id', metavar='<job_id>',
+                             help='Job ID of session to connect to', type=int)
+
 
     return parser
 
@@ -244,7 +284,12 @@ if args.command == 'stop':
 if args.command == 'stop-all':
     cmd_stop(stop_all=True)
 
+if args.command == 'print-connection-string':
+    print_connection_string(job_id)
+
 if args.command == 'print-config':
     pprint.pp(asdict(app_config), indent=2, width=79)
+
+
 
 exit(0)
