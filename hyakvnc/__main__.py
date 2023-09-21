@@ -224,8 +224,7 @@ def create_arg_parser():
 
     parser_stop_all = subparsers.add_parser('stop-all', help='Stop all VNC sessions and exit')
     parser_print_config = subparsers.add_parser('print-config', help='Print app configuration and exit')
-    parser_print_connection_stringp = subparsers.add_parser('print-connection-string', help='Stop specified job')
-
+    parser_print_connection_stringp = subparsers.add_parser('print-connection-string', help='Print connection string for job and exit')
     parser_print_connection_stringp.add_argument('job_id', metavar='<job_id>',
                              help='Job ID of session to connect to', type=int)
 
