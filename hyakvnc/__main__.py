@@ -266,7 +266,7 @@ if args.command == 'stop-all':
     cmd_stop(stop_all=True)
 
 if args.command == 'print-connection-string':
-    print_connection_string(job_id)
+    print_connection_string(args.job_id)
 
 if args.command == 'print-config':
     pprint.pp(asdict(app_config), indent=2, width=79)
