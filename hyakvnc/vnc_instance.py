@@ -108,7 +108,7 @@ class HyakVncInstance:
 
         apple_bundles = ["com.tigervnc.tigervnc", "com.realvnc.vncviewer"]
         apple_cmds = [f"open -b {bundle} --args localhost:{port_on_client} 2>/dev/null" for bundle in apple_bundles]
-        apple_cmds += ["echo 'Cannot find an installed VNC viewer on macOS && echo Please install one from https://www.realvnc.com/en/connect/download/viewer/ or https://tigervnc.org/' && echo 'Alternatively, try entering the address localhost:{port_on_client} into your VNC application'"]
+        apple_cmds += [f"echo 'Cannot find an installed VNC viewer on macOS && echo Please install one from https://www.realvnc.com/en/connect/download/viewer/ or https://tigervnc.org/' && echo 'Alternatively, try entering the address localhost:{port_on_client} into your VNC application'"]
         apple_cmds_pasted = " || ".join(apple_cmds)
         s = f"{s_base} sleep 10; vncviewer localhost:{port_on_client}" if not apple else (f"{s_base} sleep 10; " + apple_cmds_pasted)
         return s
