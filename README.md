@@ -79,34 +79,26 @@ python3.9 -m pip install --user '.[dev]'
 1. Start a VNC session with the `hyakvnc create` command followed by arguments to specify the Slurm account and partition, compute resource needs, reservation time, and paths to a VNC apptainer and xstartup script.
 
    ```bash
-   # example: Starting VNC session on `ece` compute resources for 5 hours on a
-   # node with 16 cores and 32GB of memory
-   hyakvnc create -A ece -p compute-hugemem \
-     -t 5 -c 16 --mem 32G \
-     --container /path/to/container.sif \
-     --xstartup /path/to/xstartup
+   # Create a xubuntu VNC container with default settings from a container located at ~/code/maouw--hyak_vnc_apptainer/ubuntu22.04_xubuntu/ubuntu22.04_xubuntu.sif
+	hyakvnc -d create --container ~/apptainer-test/maouw--hyak_vnc_apptainer/ubuntu22.04_xubuntu/ubuntu22.04_xubuntu.sif
     ```
 
 2. If successful, `hyakvnc` should print a unique port forward command:
 
    ```text
-   ...
-   =====================
-   Run the following in a new terminal window:
-       ssh -N -f -L AAAA:127.0.0.1:BBBB hansem7@klone.hyak.uw.edu
-   then connect to VNC session at localhost:AAAA
-   =====================
+	OpenSSH string for VNC session:
+	  ssh  -f -o StrictHostKeyChecking=no -J klone.hyak.uw.edu g3071 -L 5908:localhost:5908 sleep 10; vncviewer localhost:5908
+	OpenSSH string for VNC session using the built-in viewer on macOS:
+	 ssh  -f -o StrictHostKeyChecking=no -J klone.hyak.uw.edu g3071 -L 5908:localhost:5908 sleep 10; \
+   		open -b com.tigervnc.tigervnc --args localhost:5908 2>/dev/null || \
+   		open -b com.realvnc.vncviewer --args localhost:5908 2>/dev/null || \
+   		echo 'Cannot find an installed VNC viewer on macOS && echo Please install one from https://www.realvnc.com/en/connect/download/viewer/ or https://tigervnc.org/' && \
+   		echo 'Alternatively, try entering the address localhost:{port_on_client} into your VNC application'
    ```
 
    Copy this port forward command for the following step.
 
 3. Set up port forward between your computer and HYAK login node. On your machine, in a new terminal window, run the the copied command.
-
-    Following the example, run:
-
-   ```bash
-   ssh -N -f -L AAAA:127.0.0.1:BBBB hansem7@klone.hyak.uw.edu
-   ```
 
    Alternatively, for PuTTY users, navigate to `PuTTY Configuration->Connection->SSH->Tunnels`, then set:
    - source port to `AAAA`
@@ -118,10 +110,10 @@ python3.9 -m pip install --user '.[dev]'
 4. Connect to the VNC session at instructed address (in this example:
    `localhost:AAAA`)
 
-5. To close the VNC session, run the following
+5. To close all VNC sessions on all SLURM jobs, run the following:
 
    ```bash
-   hyakvnc kill-all
+   hyakvnc stop-all
    ```
 
 ### Checking active VNC sessions
@@ -131,54 +123,11 @@ Print details of active VNC sessions (with the same job name) with the
 
 ### Closing active VNC session(s)
 
-To kill a specific VNC job by its job ID, run `hyakvnc kill <job_id>`.
+To stop a specific VNC job by its job ID, run `hyakvnc stop <job_id>`.
 
-To kill all VNC jobs (with the same job name), run `hyakvnc kill-all`.
+To stop all VNC jobs, run `hyakvnc stop-all`.
 
 ### Resetting VNC password
-
-To reset your VNC password, use the `hyakvnc set-passwd` with a VNC container
-specified:
-
-```bash
-hyakvnc set-passwd --container /path/to/container.sif
-```
-
-This should run `vncpasswd` in the container to prompt the user to set a new
-password.
-
-### Re-connecting to VNC session after Login Node reboot
-
-In rare circumstances, when the login node reboots, `hyakvnc status` lists VNC
-jobs with an inactive VNC signal. In this case, new connections can be
-re-established with new port mappings via the `hyakvnc repair` command.
-
-Before repairing:
-
-```text
-Active hyakvnc jobs:
-        Job ID: NNNNNNNN
-                SubNode: n3050
-                Time left: 2-15:45:51
-                VNC active: False
-```
-
-After repairing port forwarding:
-
-```text
-Active hyakvnc jobs:
-        Job ID: NNNNNNNN
-                SubNode: n3050
-                Time left: 2-15:34:30
-                VNC active: True
-                VNC display number: 1
-                VNC port: 5901
-                Mapped LoginNode port: 5908
-                Run command: ssh -N -f -L 5908:127.0.0.1:5908 hansem7@klone.hyak.uw.edu
-```
-
-Note that `hyakvnc repair` does not attempt to restore the same port mappings,
-which may require the user to set up new port forward(s).
 
 ### Override Apptainer bind paths
 
