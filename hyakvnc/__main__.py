@@ -193,7 +193,7 @@ def cmd_status():
                                                            apptainer_config_dir=app_config.apptainer_config_dir)
     logger.info(f"Found {len(vnc_instances)} running VNC jobs:")
     for instance in vnc_instances:
-        print(f"Instance {instance.apptainer_instance_info.instance_name} running as"
+        print(f"Instance {instance.apptainer_instance_info.instance_name} running as",
               f"SLURM job {instance.job_id} with port {instance.vnc_port}")
 
 
