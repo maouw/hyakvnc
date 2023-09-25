@@ -162,9 +162,9 @@ def cmd_create(container_path: Union[str, Path], dry_run=False) -> Union[HyakVnc
             instance.cancel()
             raise RuntimeError(f"Could not find a running VNC session for the instance {instance}")
         else:
-            print("OpenSSH string for VNC session:")
+            print("Connection string for VNC session on Linux-compatible shell:")
             print("  " + instance.get_openssh_connection_string(login_host=app_config.ssh_host, apple=False))
-            print("OpenSSH string for VNC session using the built-in viewer on macOS:")
+            print("Connection string for VNC session on macOS:")
             print(" " + instance.get_openssh_connection_string(login_host=app_config.ssh_host, apple=True))
             return instance
     else:
