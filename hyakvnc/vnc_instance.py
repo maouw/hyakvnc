@@ -104,13 +104,19 @@ class HyakVncInstance:
 
         debug_connection_str = "-v" if debug_connection else ""
         fork_ssh_str = "-f" if fork_ssh else ""
-        s_base = f"ssh {debug_connection_str} {fork_ssh_str} -o StrictHostKeyChecking=no -J {login_host} {compute_node} -L {port_on_client}:localhost:{port_on_node}"
+        s_base = f"ssh {debug_connection_str} {fork_ssh_str} -o StrictHostKeyChecking=no " + \
+            f"-J {login_host} {compute_node} -L {port_on_client}:localhost:{port_on_node}"
 
         apple_bundles = ["com.tigervnc.tigervnc", "com.realvnc.vncviewer"]
         apple_cmds = [f"open -b {bundle} --args localhost:{port_on_client} 2>/dev/null" for bundle in apple_bundles]
-        apple_cmds += ["echo 'Cannot find an installed VNC viewer on macOS && echo Please install one from https://www.realvnc.com/en/connect/download/viewer/ or https://tigervnc.org/' && echo 'Alternatively, try entering the address localhost:{port_on_client} into your VNC application'"]
+        apple_cmds += ["echo 'Cannot find an installed VNC viewer on macOS " +
+                       "&& echo Please install one from https://www.realvnc.com/en/connect/download/viewer/ " +
+                       "or https://tigervnc.org/' " +
+                       "&& echo 'Alternatively, try entering the address " +
+                       "localhost:{port_on_client} into your VNC application'"]
         apple_cmds_pasted = " || ".join(apple_cmds)
-        s = f"{s_base} sleep 10; vncviewer localhost:{port_on_client}" if not apple else (f"{s_base} sleep 10; " + apple_cmds_pasted)
+        s = f"{s_base} sleep 10; vncviewer localhost:{port_on_client}" if not apple else \
+            (f"{s_base} sleep 10; " + apple_cmds_pasted)
         return s
 
     def cancel(self):
@@ -121,9 +127,6 @@ class HyakVncInstance:
         if Path(self.vnc_pid_file_path).expanduser().is_file():
             logger.info(f"Removing PID file {self.vnc_pid_file_path}")
             Path(self.vnc_pid_file_path).expanduser().unlink()
-
-    def __repr__(self):
-        return f"HyakVncInstance({self.apptainer_instance_info}, instance_prefix={self.instance_prefix}, apptainer_config_dir={self.apptainer_config_dir})"
 
     def __str__(self):
         dct = {
