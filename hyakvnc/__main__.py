@@ -20,8 +20,8 @@ from .version import VERSION
 from . import logger
 
 # Set path to load config from:
-HYAKVNC_CONFIG_PATH = os.environ.setdefault("HYAKVNC_CONFIG_PATH",
-                                            Path("~/.config/hyakvnc/hyakvnc-config.json").expanduser())
+HYAKVNC_CONFIG_PATH = Path(os.environ.setdefault("HYAKVNC_CONFIG_PATH",
+                                                 "~/.config/hyakvnc/hyakvnc-config.json")).expanduser()
 
 # If that path exists, load config from file:
 if HYAKVNC_CONFIG_PATH.is_file():
