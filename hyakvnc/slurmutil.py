@@ -103,19 +103,19 @@ def node_range_to_list(s: str) -> list[str]:
 
 @dataclass
 class SlurmJobInfo:
-    job_id: int = field(metadata={"squeue_field": "%i", "sacct_field": "JobID"}, required=False)
-    job_name: str = field(metadata={"squeue_field": "%j", "sacct_field": "JobName"}, required=False)
-    account: str = field(metadata={"squeue_field": "%a", "sacct_field": "Account"}, required=False)
-    partition: str = field(metadata={"squeue_field": "%P", "sacct_field": "Partition"}, required=False)
-    user_name: str = field(metadata={"squeue_field": "%u", "sacct_field": "User"}, required=False)
-    state: str = field(metadata={"squeue_field": "%T", "sacct_field": "State"}, required=False)
-    time_used: str = field(metadata={"squeue_field": "%M", "sacct_field": "Elapsed"}, required=False)
-    time_limit: str = field(metadata={"squeue_field": "%l", "sacct_field": "Timelimit"}, required=False)
-    cpus: int = field(metadata={"squeue_field": "%C", "sacct_field": "AllocCPUS"}, required=False)
-    min_memory: str = field(metadata={"squeue_field": "%m", "sacct_field": "ReqMem"}, required=False)
-    num_nodes: int = field(metadata={"squeue_field": "%D", "sacct_field": "NNodes"}, required=False)
-    node_list: str = field(metadata={"squeue_field": "%N", "sacct_field": "NodeList"}, required=False)
-    command: str = field(metadata={"squeue_field": "%o", "sacct_field": "SubmitLine"}, required=False)
+    job_id: int = field(metadata={"squeue_field": "%i", "sacct_field": "JobID"})
+    job_name: str = field(metadata={"squeue_field": "%j", "sacct_field": "JobName"})
+    account: str = field(metadata={"squeue_field": "%a", "sacct_field": "Account"})
+    partition: str = field(metadata={"squeue_field": "%P", "sacct_field": "Partition"})
+    user_name: str = field(metadata={"squeue_field": "%u", "sacct_field": "User"})
+    state: str = field(metadata={"squeue_field": "%T", "sacct_field": "State"})
+    time_used: str = field(metadata={"squeue_field": "%M", "sacct_field": "Elapsed"})
+    time_limit: str = field(metadata={"squeue_field": "%l", "sacct_field": "Timelimit"})
+    cpus: int = field(metadata={"squeue_field": "%C", "sacct_field": "AllocCPUS"})
+    min_memory: str = field(metadata={"squeue_field": "%m", "sacct_field": "ReqMem"})
+    num_nodes: int = field(metadata={"squeue_field": "%D", "sacct_field": "NNodes"})
+    node_list: str = field(metadata={"squeue_field": "%N", "sacct_field": "NodeList"})
+    command: str = field(metadata={"squeue_field": "%o", "sacct_field": "SubmitLine"})
 
     @staticmethod
     def from_squeue_line(line: str, field_order=None, delimiter: Optional[str] = None) -> "SlurmJobInfo":
