@@ -1,5 +1,4 @@
 #! /usr/bin/env python3
-# -*- coding: utf-8 -*-
 
 import argparse
 import logging
@@ -13,17 +12,47 @@ from dataclasses import asdict
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, Union
-import logging
-from .apptainer import ApptainerInstanceInfo
 from .vnc_instance import HyakVncInstance
 from .config import HyakVncConfig
 from .slurmutil import wait_for_job_status, get_job, get_historical_job, cancel_job
 from .util import wait_for_file, repeat_until
 from .version import VERSION
 from . import logger
-app_config = HyakVncConfig()
+
+# Set path to load config from:
+HYAKVNC_CONFIG_PATH = os.environ.setdefault("HYAKVNC_CONFIG_PATH",
+                                            Path("~/.config/hyakvnc/hyakvnc-config.json").expanduser())
+
+# If that path exists, load config from file:
+if HYAKVNC_CONFIG_PATH.is_file():
+    app_config = HyakVncConfig.from_json(path=HYAKVNC_CONFIG_PATH)
+else:
+    # Load default config:
+    app_config = HyakVncConfig()
+
+
+# Record time app started in case we need to clean up some jobs:
 app_started = datetime.now()
+
+# Keep track of job ids so we can clean up if necessary:
 app_job_ids = []
+
+
+def check_slurm_version(major_eq=22):
+    # Get SLURM version:
+    res = subprocess.run(["sinfo", "--version"], text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                         shell=False)
+    if res.returncode != 0:
+        raise RuntimeError(f"Could not get SLURM version:\n{res.stderr})")
+    try:
+        v = res.stdout.strip().split(" ")[-1]
+        vi = [int(x) for x in v.split(".")]
+        if vi[0] != major_eq:
+            logger.warning(f"hyakvnc has only been tested on SLURM version {major_eq}.x. Current version is {v}."
+                           "You may encounter issues.")
+    except (ValueError, IndexError, TypeError):
+        raise RuntimeError(f"Could not parse SLURM version: {v}")
+
 
 def cmd_create(container_path: Union[str, Path], dry_run=False) -> Union[HyakVncInstance, None]:
     """
@@ -84,7 +113,7 @@ def cmd_create(container_path: Union[str, Path], dry_run=False) -> Union[HyakVnc
         raise RuntimeError(f"Could not launch sbatch job:\n{res.stderr}")
 
     if not res.stdout:
-        raise RuntimeError(f"No sbatch output")
+        raise RuntimeError("No sbatch output")
 
     try:
         job_id = int(res.stdout.strip().split(";")[0])
@@ -105,7 +134,7 @@ def cmd_create(container_path: Union[str, Path], dry_run=False) -> Union[HyakVnc
             job = job[0]
             state = job.state
         raise TimeoutError(
-            f"Job {job_id} did not start running within {app_config.sbatch_post_timeout} seconds. Last state was {state}")
+            f"Job {job_id} ({state}) did not start running within {app_config.sbatch_post_timeout} seconds.")
 
     job = get_job(jobs=job_id)
     if not job:
@@ -164,13 +193,16 @@ def cmd_status():
                                                            apptainer_config_dir=app_config.apptainer_config_dir)
     logger.info(f"Found {len(vnc_instances)} running VNC jobs:")
     for instance in vnc_instances:
-        print(f"Instance {instance.apptainer_instance_info.instance_name} running as SLURM job {instance.job_id} with port {instance.vnc_port}")
+        print(f"Instance {instance.apptainer_instance_info.instance_name} running as"
+              f"SLURM job {instance.job_id} with port {instance.vnc_port}")
 
 
 def print_connection_string(job_id: Optional[int] = None, instance: Optional[HyakVncInstance] = None):
     assert ((job_id is not None) ^ (instance is not None)), "Must specify either a job id or instance"
     if job_id:
-        instances = HyakVncInstance.find_running_instances(instance_prefix=app_config.apptainer_instance_prefix, apptainer_config_dir=app_config.apptainer_config_dir)
+        instances = HyakVncInstance.find_running_instances(
+            instance_prefix=app_config.apptainer_instance_prefix,
+            apptainer_config_dir=app_config.apptainer_config_dir)
         instance = [instance for instance in instances if instance.job_id == job_id]
         if len(instance) == 0:
             raise ValueError(f"Could not find instance with job id {job_id}")
@@ -178,7 +210,7 @@ def print_connection_string(job_id: Optional[int] = None, instance: Optional[Hya
     assert instance is not None, "Could not find instance"
 
     print("OpenSSH string for VNC session:")
-    print("  " +     instance.get_openssh_connection_string(login_host=app_config.ssh_host, apple=False))
+    print("  " + instance.get_openssh_connection_string(login_host=app_config.ssh_host, apple=False))
     print("OpenSSH string for VNC session on macOS:")
     print(" " + instance.get_openssh_connection_string(login_host=app_config.ssh_host, apple=True))
 
@@ -214,7 +246,8 @@ def create_arg_parser():
                                help='Path to VNC Apptainer/Singularity Container (.sif)', required=True, type=str)
 
     # status command
-    parser_status = subparsers.add_parser('status', help='Print details of all VNC jobs with given job name and exit')
+    parser_status = subparsers.add_parser('status',                                                         # noqa: F841
+                                          help='Print details of all VNC jobs with given job name and exit')
 
     # kill command
     parser_stop = subparsers.add_parser('stop', help='Stop specified job')
@@ -222,13 +255,13 @@ def create_arg_parser():
     parser_stop.add_argument('job_id', metavar='<job_id>',
                              help='Kill specified VNC session, cancel its VNC job, and exit', type=int)
 
-    parser_stop_all = subparsers.add_parser('stop-all', help='Stop all VNC sessions and exit')
-    parser_print_config = subparsers.add_parser('print-config', help='Print app configuration and exit')
-    parser_print_connection_stringp = subparsers.add_parser('print-connection-string', help='Print connection string for job and exit')
-    parser_print_connection_stringp.add_argument('job_id', metavar='<job_id>',
-                             help='Job ID of session to connect to', type=int)
-
-
+    subparsers.add_parser('stop-all',  # noqa: F841
+                          help='Stop all VNC sessions and exit')
+    subparsers.add_parser('print-config', help='Print app configuration and exit')
+    parser_print_connection_string = subparsers.add_parser('print-connection-string',
+                                                           help='Print connection string for job and exit')
+    parser_print_connection_string.add_argument('job_id', metavar='<job_id>',
+                                                help='Job ID of session to connect to', type=int)
     return parser
 
 
@@ -244,9 +277,14 @@ log_level = logging.__dict__.get(os.getenv("HYAKVNC_LOG_LEVEL").upper(), logging
 
 logger.setLevel(log_level)
 
+
 if args.print_version:
     print(VERSION)
     exit(0)
+
+
+# Check SLURM version and print a warning if it's not 22.x:
+check_slurm_version()
 
 if args.command == 'create':
     try:
@@ -254,7 +292,6 @@ if args.command == 'create':
     except (TimeoutError, RuntimeError) as e:
         logger.error(f"Error: {e}")
         exit(1)
-    exit(0)
 
 if args.command == 'status':
     cmd_status()
@@ -271,6 +308,5 @@ if args.command == 'print-connection-string':
 if args.command == 'print-config':
     pprint.pp(asdict(app_config), indent=2, width=79)
 
-
-
-exit(0)
+else:
+    arg_parser.print_help()

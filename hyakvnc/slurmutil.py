@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-import logging
 import os
 import subprocess
 import time
@@ -17,12 +15,13 @@ def get_default_cluster() -> str:
     :return: the default SLURM cluster
     :raises LookupError: if no default cluster could be found
     """
-    cmd = f"sacctmgr show cluster -nPs format=Cluster".split()
-    res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True).stdout.splitlines()
-    if res:
-        return res[0]
-    else:
-        raise LookupError("Could not find default cluster")
+    cmd = "sacctmgr show cluster -nPs format=Cluster".split()
+    res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    if res.returncode == 0:
+        clusters = res.stdout.splitlines()
+        if clusters:
+            return clusters[0]
+    raise LookupError("Could not find default cluster")
 
 
 def get_default_account(user: Optional[str] = None, cluster: Optional[str] = None) -> str:
@@ -103,23 +102,23 @@ def node_range_to_list(s: str) -> list[str]:
 
 
 @dataclass
-class SlurmJob:
-    job_id: int = field(metadata={"squeue_field": "%i", "sacct_field": "JobID"})
-    job_name: str = field(metadata={"squeue_field": "%j", "sacct_field": "JobName"})
-    account: str = field(metadata={"squeue_field": "%a", "sacct_field": "Account"})
-    partition: str = field(metadata={"squeue_field": "%P", "sacct_field": "Partition"})
-    user_name: str = field(metadata={"squeue_field": "%u", "sacct_field": "User"})
-    state: str = field(metadata={"squeue_field": "%T", "sacct_field": "State"})
-    time_used: str = field(metadata={"squeue_field": "%M", "sacct_field": "Elapsed"})
-    time_limit: str = field(metadata={"squeue_field": "%l", "sacct_field": "Timelimit"})
-    cpus: int = field(metadata={"squeue_field": "%C", "sacct_field": "AllocCPUS"})
-    min_memory: str = field(metadata={"squeue_field": "%m", "sacct_field": "ReqMem"})
-    num_nodes: int = field(metadata={"squeue_field": "%D", "sacct_field": "NNodes"})
-    node_list: str = field(metadata={"squeue_field": "%N", "sacct_field": "NodeList"})
-    command: str = field(metadata={"squeue_field": "%o", "sacct_field": "SubmitLine"})
+class SlurmJobInfo:
+    job_id: int = field(metadata={"squeue_field": "%i", "sacct_field": "JobID"}, required=False)
+    job_name: str = field(metadata={"squeue_field": "%j", "sacct_field": "JobName"}, required=False)
+    account: str = field(metadata={"squeue_field": "%a", "sacct_field": "Account"}, required=False)
+    partition: str = field(metadata={"squeue_field": "%P", "sacct_field": "Partition"}, required=False)
+    user_name: str = field(metadata={"squeue_field": "%u", "sacct_field": "User"}, required=False)
+    state: str = field(metadata={"squeue_field": "%T", "sacct_field": "State"}, required=False)
+    time_used: str = field(metadata={"squeue_field": "%M", "sacct_field": "Elapsed"}, required=False)
+    time_limit: str = field(metadata={"squeue_field": "%l", "sacct_field": "Timelimit"}, required=False)
+    cpus: int = field(metadata={"squeue_field": "%C", "sacct_field": "AllocCPUS"}, required=False)
+    min_memory: str = field(metadata={"squeue_field": "%m", "sacct_field": "ReqMem"}, required=False)
+    num_nodes: int = field(metadata={"squeue_field": "%D", "sacct_field": "NNodes"}, required=False)
+    node_list: str = field(metadata={"squeue_field": "%N", "sacct_field": "NodeList"}, required=False)
+    command: str = field(metadata={"squeue_field": "%o", "sacct_field": "SubmitLine"}, required=False)
 
     @staticmethod
-    def from_squeue_line(line: str, field_order=None, delimiter: Optional[str] = None) -> "SlurmJob":
+    def from_squeue_line(line: str, field_order=None, delimiter: Optional[str] = None) -> "SlurmJobInfo":
         """
         Creates a SlurmJob from an squeue command
         :param line: output line from squeue command
@@ -127,7 +126,7 @@ class SlurmJob:
         :return: SlurmJob created from line
         """
 
-        valid_field_names = [x.name for x in fields(SlurmJob)]
+        valid_field_names = [x.name for x in fields(SlurmJobInfo)]
         if field_order is None:
             field_order = valid_field_names
 
@@ -164,13 +163,13 @@ class SlurmJob:
         if field_dict.get("command") == "(null)":
             field_dict["command"] = None
 
-        return SlurmJob(**field_dict)
+        return SlurmJobInfo(**field_dict)
 
 
 def get_job(jobs: Optional[Union[int, list[int]]] = None,
             user: Optional[str] = os.getlogin(),
             cluster: Optional[str] = None
-            ) -> Union[SlurmJob, list[SlurmJob], None]:
+            ) -> Union[SlurmJobInfo, list[SlurmJobInfo], None]:
     """
     Gets the specified slurm job(s).
     :param user: User to get jobs for
@@ -193,13 +192,13 @@ def get_job(jobs: Optional[Union[int, list[int]]] = None,
         jobs = ','.join([str(x) for x in jobs])
         cmds += ['--jobs', jobs]
 
-    squeue_format_fields = "\t".join([f.metadata.get("squeue_field", "") for f in fields(SlurmJob)])
+    squeue_format_fields = "\t".join([f.metadata.get("squeue_field", "") for f in fields(SlurmJobInfo)])
     cmds += ['--format', squeue_format_fields]
     res = subprocess.run(cmds, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, shell=False)
     if res.returncode != 0:
         raise ValueError(f"Could not get slurm jobs:\n{res.stderr}")
 
-    jobs = [SlurmJob.from_squeue_line(line) for x in res.stdout.splitlines() if (line := x.strip())]
+    jobs = [SlurmJobInfo.from_squeue_line(line) for x in res.stdout.splitlines() if (line := x.strip())]
     if job_is_int:
         if len(jobs) > 0:
             return jobs[0]
@@ -244,7 +243,7 @@ def wait_for_job_status(job_id: int, states: list[str], timeout: Optional[float]
 def get_historical_job(after: Optional[Union[datetime, timedelta]] = None,
                        before: Optional[Union[datetime, timedelta]] = None, job_id: Optional[int] = None,
                        user: Optional[str] = os.getlogin(),
-                       cluster: Optional[str] = None) -> list[SlurmJob]:
+                       cluster: Optional[str] = None) -> list[SlurmJobInfo]:
     """
     Gets the slurm jobs since the specified time.
     :param after: Time after which to get jobs
@@ -273,13 +272,13 @@ def get_historical_job(after: Optional[Union[datetime, timedelta]] = None,
     if job_id:
         cmds += ["--jobs", str(job_id)]
 
-    sacct_format_fields = ",".join([f.metadata.get("sacct_field", "") for f in fields(SlurmJob)])
+    sacct_format_fields = ",".join([f.metadata.get("sacct_field", "") for f in fields(SlurmJobInfo)])
     cmds += ['--format', sacct_format_fields]
     res = subprocess.run(cmds, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, shell=False)
     if res.returncode != 0:
         raise ValueError(f"Could not get slurm jobs via `sacct`:\n{res.stderr}")
 
-    jobs = [SlurmJob.from_squeue_line(line, delimiter="|") for x in res.stdout.splitlines() if (line := x.strip())]
+    jobs = [SlurmJobInfo.from_squeue_line(line, delimiter="|") for x in res.stdout.splitlines() if (line := x.strip())]
     return jobs
 
 

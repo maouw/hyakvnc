@@ -1,10 +1,9 @@
-import logging
 import subprocess
 import time
 from pathlib import Path
 from typing import Callable, Optional, Union
-import logging
 from . import logger
+
 
 def repeat_until(func: Callable, condition: Callable[[int], bool], timeout: Optional[float] = None,
                  poll_interval: float = 1.0):
