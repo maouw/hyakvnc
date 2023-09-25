@@ -293,19 +293,19 @@ if args.command == 'create':
         logger.error(f"Error: {e}")
         exit(1)
 
-if args.command == 'status':
+elif args.command == 'status':
     cmd_status()
 
-if args.command == 'stop':
+elif args.command == 'stop':
     cmd_stop(args.job_id)
 
-if args.command == 'stop-all':
+elif args.command == 'stop-all':
     cmd_stop(stop_all=True)
 
-if args.command == 'print-connection-string':
+elif args.command == 'print-connection-string':
     print_connection_string(args.job_id)
 
-if args.command == 'print-config':
+elif args.command == 'print-config':
     pprint.pp(asdict(app_config), indent=2, width=79)
 
 else:
