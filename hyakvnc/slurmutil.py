@@ -44,9 +44,9 @@ def get_default_account(user: Optional[str] = None, cluster: Optional[str] = Non
     raise LookupError(f"Could not find default account for user '{user}' on cluster '{cluster}'")
 
 
-def get_partitions(user: Optional[str] = None,
-                   account: Optional[str] = None,
-                   cluster: Optional[str] = None) -> list[str]:
+def get_partitions(
+    user: Optional[str] = None, account: Optional[str] = None, cluster: Optional[str] = None
+) -> list[str]:
     """
     Gets the SLURM partitions for the specified user and account on the specified cluster.
 
@@ -63,13 +63,14 @@ def get_partitions(user: Optional[str] = None,
     res = subprocess.run(cmd.split(), stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True).stdout.splitlines()
 
     if any(partitions := x for x in res):
-        return sorted([x.strip(f"{account}-") for x in partitions.split(',')])
+        return sorted([x.strip(f"{account}-") for x in partitions.split(",")])
     else:
         raise LookupError(f"Could not find partitions for user '{user}' and account '{account}' on cluster '{cluster}'")
 
 
-def get_default_partition(user: Optional[str] = None, account: Optional[str] = None,
-                          cluster: Optional[str] = None) -> str:
+def get_default_partition(
+    user: Optional[str] = None, account: Optional[str] = None, cluster: Optional[str] = None
+) -> str:
     """
     Gets the default SLURM partition for the specified user and account on the specified cluster.
 
@@ -84,7 +85,8 @@ def get_default_partition(user: Optional[str] = None, account: Optional[str] = N
         return default_partition
     else:
         raise LookupError(
-            f"Could not find default partition for user '{user}' and account '{account}' on cluster '{cluster}'")
+            f"Could not find default partition for user '{user}' and account '{account}' on cluster '{cluster}'"
+        )
 
 
 def node_range_to_list(s: str) -> list[str]:
@@ -166,10 +168,9 @@ class SlurmJobInfo:
         return SlurmJobInfo(**field_dict)
 
 
-def get_job(jobs: Optional[Union[int, list[int]]] = None,
-            user: Optional[str] = os.getlogin(),
-            cluster: Optional[str] = None
-            ) -> Union[SlurmJobInfo, list[SlurmJobInfo], None]:
+def get_job(
+    jobs: Optional[Union[int, list[int]]] = None, user: Optional[str] = os.getlogin(), cluster: Optional[str] = None
+) -> Union[SlurmJobInfo, list[SlurmJobInfo], None]:
     """
     Gets the specified slurm job(s).
     :param user: User to get jobs for
@@ -177,11 +178,11 @@ def get_job(jobs: Optional[Union[int, list[int]]] = None,
     :param cluster: Cluster to get jobs for
     :return: the specified slurm job(s) as a SlurmJob object or list of SlurmJobs, or None if no jobs were found
     """
-    cmds: list[str] = ['squeue', '--noheader']
+    cmds: list[str] = ["squeue", "--noheader"]
     if user:
-        cmds += ['--user', user]
+        cmds += ["--user", user]
     if cluster:
-        cmds += ['--clusters', cluster]
+        cmds += ["--clusters", cluster]
 
     job_is_int = isinstance(jobs, int)
 
@@ -189,11 +190,11 @@ def get_job(jobs: Optional[Union[int, list[int]]] = None,
         if job_is_int:
             jobs = [jobs]
 
-        jobs = ','.join([str(x) for x in jobs])
-        cmds += ['--jobs', jobs]
+        jobs = ",".join([str(x) for x in jobs])
+        cmds += ["--jobs", jobs]
 
     squeue_format_fields = "\t".join([f.metadata.get("squeue_field", "") for f in fields(SlurmJobInfo)])
-    cmds += ['--format', squeue_format_fields]
+    cmds += ["--format", squeue_format_fields]
     res = subprocess.run(cmds, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, shell=False)
     if res.returncode != 0:
         raise ValueError(f"Could not get slurm jobs:\n{res.stderr}")
@@ -216,8 +217,9 @@ def get_job_status(jobid: int) -> str:
     return res.stdout.strip()
 
 
-def wait_for_job_status(job_id: int, states: list[str], timeout: Optional[float] = None,
-                        poll_interval: float = 1.0) -> str:
+def wait_for_job_status(
+    job_id: int, states: list[str], timeout: Optional[float] = None, poll_interval: float = 1.0
+) -> str:
     """
     Waits for the specified job to be in one of the specified states.
     :param job_id: job id to wait for
@@ -240,10 +242,13 @@ def wait_for_job_status(job_id: int, states: list[str], timeout: Optional[float]
     raise TimeoutError(f"Timed out waiting for job {job_id} to be in one of the following states: {states}")
 
 
-def get_historical_job(after: Optional[Union[datetime, timedelta]] = None,
-                       before: Optional[Union[datetime, timedelta]] = None, job_id: Optional[int] = None,
-                       user: Optional[str] = os.getlogin(),
-                       cluster: Optional[str] = None) -> list[SlurmJobInfo]:
+def get_historical_job(
+    after: Optional[Union[datetime, timedelta]] = None,
+    before: Optional[Union[datetime, timedelta]] = None,
+    job_id: Optional[int] = None,
+    user: Optional[str] = os.getlogin(),
+    cluster: Optional[str] = None,
+) -> list[SlurmJobInfo]:
     """
     Gets the slurm jobs since the specified time.
     :param after: Time after which to get jobs
@@ -260,11 +265,11 @@ def get_historical_job(after: Optional[Union[datetime, timedelta]] = None,
     after_abs = now - after if isinstance(after, timedelta) else after
     before_abs = now - before if isinstance(before, timedelta) else before
 
-    cmds: list[str] = ['sacct', '--noheader', '-X', '--parsable2']
+    cmds: list[str] = ["sacct", "--noheader", "-X", "--parsable2"]
     if user:
-        cmds += ['--user', user]
+        cmds += ["--user", user]
     if cluster:
-        cmds += ['--clusters', cluster]
+        cmds += ["--clusters", cluster]
     if after_abs:
         cmds += ["--starttime", after_abs.isoformat(timespec="seconds")]
     if before_abs:
@@ -273,7 +278,7 @@ def get_historical_job(after: Optional[Union[datetime, timedelta]] = None,
         cmds += ["--jobs", str(job_id)]
 
     sacct_format_fields = ",".join([f.metadata.get("sacct_field", "") for f in fields(SlurmJobInfo)])
-    cmds += ['--format', sacct_format_fields]
+    cmds += ["--format", sacct_format_fields]
     res = subprocess.run(cmds, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, shell=False)
     if res.returncode != 0:
         raise ValueError(f"Could not get slurm jobs via `sacct`:\n{res.stderr}")
@@ -282,10 +287,9 @@ def get_historical_job(after: Optional[Union[datetime, timedelta]] = None,
     return jobs
 
 
-def cancel_job(jobs: Optional[Union[int, list[int]]] = None,
-               user: Optional[str] = os.getlogin(),
-               cluster: Optional[str] = None
-               ):
+def cancel_job(
+    jobs: Optional[Union[int, list[int]]] = None, user: Optional[str] = os.getlogin(), cluster: Optional[str] = None
+):
     """
     Cancels the specified jobs.
     :param jobs: Jobs to cancel
@@ -296,9 +300,9 @@ def cancel_job(jobs: Optional[Union[int, list[int]]] = None,
     assert jobs or user or cluster, "Must specify at least one of jobs, user, or cluster"
     cmds = ["scancel"]
     if user:
-        cmds += ['--user', user]
+        cmds += ["--user", user]
     if cluster:
-        cmds += ['--clusters', cluster]
+        cmds += ["--clusters", cluster]
     if jobs:
         if isinstance(jobs, int):
             jobs = [jobs]

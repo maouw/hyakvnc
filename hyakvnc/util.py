@@ -5,8 +5,9 @@ from typing import Callable, Optional, Union
 from . import logger
 
 
-def repeat_until(func: Callable, condition: Callable[[int], bool], timeout: Optional[float] = None,
-                 poll_interval: float = 1.0):
+def repeat_until(
+    func: Callable, condition: Callable[[int], bool], timeout: Optional[float] = None, poll_interval: float = 1.0
+):
     begin_time = time.time()
     assert timeout is None or timeout > 0, "Timeout must be greater than zero"
     assert poll_interval > 0, "Poll interval must be greater than zero"
@@ -19,8 +20,7 @@ def repeat_until(func: Callable, condition: Callable[[int], bool], timeout: Opti
     return False
 
 
-def wait_for_file(path: Union[Path, str], timeout: Optional[float] = None,
-                  poll_interval: float = 1.0):
+def wait_for_file(path: Union[Path, str], timeout: Optional[float] = None, poll_interval: float = 1.0):
     """
     Waits for the specified file to be present.
     """
