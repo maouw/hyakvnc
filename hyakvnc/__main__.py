@@ -238,12 +238,16 @@ def cmd_status():
     vnc_instances = HyakVncInstance.find_running_instances(
         instance_prefix=app_config.apptainer_instance_prefix, apptainer_config_dir=app_config.apptainer_config_dir
     )
-    logger.info(f"Found {len(vnc_instances)} running VNC jobs:")
-    for instance in vnc_instances:
-        print(
-            f"Apptainer instance {instance.apptainer_instance_info.instance_name} running as",
-            f"SLURM job {instance.job_id} with VNC on port {instance.vnc_port}",
-        )
+    if len(vnc_instances) == 0:
+        logger.info("No running VNC jobs found")
+
+    else:
+        logger.info(f"Found {len(vnc_instances)} running VNC jobs:")
+        for instance in vnc_instances:
+            print(
+                f"Apptainer instance {instance.apptainer_instance_info.instance_name} running as",
+                f"SLURM job {instance.job_id} with VNC on port {instance.vnc_port}",
+            )
 
 
 def print_connection_string(job_id: Optional[int] = None, instance: Optional[HyakVncInstance] = None):
