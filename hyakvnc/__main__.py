@@ -129,7 +129,7 @@ def cmd_create(container_path: Union[str, Path], dry_run=False) -> Union[HyakVnc
         """
         Pass SIGINT to subprocess and exit program.
         """
-        logger.debug(f"create_node: Caught signal: {signalNumber}. Cancelling jobs: {app_job_ids}")
+        logger.debug(f"hyakvnc create: Caught signal: {signalNumber}. Cancelling jobs: {app_job_ids}")
         for x in app_job_ids:
             logger.info(f"Cancelling job {x}")
             cancel_job(x)
@@ -241,8 +241,8 @@ def cmd_status():
     logger.info(f"Found {len(vnc_instances)} running VNC jobs:")
     for instance in vnc_instances:
         print(
-            f"Instance {instance.apptainer_instance_info.instance_name} running as",
-            f"SLURM job {instance.job_id} with port {instance.vnc_port}",
+            f"Apptainer instance {instance.apptainer_instance_info.instance_name} running as",
+            f"SLURM job {instance.job_id} with VNC on port {instance.vnc_port}",
         )
 
 
