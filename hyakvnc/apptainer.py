@@ -41,7 +41,7 @@ class ApptainerInstanceInfo:
             if not read_config:
                 contents.pop("config", None)
             else:
-                contents['config'] = json.loads(base64.b64decode(contents['config']).decode('utf-8'))
-            contents['instance_path'] = str(path)
-            contents['instance_name'] = str(path.stem)
+                contents["config"] = json.loads(base64.b64decode(contents["config"]).decode("utf-8"))
+            contents["instance_path"] = str(path)
+            contents["instance_name"] = str(path.stem)
             return ApptainerInstanceInfo(**contents)

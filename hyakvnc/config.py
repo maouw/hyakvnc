@@ -4,8 +4,8 @@ from dataclasses import dataclass, asdict
 from pathlib import Path
 from typing import Optional, Iterable, Union
 
-from .slurmutil import get_default_cluster, get_default_account, get_default_partition
 from . import logger
+from .slurmutil import get_default_cluster, get_default_account, get_default_partition
 
 
 def get_first_env(env_vars: Iterable[str], default: Optional[str] = None, allow_blank: bool = False) -> str:
@@ -31,6 +31,7 @@ class HyakVncConfig:
     """
     Configuration for hyakvnc.
     """
+
     # script attributes
     job_prefix: str = "hyakvnc"  # prefix for job names
     # apptainer config
@@ -40,7 +41,8 @@ class HyakVncConfig:
     apptainer_use_writable_tmpfs: Optional[bool] = True  # whether to mount a writable tmpfs for apptainer instances
     apptainer_cleanenv: Optional[bool] = True  # whether to use clean environment for apptainer instances
     apptainer_set_bind_paths: Optional[
-        str] = None  # comma-separated list of paths to bind mount for apptainer instances
+        str
+    ] = None  # comma-separated list of paths to bind mount for apptainer instances
     apptainer_env_vars: Optional[dict[str]] = None  # environment variables to set for apptainer instances
     sbatch_post_timeout: float = 120.0  # timeout for waiting for sbatch to return
     sbatch_post_poll_interval: float = 1.0  # poll interval for waiting for sbatch to return
@@ -63,25 +65,34 @@ class HyakVncConfig:
         Post-initialization hook for HyakVncConfig. Sets default values for unset attributes.
         :return: None
         """
-        self.cluster = self.cluster or get_first_env(["HYAKVNC_SLURM_CLUSTER", "SBATCH_CLUSTER"],
-                                                     default=get_default_cluster())
-        self.account = self.account or get_first_env(["HYAKVNC_SLURM_ACCOUNT", "SBATCH_ACCOUNT"],
-                                                     get_default_account(cluster=self.cluster))
-        self.partition = self.partition or get_first_env(["HYAKVNC_SLURM_PARTITION", "SBATCH_PARTITION"],
-                                                         get_default_partition(cluster=self.cluster,
-                                                                               account=self.account))
+        self.cluster = self.cluster or get_first_env(
+            ["HYAKVNC_SLURM_CLUSTER", "SBATCH_CLUSTER"], default=get_default_cluster()
+        )
+        self.account = self.account or get_first_env(
+            ["HYAKVNC_SLURM_ACCOUNT", "SBATCH_ACCOUNT"], get_default_account(cluster=self.cluster)
+        )
+        self.partition = self.partition or get_first_env(
+            ["HYAKVNC_SLURM_PARTITION", "SBATCH_PARTITION"],
+            get_default_partition(cluster=self.cluster, account=self.account),
+        )
         self.gpus = self.gpus or get_first_env(["HYAKVNC_SLURM_GPUS", "SBATCH_GPUS"], None)
         self.timelimit = self.timelimit or get_first_env(["HYAKVNC_SLURM_TIMELIMIT", "SBATCH_TIMELIMIT"], None)
         self.mem = self.mem or get_first_env(["HYAKVNC_SLURM_MEM", "SBATCH_MEM"], None)
         self.cpus = int(self.cpus or get_first_env(["HYAKVNC_SLURM_CPUS", "SBATCH_CPUS_PER_TASK"]))
 
         self.sbatch_output_path = self.sbatch_output_path or get_first_env(
-            ["HYAKVNC_SBATCH_OUTPUT_PATH", "SBATCH_OUTPUT"], "/dev/stdout")
+            ["HYAKVNC_SBATCH_OUTPUT_PATH", "SBATCH_OUTPUT"], "/dev/stdout"
+        )
 
         self.apptainer_env_vars = self.apptainer_env_vars or dict()
-        all_apptainer_env_vars = {x: os.environ.get(x, "") for x in os.environ.keys() if
-                                  x.startswith("APPTAINER_") or x.startswith("APPTAINERENV_") or x.startswith(
-                                      "SINGULARITY_") or x.startswith("SINGULARITYENV_")}
+        all_apptainer_env_vars = {
+            x: os.environ.get(x, "")
+            for x in os.environ.keys()
+            if x.startswith("APPTAINER_")
+            or x.startswith("APPTAINERENV_")
+            or x.startswith("SINGULARITY_")
+            or x.startswith("SINGULARITYENV_")
+        }
         self.apptainer_env_vars.update(all_apptainer_env_vars)
 
         if self.apptainer_use_writable_tmpfs is not None:

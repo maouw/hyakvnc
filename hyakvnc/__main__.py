@@ -54,7 +54,7 @@ def check_slurm_version(major_eq=22):
                 "You may encounter issues."
             )
     except (ValueError, IndexError, TypeError):
-        raise RuntimeError(f"Could not parse SLURM version: {v}")
+        raise RuntimeError(f"Could not parse SLURM version: { res.stdout}")
 
 
 def cmd_create(container_path: Union[str, Path], dry_run=False) -> Union[HyakVncInstance, None]:
@@ -125,11 +125,11 @@ def cmd_create(container_path: Union[str, Path], dry_run=False) -> Union[HyakVnc
         print(f"Would have run: {' '.join(cmds)}")
         return
 
-    def create_node_signal_handler(signalNumber, frame):
+    def create_node_signal_handler(signal_number, frame):
         """
         Pass SIGINT to subprocess and exit program.
         """
-        logger.debug(f"hyakvnc create: Caught signal: {signalNumber}. Cancelling jobs: {app_job_ids}")
+        logger.debug(f"hyakvnc create: Caught signal: {signal_number}. Cancelling jobs: {app_job_ids}")
         for x in app_job_ids:
             logger.info(f"Cancelling job {x}")
             cancel_job(x)

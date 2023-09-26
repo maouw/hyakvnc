@@ -122,10 +122,10 @@ class SlurmJobInfo:
     @staticmethod
     def from_squeue_line(line: str, field_order=None, delimiter: Optional[str] = None) -> "SlurmJobInfo":
         """
-        Creates a SlurmJob from an squeue command
+        Creates a SlurmJobInfo from an squeue command
         :param line: output line from squeue command
-        :param field_order: order of fields in line (defaults to order in SlurmJob)
-        :return: SlurmJob created from line
+        :param field_order: order of fields in line (defaults to order in SlurmJobInfo)
+        :return: SlurmJobInfo created from line
         """
 
         valid_field_names = [x.name for x in fields(SlurmJobInfo)]
@@ -176,7 +176,7 @@ def get_job(
     :param user: User to get jobs for
     :param jobs: Job(s) to get
     :param cluster: Cluster to get jobs for
-    :return: the specified slurm job(s) as a SlurmJob object or list of SlurmJobs, or None if no jobs were found
+    :return: the specified slurm job(s) as a SlurmJobInfo object or list of SlurmJobInfos, or None if no jobs were found
     """
     cmds: list[str] = ["squeue", "--noheader"]
     if user:
@@ -256,7 +256,7 @@ def get_historical_job(
     :param job_id: Job id to get
     :param user: User to get jobs for
     :param cluster: Cluster to get jobs for
-    :return: the slurm jobs since the specified time as a list of SlurmJobs
+    :return: the slurm jobs since the specified time as a list of SlurmJobInfos
     """
     now = datetime.now()
     assert isinstance(after, (datetime, timedelta, type(None))), "after must be a datetime or timedelta or None"
