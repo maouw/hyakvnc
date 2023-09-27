@@ -228,7 +228,7 @@ def get_job(
 
     squeue_format_fields = "\t".join([v["metadata"].get("squeue_field", "") for k, v in SlurmJobInfo.fields.items()])
     cmds += ["--format", squeue_format_fields]
-    res = subprocess.run(cmds, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, shell=False)
+    res = subprocess.run(cmds, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True, shell=False)
     if res.returncode != 0:
         raise ValueError(f"Could not get slurm jobs:\n{res.stderr}")
 
@@ -312,7 +312,7 @@ def get_historical_job(
 
     sacct_format_fields = ",".join([v["metadata"].get("sacct_field", "") for k, v in SlurmJobInfo.fields.items()])
     cmds += ["--format", sacct_format_fields]
-    res = subprocess.run(cmds, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, shell=False)
+    res = subprocess.run(cmds, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True, shell=False)
     if res.returncode != 0:
         raise ValueError(f"Could not get slurm jobs via `sacct`:\n{res.stderr}")
 
@@ -343,14 +343,14 @@ def cancel_job(
             jobs = [jobs]
         cmds += [str(x) for x in jobs]
 
-    res = subprocess.run(cmds, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, shell=False)
+    res = subprocess.run(cmds, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True, shell=False)
     if res.returncode != 0:
         raise ValueError(f"Could not cancel jobs {jobs}:\n{res.stderr}")
 
 
 def get_slurm_version_tuple():
     # Get SLURM version:
-    res = subprocess.run(["sinfo", "--version"], text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=False)
+    res = subprocess.run(["sinfo", "--version"], universal_newlines=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=False)
     if res.returncode != 0:
         raise RuntimeError(f"Could not get SLURM version:\n{res.stderr})")
     try:

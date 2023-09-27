@@ -44,7 +44,7 @@ app_job_ids = []
 
 def check_slurm_version(major_eq=22):
     # Get SLURM version:
-    res = subprocess.run(["sinfo", "--version"], text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=False)
+    res = subprocess.run(["sinfo", "--version"], universal_newlines=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=False)
     if res.returncode != 0:
         raise RuntimeError(f"Could not get SLURM version:\n{res.stderr})")
     try:
@@ -142,7 +142,7 @@ def cmd_create(container_path: Union[str, Path], dry_run=False) -> Union[HyakVnc
     signal.signal(signal.SIGINT, create_node_signal_handler)
     signal.signal(signal.SIGTSTP, create_node_signal_handler)
 
-    res = subprocess.run(cmds, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=False)
+    res = subprocess.run(cmds, universal_newlines=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=False)
     if res.returncode != 0:
         raise RuntimeError(f"Could not launch sbatch job:\n{res.stderr}")
 
