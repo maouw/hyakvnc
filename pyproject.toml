@@ -22,7 +22,7 @@ build-backend = "pdm.pep517.api"
 where = ["hyakvnc"]
 
 [project.scripts]
-hyakvnc = "hyakvnc:__main__"
+hyakvnc = "hyakvnc:__main__.main"
 
 [project.urls]
 homepage = "https://github.com/uw-psych/hyakvnc"

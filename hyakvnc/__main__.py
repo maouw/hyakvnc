@@ -355,35 +355,40 @@ log_level = logging.__dict__.get(os.getenv("HYAKVNC_LOG_LEVEL").upper(), logging
 logger.setLevel(log_level)
 
 
-if args.print_version:
-    print(VERSION)
-    exit(0)
+def main():
+    if args.print_version:
+        print(VERSION)
+        exit(0)
+
+    # Check SLURM version and print a warning if it's not 22.x:
+    # check_slurm_version()
+
+    if args.command == "create":
+        try:
+            cmd_create(args.container, dry_run=args.dry_run)
+        except (TimeoutError, RuntimeError) as e:
+            logger.error(f"Error: {e}")
+            exit(1)
+
+    elif args.command == "status":
+        cmd_status()
+
+    elif args.command == "stop":
+        cmd_stop(args.job_id)
+
+    elif args.command == "stop-all":
+        cmd_stop(stop_all=True)
+
+    elif args.command == "print-connection-string":
+        print_connection_string(args.job_id)
+
+    elif args.command == "print-config":
+        pprint.pp(app_config.__dict__, indent=2, width=79)
+
+    else:
+        arg_parser.print_help()
 
 
-# Check SLURM version and print a warning if it's not 22.x:
-check_slurm_version()
-
-if args.command == "create":
-    try:
-        cmd_create(args.container, dry_run=args.dry_run)
-    except (TimeoutError, RuntimeError) as e:
-        logger.error(f"Error: {e}")
-        exit(1)
-
-elif args.command == "status":
-    cmd_status()
-
-elif args.command == "stop":
-    cmd_stop(args.job_id)
-
-elif args.command == "stop-all":
-    cmd_stop(stop_all=True)
-
-elif args.command == "print-connection-string":
-    print_connection_string(args.job_id)
-
-elif args.command == "print-config":
-    pprint.pp(app_config.__dict__, indent=2, width=79)
-
-else:
-    arg_parser.print_help()
+if __name__ == "__main__":
+    main()
+q
