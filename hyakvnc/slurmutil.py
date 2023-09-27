@@ -1,10 +1,8 @@
 import os
 import subprocess
 import time
-from dataclasses import dataclass, fields, field
 from datetime import datetime, timedelta
-from typing import Optional, Union
-
+from typing import Optional, Union, List, Dict
 
 from . import logger
 
@@ -16,7 +14,7 @@ def get_default_cluster() -> str:
     :raises LookupError: if no default cluster could be found
     """
     cmd = "sacctmgr show cluster -nPs format=Cluster".split()
-    res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
     if res.returncode == 0:
         clusters = res.stdout.splitlines()
         if clusters:
@@ -36,17 +34,18 @@ def get_default_account(user: Optional[str] = None, cluster: Optional[str] = Non
     cluster = cluster or get_default_cluster()
 
     cmd = f"sacctmgr show user -nPs {user} format=defaultaccount where cluster={cluster}"
-    res = subprocess.run(cmd.split(), stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    res = subprocess.run(cmd.split(), stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
     if res.returncode == 0:
         accounts = res.stdout.splitlines()
-        if any(default_account := x for x in accounts):
-            return default_account
+        for x in accounts:
+            if x:
+                return x
     raise LookupError(f"Could not find default account for user '{user}' on cluster '{cluster}'")
 
 
 def get_partitions(
     user: Optional[str] = None, account: Optional[str] = None, cluster: Optional[str] = None
-) -> list[str]:
+) -> List[str]:
     """
     Gets the SLURM partitions for the specified user and account on the specified cluster.
 
@@ -60,10 +59,12 @@ def get_partitions(
     cluster = cluster or get_default_cluster()
     account = account or get_default_account(user=user, cluster=cluster)
     cmd = f"sacctmgr show -nPs user {user} format=qos where account={account} cluster={cluster}"
-    res = subprocess.run(cmd.split(), stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True).stdout.splitlines()
-
-    if any(partitions := x for x in res):
-        return sorted([x.strip(f"{account}-") for x in partitions.split(",")])
+    res = subprocess.run(
+        cmd.split(), stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True
+    ).stdout.splitlines()
+    for partitions in res:
+        if partitions:
+            return sorted([x.strip(f"{account}-") for x in partitions.split(",")])
     else:
         raise LookupError(f"Could not find partitions for user '{user}' and account '{account}' on cluster '{cluster}'")
 
@@ -81,15 +82,15 @@ def get_default_partition(
     :raises LookupError: if no partitions could be found
     """
     partitions = get_partitions(user=user, account=account, cluster=cluster)
-    if any(default_partition := x for x in partitions):
-        return default_partition
-    else:
-        raise LookupError(
-            f"Could not find default partition for user '{user}' and account '{account}' on cluster '{cluster}'"
-        )
+    for p in partitions:
+        if p:
+            return p
+    raise LookupError(
+        f"Could not find default partition for user '{user}' and account '{account}' on cluster '{cluster}'"
+    )
 
 
-def node_range_to_list(s: str) -> list[str]:
+def node_range_to_list(s: str) -> List[str]:
     """
     Converts a node range to a list of nodes.
     :param s: node range
@@ -97,27 +98,58 @@ def node_range_to_list(s: str) -> list[str]:
     :raises ValueError: if the node range could not be converted to a list of nodes
     """
     cmds = ["scontrol", "show", "hostnames", s]
-    output = subprocess.run(cmds, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    output = subprocess.run(cmds, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
     if output.returncode != 0:
         raise ValueError(f"Could not convert node range '{s}' to list of nodes:\n{output.stderr}")
     return output.stdout.rstrip().splitlines()
 
 
-@dataclass
 class SlurmJobInfo:
-    job_id: int = field(metadata={"squeue_field": "%i", "sacct_field": "JobID"})
-    job_name: str = field(metadata={"squeue_field": "%j", "sacct_field": "JobName"})
-    account: str = field(metadata={"squeue_field": "%a", "sacct_field": "Account"})
-    partition: str = field(metadata={"squeue_field": "%P", "sacct_field": "Partition"})
-    user_name: str = field(metadata={"squeue_field": "%u", "sacct_field": "User"})
-    state: str = field(metadata={"squeue_field": "%T", "sacct_field": "State"})
-    time_used: str = field(metadata={"squeue_field": "%M", "sacct_field": "Elapsed"})
-    time_limit: str = field(metadata={"squeue_field": "%l", "sacct_field": "Timelimit"})
-    cpus: int = field(metadata={"squeue_field": "%C", "sacct_field": "AllocCPUS"})
-    min_memory: str = field(metadata={"squeue_field": "%m", "sacct_field": "ReqMem"})
-    num_nodes: int = field(metadata={"squeue_field": "%D", "sacct_field": "NNodes"})
-    node_list: str = field(metadata={"squeue_field": "%N", "sacct_field": "NodeList"})
-    command: str = field(metadata={"squeue_field": "%o", "sacct_field": "SubmitLine"})
+    fields: Dict[str, Dict[str, Union[str, Dict[str, str]]]] = {
+        "job_id": {"squeue_field": "%i", "sacct_field": "JobID"},
+        "job_name": {"squeue_field": "%j", "sacct_field": "JobName"},
+        "account": {"squeue_field": "%a", "sacct_field": "Account"},
+        "partition": {"squeue_field": "%P", "sacct_field": "Partition"},
+        "user_name": {"squeue_field": "%u", "sacct_field": "User"},
+        "state": {"squeue_field": "%T", "sacct_field": "State"},
+        "time_used": {"squeue_field": "%M", "sacct_field": "Elapsed"},
+        "time_limit": {"squeue_field": "%l", "sacct_field": "Timelimit"},
+        "cpus": {"squeue_field": "%C", "sacct_field": "AllocCPUS"},
+        "min_memory": {"squeue_field": "%m", "sacct_field": "ReqMem"},
+        "num_nodes": {"squeue_field": "%D", "sacct_field": "NNodes"},
+        "node_list": {"squeue_field": "%N", "sacct_field": "NodeList"},
+        "command": {"squeue_field": "%o", "sacct_field": "SubmitLine"},
+    }
+
+    def __init__(
+        self,
+        job_id: int = None,
+        job_name: str = None,
+        account: str = None,
+        partition: str = None,
+        user_name: str = None,
+        state: str = None,
+        time_used: str = None,
+        time_limit: str = None,
+        cpus: int = None,
+        min_memory: str = None,
+        num_nodes: int = None,
+        node_list: str = None,
+        command: str = None,
+    ):
+        self.job_id = job_id
+        self.job_name = job_name
+        self.account = account
+        self.partition = partition
+        self.user_name = user_name
+        self.state = state
+        self.time_used = time_used
+        self.time_limit = time_limit
+        self.cpus = cpus
+        self.min_memory = min_memory
+        self.num_nodes = num_nodes
+        self.node_list = node_list
+        self.command = command
 
     @staticmethod
     def from_squeue_line(line: str, field_order=None, delimiter: Optional[str] = None) -> "SlurmJobInfo":
@@ -125,10 +157,11 @@ class SlurmJobInfo:
         Creates a SlurmJobInfo from an squeue command
         :param line: output line from squeue command
         :param field_order: order of fields in line (defaults to order in SlurmJobInfo)
+        :param delimiter: delimiter for fields in line
         :return: SlurmJobInfo created from line
         """
 
-        valid_field_names = [x.name for x in fields(SlurmJobInfo)]
+        valid_field_names = list(SlurmJobInfo.fields.keys())
         if field_order is None:
             field_order = valid_field_names
 
@@ -169,8 +202,8 @@ class SlurmJobInfo:
 
 
 def get_job(
-    jobs: Optional[Union[int, list[int]]] = None, user: Optional[str] = os.getlogin(), cluster: Optional[str] = None
-) -> Union[SlurmJobInfo, list[SlurmJobInfo], None]:
+    jobs: Optional[Union[int, List[int]]] = None, user: Optional[str] = os.getlogin(), cluster: Optional[str] = None
+) -> Union[SlurmJobInfo, List[SlurmJobInfo], None]:
     """
     Gets the specified slurm job(s).
     :param user: User to get jobs for
@@ -178,7 +211,7 @@ def get_job(
     :param cluster: Cluster to get jobs for
     :return: the specified slurm job(s) as a SlurmJobInfo object or list of SlurmJobInfos, or None if no jobs were found
     """
-    cmds: list[str] = ["squeue", "--noheader"]
+    cmds: List[str] = ["squeue", "--noheader"]
     if user:
         cmds += ["--user", user]
     if cluster:
@@ -193,13 +226,13 @@ def get_job(
         jobs = ",".join([str(x) for x in jobs])
         cmds += ["--jobs", jobs]
 
-    squeue_format_fields = "\t".join([f.metadata.get("squeue_field", "") for f in fields(SlurmJobInfo)])
+    squeue_format_fields = "\t".join([v["metadata"].get("squeue_field", "") for k, v in SlurmJobInfo.fields.items()])
     cmds += ["--format", squeue_format_fields]
     res = subprocess.run(cmds, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, shell=False)
     if res.returncode != 0:
         raise ValueError(f"Could not get slurm jobs:\n{res.stderr}")
 
-    jobs = [SlurmJobInfo.from_squeue_line(line) for x in res.stdout.splitlines() if (line := x.strip())]
+    jobs = [SlurmJobInfo.from_squeue_line(line.strip()) for line in res.stdout.splitlines() if line.strip()]
     if job_is_int:
         if len(jobs) > 0:
             return jobs[0]
@@ -211,14 +244,14 @@ def get_job(
 
 def get_job_status(jobid: int) -> str:
     cmd = f"squeue -j {jobid} -h -o %T"
-    res = subprocess.run(cmd.split(), stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    res = subprocess.run(cmd.split(), stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
     if res.returncode != 0:
         raise ValueError(f"Could not get status for job {jobid}:\n{res.stderr}")
     return res.stdout.strip()
 
 
 def wait_for_job_status(
-    job_id: int, states: list[str], timeout: Optional[float] = None, poll_interval: float = 1.0
+    job_id: int, states: List[str], timeout: Optional[float] = None, poll_interval: float = 1.0
 ) -> str:
     """
     Waits for the specified job to be in one of the specified states.
@@ -248,7 +281,7 @@ def get_historical_job(
     job_id: Optional[int] = None,
     user: Optional[str] = os.getlogin(),
     cluster: Optional[str] = None,
-) -> list[SlurmJobInfo]:
+) -> List[SlurmJobInfo]:
     """
     Gets the slurm jobs since the specified time.
     :param after: Time after which to get jobs
@@ -265,7 +298,7 @@ def get_historical_job(
     after_abs = now - after if isinstance(after, timedelta) else after
     before_abs = now - before if isinstance(before, timedelta) else before
 
-    cmds: list[str] = ["sacct", "--noheader", "-X", "--parsable2"]
+    cmds: List[str] = ["sacct", "--noheader", "-X", "--parsable2"]
     if user:
         cmds += ["--user", user]
     if cluster:
@@ -277,18 +310,20 @@ def get_historical_job(
     if job_id:
         cmds += ["--jobs", str(job_id)]
 
-    sacct_format_fields = ",".join([f.metadata.get("sacct_field", "") for f in fields(SlurmJobInfo)])
+    sacct_format_fields = ",".join([v["metadata"].get("sacct_field", "") for k, v in SlurmJobInfo.fields.items()])
     cmds += ["--format", sacct_format_fields]
     res = subprocess.run(cmds, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, shell=False)
     if res.returncode != 0:
         raise ValueError(f"Could not get slurm jobs via `sacct`:\n{res.stderr}")
 
-    jobs = [SlurmJobInfo.from_squeue_line(line, delimiter="|") for x in res.stdout.splitlines() if (line := x.strip())]
+    jobs = [
+        SlurmJobInfo.from_squeue_line(line.strip(), delimiter="|") for line in res.stdout.splitlines() if line.strip()
+    ]
     return jobs
 
 
 def cancel_job(
-    jobs: Optional[Union[int, list[int]]] = None, user: Optional[str] = os.getlogin(), cluster: Optional[str] = None
+    jobs: Optional[Union[int, List[int]]] = None, user: Optional[str] = os.getlogin(), cluster: Optional[str] = None
 ):
     """
     Cancels the specified jobs.
@@ -311,3 +346,20 @@ def cancel_job(
     res = subprocess.run(cmds, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, shell=False)
     if res.returncode != 0:
         raise ValueError(f"Could not cancel jobs {jobs}:\n{res.stderr}")
+
+
+def get_slurm_version_tuple():
+    # Get SLURM version:
+    res = subprocess.run(["sinfo", "--version"], text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=False)
+    if res.returncode != 0:
+        raise RuntimeError(f"Could not get SLURM version:\n{res.stderr})")
+    try:
+        v = res.stdout
+        assert isinstance(v, str), "Could not parse SLURM version"
+        va = v.split(v)
+        assert len(va) >= 2
+        vt = tuple(va[1].split("."))
+        assert len(vt) >= 2
+        return vt
+    except (ValueError, IndexError, TypeError, AssertionError):
+        raise RuntimeError(f"Could not parse SLURM version from string {res.stdout}")

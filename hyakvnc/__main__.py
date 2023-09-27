@@ -9,7 +9,7 @@ import shlex
 import signal
 import subprocess
 import time
-from dataclasses import asdict
+import json
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, Union
@@ -25,13 +25,15 @@ HYAKVNC_CONFIG_PATH = Path(
     os.environ.setdefault("HYAKVNC_CONFIG_PATH", "~/.config/hyakvnc/hyakvnc-config.json")
 ).expanduser()
 
+# Set up default config:
+app_config = HyakVncConfig()
+
 # If that path exists, load config from file:
 if HYAKVNC_CONFIG_PATH.is_file():
-    app_config = HyakVncConfig.from_json(path=HYAKVNC_CONFIG_PATH)
-else:
-    # Load default config:
-    app_config = HyakVncConfig()
-
+    try:
+        app_config = HyakVncConfig.from_json(path=HYAKVNC_CONFIG_PATH)
+    except json.JSONDecodeError as e:
+        logger.warning(f"Could not load config from {HYAKVNC_CONFIG_PATH}: {e}")
 
 # Record time app started in case we need to clean up some jobs:
 app_started = datetime.now()
@@ -94,7 +96,7 @@ def cmd_create(container_path: Union[str, Path], dry_run=False) -> Union[HyakVnc
         str(item)
         for pair in [
             (sbatch_optinfo[k], v)
-            for k, v in asdict(app_config).items()
+            for k, v in app_config.__dict__.items()
             if k in sbatch_optinfo.keys() and v is not None
         ]
         for item in pair
@@ -379,7 +381,7 @@ elif args.command == "print-connection-string":
     print_connection_string(args.job_id)
 
 elif args.command == "print-config":
-    pprint.pp(asdict(app_config), indent=2, width=79)
+    pprint.pp(app_config.__dict__, indent=2, width=79)
 
 else:
     arg_parser.print_help()

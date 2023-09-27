@@ -1,9 +1,8 @@
 import os
 import pprint
 import re
-from dataclasses import asdict
 from pathlib import Path
-from typing import Optional, Union
+from typing import Optional, Union, List
 
 from .apptainer import ApptainerInstanceInfo
 from .slurmutil import get_job, cancel_job
@@ -149,7 +148,7 @@ class HyakVncInstance:
 
     def __str__(self):
         dct = {
-            "apptainer_instance_info": asdict(self.apptainer_instance_info),
+            "apptainer_instance_info": self.apptainer_instance_info.__dict__,
             "instance_prefix": str(self.instance_prefix),
             "apptainer_config_dir": str(self.apptainer_config_dir),
             "vnc_port": self.vnc_port,
@@ -202,7 +201,7 @@ class HyakVncInstance:
     @staticmethod
     def find_running_instances(
         instance_prefix: str, apptainer_config_dir: Optional[Union[str, Path]] = None, user: str = os.getlogin()
-    ) -> list["HyakVncInstance"]:
+    ) -> List["HyakVncInstance"]:
         apptainer_config_dir = apptainer_config_dir or Path("~/.apptainer").expanduser()
         app_dir = Path(apptainer_config_dir).expanduser() / "instances" / "app"
         assert app_dir.is_dir(), f"Could not find apptainer app dir at {app_dir}"

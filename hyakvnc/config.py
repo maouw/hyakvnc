@@ -1,8 +1,7 @@
 import json
 import os
-from dataclasses import dataclass, asdict
 from pathlib import Path
-from typing import Optional, Iterable, Union
+from typing import Optional, Iterable, Union, Dict
 
 from . import logger
 from .slurmutil import get_default_cluster, get_default_account, get_default_partition
@@ -19,52 +18,61 @@ def get_first_env(env_vars: Iterable[str], default: Optional[str] = None, allow_
 
     no_match = [None] if allow_blank else [None, ""]
     for x in env_vars:
-        if (res := os.environ.get(x)) not in no_match:
+        res = os.environ.get(x)
+        if x not in no_match:
             logger.debug(rf"Using environment variable {x}={res}")
             return res
     logger.debug(rf"Using default value {default}")
     return default
 
 
-@dataclass
 class HyakVncConfig:
     """
     Configuration for hyakvnc.
     """
 
-    # script attributes
-    job_prefix: str = "hyakvnc"  # prefix for job names
-    # apptainer config
-    apptainer_bin: str = "apptainer"  # path to apptainer binary
-    apptainer_config_dir: str = "~/.apptainer"  # directory where apptainer config files are stored
-    apptainer_instance_prefix: str = "hyakvnc"  # prefix for apptainer instance names
-    apptainer_use_writable_tmpfs: Optional[bool] = True  # whether to mount a writable tmpfs for apptainer instances
-    apptainer_cleanenv: Optional[bool] = True  # whether to use clean environment for apptainer instances
-    apptainer_set_bind_paths: Optional[
-        str
-    ] = None  # comma-separated list of paths to bind mount for apptainer instances
-    apptainer_env_vars: Optional[dict[str]] = None  # environment variables to set for apptainer instances
-    sbatch_post_timeout: float = 120.0  # timeout for waiting for sbatch to return
-    sbatch_post_poll_interval: float = 1.0  # poll interval for waiting for sbatch to return
-    sbatch_output_path: Optional[str] = None  # path to write sbatch output to
+    def __init__(
+        self,
+        job_prefix: str = "hyakvnc",  # prefix for job names
+        apptainer_bin: str = "apptainer",  # path to apptainer binary
+        apptainer_config_dir: str = "~/.apptainer",  # directory where apptainer config files are stored
+        apptainer_instance_prefix: str = "hyakvnc",  # prefix for apptainer instance names
+        apptainer_use_writable_tmpfs: bool = True,  # whether to mount a writable tmpfs for apptainer instances
+        apptainer_cleanenv: bool = True,  # whether to use clean environment for apptainer instances
+        apptainer_set_bind_paths: str = None,  # comma-separated list of paths to bind mount for apptainer instances
+        apptainer_env_vars: Dict[str, str] = None,  # environment variables to set for apptainer instances
+        sbatch_post_timeout: float = 120.0,  # timeout for waiting for sbatch to return
+        sbatch_post_poll_interval: float = 1.0,  # poll interval for waiting for sbatch to return
+        sbatch_output_path: str = None,  # path to write sbatch output to
+        ssh_host: str = None,  # intermediate host address between local machine and compute node
+        account: str = None,  # account to use for sbatch jobs | -A, --account, SBATCH_ACCOUNT
+        partition: str = None,  # partition to use for sbatch jobs | -p, --partition, SBATCH_PARTITION
+        cluster: str = None,  # cluster to use for sbatch jobs |  --clusters, SBATCH_CLUSTERS
+        gpus: str = None,  # number of gpus to use for sbatch jobs | -G, --gpus, SBATCH_GPUS
+        timelimit: str = None,  # time limit for sbatch jobs | --time, SBATCH_TIMELIMIT
+        mem: str = "8G",  # memory limit for sbatch jobs | --mem, SBATCH_MEM
+        cpus: int = 4,  # number of cpus to use for sbatch jobs | -c, --cpus-per-task (not settable by env var)
+    ):
+        self.job_prefix = job_prefix
+        self.apptainer_bin = apptainer_bin
+        self.apptainer_config_dir = apptainer_config_dir
+        self.apptainer_instance_prefix = apptainer_instance_prefix
+        self.apptainer_use_writable_tmpfs = apptainer_use_writable_tmpfs
+        self.apptainer_cleanenv = apptainer_cleanenv
+        self.apptainer_set_bind_paths = apptainer_set_bind_paths
+        self.apptainer_env_vars = apptainer_env_vars
+        self.sbatch_post_timeout = sbatch_post_timeout
+        self.sbatch_post_poll_interval = sbatch_post_poll_interval
+        self.sbatch_output_path = sbatch_output_path
+        self.ssh_host = ssh_host
+        self.account = account
+        self.partition = partition
+        self.cluster = cluster
+        self.gpus = gpus
+        self.timelimit = timelimit
+        self.mem = mem
+        self.cpus = cpus
 
-    # ssh config
-    ssh_host = "klone.hyak.uw.edu"  # intermediate host address between local machine and compute node
-
-    # slurm attributes
-    account: Optional[str] = None  # account to use for sbatch jobs | -A, --account, SBATCH_ACCOUNT
-    partition: Optional[str] = None  # partition to use for sbatch jobs | -p, --partition, SBATCH_PARTITION
-    cluster: Optional[str] = None  # cluster to use for sbatch jobs |  --clusters, SBATCH_CLUSTERS
-    gpus: Optional[str] = None  # number of gpus to use for sbatch jobs | -G, --gpus, SBATCH_GPUS
-    timelimit: Optional[str] = None  # time limit for sbatch jobs | --time, SBATCH_TIMELIMIT
-    mem: Optional[str] = "8G"  # memory limit for sbatch jobs | --mem, SBATCH_MEM
-    cpus: Optional[int] = 4  # number of cpus to use for sbatch jobs | -c, --cpus-per-task (not settable by env var)
-
-    def __post_init__(self):
-        """
-        Post-initialization hook for HyakVncConfig. Sets default values for unset attributes.
-        :return: None
-        """
         self.cluster = self.cluster or get_first_env(
             ["HYAKVNC_SLURM_CLUSTER", "SBATCH_CLUSTER"], default=get_default_cluster()
         )
@@ -95,13 +103,13 @@ class HyakVncConfig:
         }
         self.apptainer_env_vars.update(all_apptainer_env_vars)
 
-        if self.apptainer_use_writable_tmpfs is not None:
+        if self.apptainer_use_writable_tmpfs:
             self.apptainer_env_vars["APPTAINER_WRITABLE_TMPFS"] = "1" if self.apptainer_use_writable_tmpfs else "0"
 
-        if self.apptainer_cleanenv is not None:
+        if self.apptainer_cleanenv:
             self.apptainer_env_vars["APPTAINER_CLEANENV"] = "1" if self.apptainer_cleanenv else "0"
 
-            if self.apptainer_set_bind_paths is not None:
+            if self.apptainer_set_bind_paths:
                 self.apptainer_env_vars["APPTAINER_BINDPATH"] = self.apptainer_set_bind_paths
 
     def to_json(self) -> str:
@@ -109,7 +117,7 @@ class HyakVncConfig:
         Converts this configuration to a JSON string.
         :return: JSON string representation of this configuration
         """
-        return json.dumps({k: v for k, v in asdict(self).items() if v is not None})
+        return json.dumps({k: v for k, v in self.__dict__.items() if v is not None})
 
     @staticmethod
     def from_json(path: Union[str, Path]) -> "HyakVncConfig":
@@ -121,15 +129,9 @@ class HyakVncConfig:
         if not Path(path).is_file():
             raise ValueError(f"Invalid path to configuration file: {path}")
 
-        with open(path, "r") as f:
-            contents = json.load(f)
-            return HyakVncConfig(**contents)
-
-    @staticmethod
-    def from_jsons(s: str) -> "HyakVncConfig":
-        """
-        Loads a HyakVncConfig from a JSON string.
-        :param s: JSON string
-        :return: HyakVncConfig loaded from JSON string
-        """
-        return HyakVncConfig(**json.loads(s))
+        try:
+            with open(path, "r") as f:
+                contents = json.load(f)
+                return HyakVncConfig(**contents)
+        except (json.JSONDecodeError, ValueError, TypeError) as e:
+            raise ValueError(f"Invalid JSON in configuration file: {path}") from e

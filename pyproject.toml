@@ -7,7 +7,7 @@ authors = [
   { name = "Altan Orhon", email = "altan@uw.edu" },
 ]
 dependencies = []
-requires-python = ">=3.9"
+requires-python = ">=3.6"
 license = { text = "MIT" }
 readme = "README.md"
 
@@ -29,5 +29,5 @@ homepage = "https://github.com/uw-psych/hyakvnc"
 
 [tool.black]
 line-length = 120
-target-version = ['py39']
+target-version = ['py36']
 include = '\.pyi?$'
