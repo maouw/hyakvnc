@@ -350,7 +350,9 @@ def cancel_job(
 
 def get_slurm_version_tuple():
     # Get SLURM version:
-    res = subprocess.run(["sinfo", "--version"], universal_newlines=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=False)
+    res = subprocess.run(
+        ["sinfo", "--version"], universal_newlines=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=False
+    )
     if res.returncode != 0:
         raise RuntimeError(f"Could not get SLURM version:\n{res.stderr})")
     try:

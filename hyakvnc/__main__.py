@@ -44,7 +44,9 @@ app_job_ids = []
 
 def check_slurm_version(major_eq=22):
     # Get SLURM version:
-    res = subprocess.run(["sinfo", "--version"], universal_newlines=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=False)
+    res = subprocess.run(
+        ["sinfo", "--version"], universal_newlines=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=False
+    )
     if res.returncode != 0:
         raise RuntimeError(f"Could not get SLURM version:\n{res.stderr})")
     try:
