@@ -383,7 +383,7 @@ def main():
         print_connection_string(args.job_id)
 
     elif args.command == "print-config":
-        pprint.pp(app_config.__dict__, indent=2, width=79)
+        pprint.pprint(app_config.__dict__, indent=2, width=79)
 
     else:
         arg_parser.print_help()
