@@ -226,7 +226,7 @@ def get_job(
         jobs = ",".join([str(x) for x in jobs])
         cmds += ["--jobs", jobs]
 
-    squeue_format_fields = "\t".join([v["metadata"].get("squeue_field", "") for k, v in SlurmJobInfo.fields.items()])
+    squeue_format_fields = "\t".join([v.get("squeue_field", "") for k, v in SlurmJobInfo.fields.items()])
     cmds += ["--format", squeue_format_fields]
     res = subprocess.run(cmds, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True, shell=False)
     if res.returncode != 0:
@@ -310,7 +310,7 @@ def get_historical_job(
     if job_id:
         cmds += ["--jobs", str(job_id)]
 
-    sacct_format_fields = ",".join([v["metadata"].get("sacct_field", "") for k, v in SlurmJobInfo.fields.items()])
+    sacct_format_fields = ",".join([v.get("sacct_field", "") for k, v in SlurmJobInfo.fields.items()])
     cmds += ["--format", sacct_format_fields]
     res = subprocess.run(cmds, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True, shell=False)
     if res.returncode != 0:
