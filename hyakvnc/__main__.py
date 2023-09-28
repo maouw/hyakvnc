@@ -172,7 +172,7 @@ def cmd_create(container_path: Union[str, Path], dry_run=False):
     logger.info("Waiting for Apptainer instance to start running")
     if wait_for_file(str(instance_file), timeout=app_config.sbatch_post_timeout):
         time.sleep(2)
-        logger.info("Apptainre instance started running. Waiting for VNC session to start")
+        logger.info("Apptainer instance started running. Waiting for VNC session to start")
 
         def get_session():
             try:
