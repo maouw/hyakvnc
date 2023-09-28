@@ -171,7 +171,6 @@ def cmd_create(container_path: Union[str, Path], dry_run=False):
 
     logger.info("Waiting for Apptainer instance to start running")
     if wait_for_file(str(instance_file), timeout=app_config.sbatch_post_timeout):
-        time.sleep(10)  # sleep to wait for apptainer to actually start vncserver
 
         def get_session():
             try:
