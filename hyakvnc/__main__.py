@@ -114,7 +114,7 @@ def cmd_create(container_path: Union[str, Path], dry_run=False):
 
     # Command to start the apptainer instance and keep it running:
     apptainer_cmd_with_rest = (
-        apptainer_env_vars_string + "printenv && " + apptainer_cmd + " && while true; do sleep 10; done"
+        apptainer_env_vars_string + apptainer_cmd + " && while true; do sleep 10; done"
     )
 
     # The sbatch wrap functionality allows submitting commands without an sbatch script:t
