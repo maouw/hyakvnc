@@ -121,7 +121,6 @@ def cmd_create(container_path: Union[str, Path], dry_run=False) -> Union[HyakVnc
 
     signal.signal(signal.SIGINT, create_node_signal_handler)
     signal.signal(signal.SIGTSTP, create_node_signal_handler)
-    signal.signal(signal.SIGKILL, create_node_signal_handler)
     signal.signal(signal.SIGTERM, create_node_signal_handler)
 
     job_id = None
@@ -212,7 +211,6 @@ def cmd_status():
 
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTSTP, signal_handler)
-    signal.signal(signal.SIGKILL, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
     vnc_sessions = HyakVncSession.find_running_sessions(app_config)
     if len(vnc_sessions) == 0:
@@ -236,7 +234,6 @@ def print_connection_string(
 
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTSTP, signal_handler)
-    signal.signal(signal.SIGKILL, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
     if job_id:
         sessions = HyakVncSession.find_running_sessions(app_config, job_id=job_id)
