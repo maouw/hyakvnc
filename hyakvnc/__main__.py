@@ -62,7 +62,7 @@ def cmd_create(container_path: Union[str, Path], dry_run=False):
         exit(1)
 
     signal.signal(signal.SIGINT, create_node_signal_handler)
-    signal.signal(signal.SIGSTOP, create_node_signal_handler)
+    signal.signal(signal.SIGTSTP, create_node_signal_handler)
     signal.signal(signal.SIGTERM, create_node_signal_handler)
 
     container_path = Path(container_path)
@@ -215,7 +215,7 @@ def cmd_status():
         exit(1)
 
     signal.signal(signal.SIGINT, signal_handler)
-    signal.signal(signal.SIGSTOP, signal_handler)
+    signal.signal(signal.SIGTSTP, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
 
     logger.info("Finding running VNC jobs...")
@@ -239,7 +239,7 @@ def print_connection_string(
         exit(1)
 
     signal.signal(signal.SIGINT, signal_handler)
-    signal.signal(signal.SIGSTOP, signal_handler)
+    signal.signal(signal.SIGTSTP, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
 
     assert (job_id is not None) ^ (session is not None), "Must specify either a job id or session"
