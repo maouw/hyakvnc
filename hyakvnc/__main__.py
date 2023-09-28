@@ -3,13 +3,10 @@
 import argparse
 import logging
 import os
-import pprint
 import re
 import shlex
 import signal
-import subprocess
 import time
-import json
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, Union
@@ -18,7 +15,6 @@ from .config import HyakVncConfig
 from .slurmutil import (
     wait_for_job_status,
     get_job_info,
-    get_job_infos,
     get_historical_job_infos,
     cancel_job,
     SbatchCommand,
@@ -27,20 +23,7 @@ from .util import wait_for_file, repeat_until
 from .version import VERSION
 from . import logger
 
-app_config = HyakVncConfig()
-
-# Set path to load config from:
-HYAKVNC_CONFIG_PATH = Path(
-    os.environ.setdefault("HYAKVNC_CONFIG_PATH", "~/.config/hyakvnc/hyakvnc-config.json")
-).expanduser()
-
-# If that path exists, load config from file:
-if HYAKVNC_CONFIG_PATH.is_file():
-    try:
-        app_config = HyakVncConfig.from_json(path=HYAKVNC_CONFIG_PATH)
-    except (json.JSONDecodeError, RuntimeError, ValueError):
-        logger.warning(f"Could not load config from {HYAKVNC_CONFIG_PATH}")
-
+app_config = None
 # Record time app started in case we need to clean up some jobs:
 app_started = datetime.now()
 
@@ -329,13 +312,17 @@ arg_parser = create_arg_parser()
 args = arg_parser.parse_args()
 
 os.environ.setdefault("HYAKVNC_LOG_LEVEL", "INFO")
-
 if args.debug:
     os.environ["HYAKVNC_LOG_LEVEL"] = "DEBUG"
 
 log_level = logging.__dict__.get(os.getenv("HYAKVNC_LOG_LEVEL").upper(), logging.INFO)
-
 logger.setLevel(log_level)
+log_handler_console = logging.StreamHandler()
+log_handler_console.setFormatter(logging.Formatter("%(levelname)s - %(message)s"))
+log_handler_console.setLevel(log_level)
+
+logger.addHandler(log_handler_console)
+app_config = HyakVncConfig.load_app_config()
 
 
 def main():

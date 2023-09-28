@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 from pathlib import Path
 from typing import Optional, Iterable, Union, Dict
@@ -34,6 +35,7 @@ class HyakVncConfig:
     def __init__(
         self,
         job_prefix: str = "hyakvnc",  # prefix for job names
+        log_path: str = "~/.hyakvnc.log",  # path to log file
         apptainer_bin: str = "apptainer",  # path to apptainer binary
         apptainer_config_dir: str = "~/.apptainer",  # directory where apptainer config files are stored
         apptainer_instance_prefix: str = "hyakvnc",  # prefix for apptainer instance names
@@ -57,6 +59,11 @@ class HyakVncConfig:
             int
         ] = 4,  # number of cpus to use for sbatch jobs | -c, --cpus-per-task (not settable by env var)
     ):
+        self.log_path = Path(log_path).expanduser()
+        formatter = logging.Formatter("%(levelname)s: %(asctime)s %(message)s", datefmt="%m/%d/%Y %I:%M:%S %p")
+        log_handler_file = logging.FileHandler(self.log_path, mode="a")
+        log_handler_file.setLevel(logging.DEBUG)
+        logger.addHandler(log_handler_file)
         logger.debug("Loading config")
         self.job_prefix = job_prefix
         self.apptainer_bin = apptainer_bin
@@ -140,3 +147,27 @@ class HyakVncConfig:
 
     def __repr__(self):
         return self.to_json()
+
+    @staticmethod
+    def load_app_config(path: Optional[Union[str, Path]] = None) -> "HyakVncConfig":
+        """
+        Loads a HyakVncConfig from a path to a JSON file. If the path is not specified, the default path is used.
+        The default path can be modified with the HYAKVNC_CONFIG_PATH environment variable; otherwise,
+        it  is "~/.config/hyakvnc/config.json". If it cannot load either file, it returns a default configuration.
+
+        :param path: path to JSON file
+        :return: HyakVncConfig loaded from JSON file
+        """
+        paths = []
+        if path:
+            path = Path(path).expanduser()
+            paths += [path]
+        default_path = Path(os.environ.setdefault("HYAKVNC_CONFIG_PATH", "~/.config/hyakvnc/config.json")).expanduser()
+        paths += [default_path]
+        for p in paths:
+            if p.is_file():
+                try:
+                    return HyakVncConfig.from_json(path=p)
+                except Exception as e:
+                    logger.debug(f"Could not load config from {p}: {e}")
+        return HyakVncConfig()
