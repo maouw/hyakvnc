@@ -242,7 +242,7 @@ def print_connection_string(
     terminal_width, terminal_height = shutil.get_terminal_size()
     line_width = max(1, terminal_width - 2)
 
-    os_instructions_v = [f"{v.get('title', '')}:\n\t{v.get('instructions', '')}" for v in strings.values()]
+    os_instructions_v = [f"# {v.get('title', '')}:\n\t{v.get('instructions', '')}" for v in strings.values()]
     print("=" * line_width)
     print("NOTE: The default VNC password is 'password'.\n")
     if len(os_instructions_v) > 0:
