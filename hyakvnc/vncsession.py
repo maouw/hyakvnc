@@ -81,10 +81,14 @@ class HyakVncSession:
     def instance_is_running(self) -> bool:
         running = check_remote_pid_exists(slurm_job_id=self.job_id, pid=self.apptainer_instance_info.pid)
         if not running:
-            logger.debug(f"Instance {self.apptainer_instance_info.name} is not running (pid {self.apptainer_instance_info.pid} not found)")
+            logger.debug(
+                f"Instance {self.apptainer_instance_info.name} is not running (pid {self.apptainer_instance_info.pid} not found)"
+            )
             return False
         else:
-            logger.debug(f"Instance {self.apptainer_instance_info.name} is running (pid {self.apptainer_instance_info.pid} found)")
+            logger.debug(
+                f"Instance {self.apptainer_instance_info.name} is running (pid {self.apptainer_instance_info.pid} found)"
+            )
             return True
 
     def port_is_open(self) -> bool:

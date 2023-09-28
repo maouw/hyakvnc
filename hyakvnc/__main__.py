@@ -135,12 +135,11 @@ def cmd_create(container_path: Union[str, Path], dry_run=False) -> Union[HyakVnc
         cancel_created_jobs()
         exit(1)
 
-
     signal.signal(signal.SIGINT, create_node_signal_handler)
     signal.signal(signal.SIGTSTP, create_node_signal_handler)
-    #signal.signal(signal.SIGKILL, create_node_signal_handler)
-    #signal.signal(signal.SIGTERM, create_node_signal_handler)
-    #signal.signal(signal.SIGABRT, create_node_signal_handler)
+    # signal.signal(signal.SIGKILL, create_node_signal_handler)
+    # signal.signal(signal.SIGTERM, create_node_signal_handler)
+    # signal.signal(signal.SIGABRT, create_node_signal_handler)
 
     job_id = None
     try:
@@ -251,6 +250,7 @@ def print_connection_string(job_id: Optional[int] = None, session: Optional[Hyak
     print("OpenSSH string for VNC session on macOS:")
     print(" " + session.get_openssh_connection_string(login_host=app_config.ssh_host, apple=True))
 
+
 def print_config():
     print(app_config.to_json())
 
@@ -336,6 +336,7 @@ if args.debug:
 log_level = logging.__dict__.get(os.getenv("HYAKVNC_LOG_LEVEL").upper(), logging.INFO)
 
 logger.setLevel(log_level)
+
 
 def main():
     if args.print_version:

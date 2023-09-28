@@ -44,14 +44,18 @@ class HyakVncConfig:
         sbatch_post_timeout: float = 120.0,  # timeout for waiting for sbatch to return
         sbatch_post_poll_interval: float = 1.0,  # poll interval for waiting for sbatch to return
         sbatch_output_path: Optional[str] = None,  # path to write sbatch output to
-        ssh_host: Optional[str] = "klone.hyak.uw.edu",  # intermediate host address between local machine and compute node
+        ssh_host: Optional[
+            str
+        ] = "klone.hyak.uw.edu",  # intermediate host address between local machine and compute node
         account: Optional[str] = None,  # account to use for sbatch jobs | -A, --account, SBATCH_ACCOUNT
         partition: Optional[str] = None,  # partition to use for sbatch jobs | -p, --partition, SBATCH_PARTITION
         cluster: Optional[str] = "klone",  # cluster to use for sbatch jobs |  --clusters, SBATCH_CLUSTERS
         gpus: Optional[str] = None,  # number of gpus to use for sbatch jobs | -G, --gpus, SBATCH_GPUS
         timelimit: Optional[str] = None,  # time limit for sbatch jobs | --time, SBATCH_TIMELIMIT
         mem: Optional[str] = "8G",  # memory limit for sbatch jobs | --mem, SBATCH_MEM
-        cpus: Optional[int] = 4,  # number of cpus to use for sbatch jobs | -c, --cpus-per-task (not settable by env var)
+        cpus: Optional[
+            int
+        ] = 4,  # number of cpus to use for sbatch jobs | -c, --cpus-per-task (not settable by env var)
     ):
         logger.debug("Loading config")
         self.job_prefix = job_prefix
