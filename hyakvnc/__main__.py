@@ -121,7 +121,7 @@ def cmd_create(container_path: Union[str, Path], dry_run=False):
     sbatch_command = SbatchCommand(sbatch_options=sbatch_opts)
 
     if dry_run:
-        print("Would have launched sbatch process with command list:\n\t" + sbatch_command.command_list)
+        print(f"Would have launched sbatch process with command list:\n\t{sbatch_command.command_list}")
         exit(0)
 
     job_id = None
@@ -185,7 +185,7 @@ def cmd_create(container_path: Union[str, Path], dry_run=False):
                 logger.debug(f"Could not get session info for job {job_id}: {e}")
             return None
 
-        sesh = repeat_until(lambda: get_session(), lambda x: x is not None, timeout=app_config.sbatch_post_timeout * 2)
+        sesh = repeat_until(lambda: get_session(), lambda x: x is not None, timeout=app_config.sbatch_post_timeout)
         if not sesh:
             logger.warning(f"No running VNC sessions found for job {job_id}. Canceling and exiting.")
             kill_self()
@@ -195,7 +195,8 @@ def cmd_create(container_path: Union[str, Path], dry_run=False):
                 exit(0)
             else:
                 logger.error("VNC session for SLURM job {job_id} doesn't seem to be alive")
-                kill_self()
+                sesh.stop()
+                exit(1)
     else:
         logger.info(f"Could not find instance file at {instance_file} before timeout")
         kill_self()
