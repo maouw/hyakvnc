@@ -60,8 +60,10 @@ class HyakVncConfig:
         ] = 4,  # number of cpus to use for sbatch jobs | -c, --cpus-per-task (not settable by env var)
     ):
         self.log_path = Path(log_path).expanduser()
-        formatter = logging.Formatter("%(levelname)s: %(asctime)s %(message)s", datefmt="%m/%d/%Y %I:%M:%S %p")
         log_handler_file = logging.FileHandler(self.log_path, mode="a")
+        log_handler_file.setFormatter(
+            logging.Formatter("%(levelname)s: %(asctime)s %(message)s", datefmt="%m/%d/%Y %I:%M:%S %p")
+        )
         log_handler_file.setLevel(logging.DEBUG)
         logger.addHandler(log_handler_file)
         logger.debug("Loading config")

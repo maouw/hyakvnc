@@ -136,7 +136,7 @@ class HyakVncSession:
             + "&& echo Please install one from https://www.realvnc.com/en/connect/download/viewer/ "
             + "or https://tigervnc.org/' "
             + "&& echo 'Alternatively, try entering the address "
-            + "localhost:{port_on_client} into your VNC application'"
+            + f"localhost:{port_on_client} into your VNC application'"
         ]
         apple_cmds_pasted = " || ".join(apple_cmds)
         s = (

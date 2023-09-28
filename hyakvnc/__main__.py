@@ -228,10 +228,13 @@ def print_connection_string(job_id: Optional[int] = None, session: Optional[Hyak
         session = sessions[0]
     assert session is not None, "Could not find session"
 
+    print("=============================================================")
     print("OpenSSH string for VNC session:")
     print("  " + session.get_openssh_connection_string(login_host=app_config.ssh_host, apple=False))
+    print()
     print("OpenSSH string for VNC session on macOS:")
     print(" " + session.get_openssh_connection_string(login_host=app_config.ssh_host, apple=True))
+    print("=============================================================")
 
 
 def print_config():
