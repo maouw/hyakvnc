@@ -132,7 +132,9 @@ def cmd_create(container_path: Union[str, Path], dry_run=False) -> Union[HyakVnc
         logger.error(f"Could not submit sbatch job: {e}")
         kill_self()
 
-    logger.info(f"Launched sbatch job {job_id}. Waiting for job to start running")
+    logger.info(
+        f"Launched sbatch job {job_id} with account {app_config.account} on partition {app_config.partition}. Waiting for job to start running"
+    )
     try:
         wait_for_job_status(
             job_id,
