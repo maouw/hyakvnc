@@ -76,7 +76,7 @@ class ApptainerInstanceInfo:
                             self.instance_metadata_path = candidate_instance_metadata_path
 
     def __str__(self):
-        return json.dumps({k: v for k, v in self.__dict__.items() if v is not None}, sort_keys=False, default=str)
+        return repr(self)
 
     def __repr__(self):
         d = self.__dict__.copy()
