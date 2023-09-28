@@ -158,11 +158,22 @@ class HyakVncSession:
 
     @staticmethod
     def find_running_sessions(app_config: HyakVncConfig, job_id: Optional[int] = None) -> List["HyakVncSession"]:
+        """
+        Finds all running sessions.
+        :param app_config: HyakVncConfig to use
+        :param job_id: job ID to search for
+        :return: list of running sessions
+        :raises LookupError: if no running sessions are found for a specific job
+        """
         outs = list()
-        if job_id:
-            active_jobs = get_job_infos(jobs=[job_id])
-        else:
-            active_jobs = get_job_infos()
+        try:
+            if job_id:
+                active_jobs = get_job_infos(jobs=[job_id])
+            else:
+                active_jobs = get_job_infos()
+        except LookupError as e:
+            logger.debug(f"Could not find any running apptainer instances on job {job_id}")
+            return []
 
         for job_info in active_jobs:
             if job_info.job_name.startswith(app_config.job_prefix):
