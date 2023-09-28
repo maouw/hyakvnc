@@ -170,7 +170,7 @@ class HyakVncSession:
 
     def __str__(self):
         dct = {
-            "apptainer_instance_info": self.apptainer_instance_info.__dict__,
+            "apptainer_instance_info": str(self.apptainer_instance_info),
             "apptainer_instance_prefix": str(self.app_config.apptainer_instance_prefix),
             "vnc_port": self.vnc_port,
             "vnc_log_file_path": str(self.vnc_log_file_path),
