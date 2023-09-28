@@ -110,10 +110,12 @@ def cmd_create(container_path: Union[str, Path], dry_run=False):
     # Template to name the apptainer instance:
     apptainer_instance_name = f"{app_config.apptainer_instance_prefix}-$SLURM_JOB_ID-{container_name}"
     # Command to start the apptainer instance:
-    apptainer_cmd = f"apptainer instance start {container_path} {apptainer_instance_name}"
+    apptainer_cmd = f"apptainer instance start --writable-tmpfs --cleanenv {container_path} {apptainer_instance_name}"
 
     # Command to start the apptainer instance and keep it running:
-    apptainer_cmd_with_rest = apptainer_env_vars_string + f"{apptainer_cmd} && while true; do sleep 10; done"
+    apptainer_cmd_with_rest = (
+        apptainer_env_vars_string + "printenv && " + apptainer_cmd + " && while true; do sleep 10; done"
+    )
 
     # The sbatch wrap functionality allows submitting commands without an sbatch script:t
     sbatch_opts["wrap"] = apptainer_cmd_with_rest
