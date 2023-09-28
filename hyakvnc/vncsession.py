@@ -266,5 +266,5 @@ class ManualConnectionStringGenerator(ConnectionStringGenerator):
     title = "Manual"
 
     def __str__(self):
-        out = f"Configure your SSH client to connect to the **address** '{self.compute_node}' through the **jump host** '{self.login_node}' with local port forwarding **from** port {self.port_on_client} on your machine ('localhost' or 127.0.0.1) **to** port {self.port_on_compute_node} on the remote host. In your VNC client, connect to 'localhost:{self.port_on_client}'."
+        out = f"Configure your SSH client to connect to the address '{self.compute_node}' through the \"jump host\" '{self.login_node}' with local port forwarding from port {self.port_on_client} on your machine ('localhost' or 127.0.0.1) to port {self.port_on_compute_node} on the remote host. In your VNC client, connect to 'localhost:{self.port_on_client}'."
         return out
