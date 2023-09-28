@@ -1,7 +1,7 @@
 import pprint
 import re
 from pathlib import Path
-from typing import Optional, Union, List
+from typing import Optional, Union, List, Dict
 
 from . import logger
 from .apptainer import ApptainerInstanceInfo, apptainer_instance_list, apptainer_instance_stop
@@ -108,49 +108,17 @@ class HyakVncSession:
             logger.debug(f"Session {self.apptainer_instance_info.name} has an open port on {self.vnc_port}")
             return True
 
-    def get_openssh_connection_string(
-        self,
-        login_host: str,
-        port_on_client: Optional[int] = None,
-        debug_connection: Optional[bool] = False,
-        apple: Optional[bool] = False,
-        fork_ssh: Optional[bool] = True,
-    ) -> str:
-        port_on_node = self.vnc_port
-        if not port_on_node:
-            raise RuntimeError("Could not find VNC port")
-        compute_node = self.apptainer_instance_info.instance_host
-        if not compute_node:
-            raise RuntimeError("Could not find compute node")
-        port_on_client = port_on_client or port_on_node
-        if not port_on_client:
-            raise RuntimeError("Could not find port on client")
-        if not self.is_alive():
-            raise RuntimeError("Instance is not alive")
-
-        debug_connection_str = "-v" if debug_connection else ""
-        fork_ssh_str = "-f" if fork_ssh else ""
-        s_base = (
-            f"ssh {debug_connection_str} {fork_ssh_str} -o StrictHostKeyChecking=no "
-            + f"-J {login_host} {compute_node} -L {port_on_client}:localhost:{port_on_node}"
-        )
-
-        apple_bundles = ["com.tigervnc.tigervnc", "com.realvnc.vncviewer"]
-        apple_cmds = [f"open -b {bundle} --args localhost:{port_on_client} 2>/dev/null" for bundle in apple_bundles]
-        apple_cmds += [
-            "echo 'Cannot find an installed VNC viewer on macOS "
-            + "&& echo Please install one from https://www.realvnc.com/en/connect/download/viewer/ "
-            + "or https://tigervnc.org/' "
-            + "&& echo 'Alternatively, try entering the address "
-            + f"localhost:{port_on_client} into your VNC application'"
-        ]
-        apple_cmds_pasted = " || ".join(apple_cmds)
-        s = (
-            f"{s_base} sleep 10; vncviewer localhost:{port_on_client}"
-            if not apple
-            else (f"{s_base} sleep 10; " + apple_cmds_pasted)
-        )
-        return s
+    def get_connection_strings(self, debug: Optional[bool] = False) -> Dict[str, str]:
+        generators = {
+            "linux": LinuxConnectionStringGenerator,
+            "macos": MacOsConnectionStringGenerator,
+            "manual": ManualConnectionStringGenerator,
+        }
+        result = {
+            k: str(g(self.app_config.ssh_host, self.apptainer_instance_info.instance_host, self.vnc_port))
+            for k, g in generators.items()
+        }
+        return result
 
     def stop(self) -> None:
         if not self.job_id:
@@ -210,3 +178,88 @@ class HyakVncSession:
                         else:
                             logger.debug(f"Session {sesh} not alive")
         return outs
+
+
+class ConnectionStringGenerator:
+    title = "Connection instructions"
+
+    def __init__(
+        self,
+        login_node: str,
+        compute_node: str,
+        port_on_compute_node: int,
+        port_on_client: Optional[int] = None,
+        *args,
+        **kwargs,
+    ):
+        self.login_node = login_node
+        self.compute_node = compute_node
+        self.port_on_compute_node = port_on_compute_node
+        self.port_on_client = port_on_client or port_on_compute_node
+
+
+class OpenSSHConnectionStringGenerator(ConnectionStringGenerator):
+    title = "OpenSSH-based clients"
+
+    def __init__(
+        self,
+        login_node: str,
+        compute_node: str,
+        port_on_compute_node: int,
+        port_on_client: Optional[int] = None,
+        debug_connection: Optional[bool] = False,
+        fork_ssh: Optional[bool] = True,
+        strict_host_key_checking: Optional[bool] = False,
+    ):
+        super().__init__(login_node, compute_node, port_on_compute_node, port_on_client)
+        self.debug_connection = debug_connection
+        self.fork_ssh = fork_ssh
+        self.strict_host_key_checking = strict_host_key_checking
+
+    def __str__(self):
+        cmdv = ["ssh"]
+        if self.debug_connection:
+            cmdv += ["-v"]
+        if self.fork_ssh:
+            cmdv += ["-f"]
+        else:
+            cmdv += ["-N"]
+        if self.strict_host_key_checking:
+            cmdv += ["-o", "StrictHostKeyChecking=no"]
+
+        # Set up jump host:
+        cmdv += ["-J", self.login_node, self.compute_node]
+
+        # Set up port forwarding:
+        cmdv += ["-L", f"{self.port_on_client}:localhost:{self.port_on_compute_node}"]
+        return " ".join(cmdv)
+
+
+class LinuxConnectionStringGenerator(OpenSSHConnectionStringGenerator):
+    title = "Linux terminal (bash/zsh)"
+
+    def __str__(self):
+        cmd = super().__str__()
+        return f"{cmd} sleep 10; vncviewer localhost:{self.port_on_client}"
+
+
+class MacOsConnectionStringGenerator(OpenSSHConnectionStringGenerator):
+    title = "macOS Terminal.app (bash/zsh)"
+
+    def __str__(self):
+        cmd = super().__str__()
+        apple_bundles = ["com.tigervnc.tigervnc", "com.realvnc.vncviewer"]
+        apple_cmds = [
+            f"open -b {bundle} --args localhost:{self.port_on_client} 2>/dev/null" for bundle in apple_bundles
+        ]
+        apple_cmds += ["echo 'Cannot find an installed VNC viewer on macOS. Please install TigerVNC or RealVNC."]
+        apple_cmds_pasted = " || ".join(apple_cmds)
+        return f"{cmd} sleep 10; {apple_cmds_pasted}"
+
+
+class ManualConnectionStringGenerator(ConnectionStringGenerator):
+    title = "Manual"
+
+    def __str__(self):
+        out = f"Configure your SSH client to connect to the *address* '{self.compute_node}' through a *jump host* as '{self.login_node}' with local port forwarding from {self.port_on_client} on your machine ('localhost' or 127.0.0.1) to the port {self.port_on_compute_node} on the remote."
+        return out

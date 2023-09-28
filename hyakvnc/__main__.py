@@ -5,6 +5,7 @@ import logging
 import os
 import re
 import shlex
+import shutil
 import signal
 import time
 from datetime import datetime
@@ -216,7 +217,9 @@ def cmd_status():
             )
 
 
-def print_connection_string(job_id: Optional[int] = None, session: Optional[HyakVncSession] = None):
+def print_connection_string(
+    job_id: Optional[int] = None, session: Optional[HyakVncSession] = None, platform: Optional[str] = None
+):
     assert (job_id is not None) ^ (session is not None), "Must specify either a job id or session"
     if job_id:
         sessions = HyakVncSession.find_running_sessions(app_config, job_id=job_id)
@@ -225,13 +228,28 @@ def print_connection_string(job_id: Optional[int] = None, session: Optional[Hyak
         session = sessions[0]
     assert session is not None, "Could not find session"
 
-    print("=============================================================")
-    print("OpenSSH string for VNC session:")
-    print("  " + session.get_openssh_connection_string(login_host=app_config.ssh_host, apple=False))
-    print()
-    print("OpenSSH string for VNC session on macOS:")
-    print(" " + session.get_openssh_connection_string(login_host=app_config.ssh_host, apple=True))
-    print("=============================================================")
+    strings = session.get_connection_strings()
+    if not strings:
+        raise ValueError("Could not find connection strings")
+
+    manual = strings.pop("manual", None)
+    terminal_width, terminal_height = shutil.get_terminal_size()
+    line_width = max(1, terminal_width - 2)
+
+    os_instructions_v = [f"## {v.title}:\n\t{str(v)}" for v in strings.values()]
+    print("=" * line_width)
+    if len(os_instructions_v) > 0:
+        os_instructions = ("\n" + ("-" * (line_width // 2))).join(os_instructions_v)
+        print(f"**Copy and paste the generated command into your terminal depending on your operating system:**\n\n")
+        print(os_instructions)
+        print("\n\n")
+
+    if manual:
+        print("-" * line_width)
+        print(f"**If you need to connect by another method, use the following information:**\n\n")
+        print(str(manual))
+        print("\n")
+    print("=" * line_width)
 
 
 def print_config():
