@@ -187,12 +187,16 @@ class HyakVncSession:
                     if instance.name.startswith(prefix):
                         logger.debug(f"Found apptainer instance {instance.name} with pid {instance.pid}")
                         sesh = HyakVncSession(job_info.job_id, instance, app_config)
-                        sesh.parse_vnc_info()
-                        if sesh.is_alive():
-                            logger.debug(f"Session {sesh} is alive")
-                            outs.append(sesh)
+                        try:
+                            sesh.parse_vnc_info()
+                        except RuntimeError as e:
+                            logger.debug("Could not parse VNC info for session {sesh}: {e}")
                         else:
-                            logger.debug(f"Session {sesh} not alive")
+                            if sesh.is_alive():
+                                logger.debug(f"Session {sesh} is alive")
+                                outs.append(sesh)
+                            else:
+                                logger.debug(f"Session {sesh} not alive")
         return outs
 
 
