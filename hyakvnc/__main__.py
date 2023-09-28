@@ -32,7 +32,7 @@ app_started = datetime.now()
 app_job_ids = []
 
 
-def cmd_create(container_path: Union[str, Path], dry_run=False) -> Union[HyakVncSession, None]:
+def cmd_create(container_path: Union[str, Path], dry_run=False):
     """
     Allocates a compute node, starts a container, and launches a VNC session on it.
     :param container_path: Path to container to run
@@ -172,30 +172,34 @@ def cmd_create(container_path: Union[str, Path], dry_run=False) -> Union[HyakVnc
     logger.info("Waiting for Apptainer instance to start running")
     if wait_for_file(str(instance_file), timeout=app_config.sbatch_post_timeout):
         time.sleep(10)  # sleep to wait for apptainer to actually start vncserver
-        try:
-            sessions = HyakVncSession.find_running_sessions(app_config, job_id=job_id)
-            if len(sessions) == 0:
-                logger.warning("No running VNC jobs found")
-                kill_self()
-            sessions = [s for s in sessions if s.job_id == job_id]
-            if len(sessions) == 0:
-                logger.warning("No running VNC jobs found")
-                kill_self()
-            sesh = sessions[0]
-        except (ValueError, FileNotFoundError) as e:
-            logger.error(f"Could not load instance file: {instance_file} due to error: {e}")
+
+        def get_session():
+            try:
+                sessions = HyakVncSession.find_running_sessions(app_config, job_id=job_id)
+                if sessions:
+                    my_sessions = [s for s in sessions if s.job_id == job_id]
+                    if my_sessions:
+                        return my_sessions[0]
+            except LookupError as e:
+                logger.debug(f"Could not get session info for job {job_id}: {e}")
+            return None
+
+        sesh = repeat_until(
+            lambda x: get_session(), lambda x: x is not None, timeout=app_config.sbatch_post_timeout * 2
+        )
+        if not sesh:
+            logger.warning(f"No running VNC sessions found for job {job_id}. Canceling and exiting.")
             kill_self()
         else:
-            if not sesh.wait_until_alive(timeout=app_config.sbatch_post_timeout):
-                logger.error("Could not find a running VNC session for the instance {sesh}")
+            if sesh.wait_until_alive(timeout=app_config.sbatch_post_timeout):
+                print_connection_string(session=sesh)
+                exit(0)
+            else:
+                logger.error("VNC session for SLURM job {job_id} doesn't seem to be alive")
                 kill_self()
-            print_connection_string(session=sesh)
-            return sesh
     else:
         logger.info(f"Could not find instance file at {instance_file} before timeout")
-        cancel_job(job_id)
-        logger.info(f"Canceled job {job_id} before timeout")
-        return None
+        kill_self()
 
 
 def cmd_stop(job_id: Optional[int] = None, stop_all: bool = False):
@@ -237,7 +241,6 @@ def print_connection_string(
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGSTOP, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
-
 
     assert (job_id is not None) ^ (session is not None), "Must specify either a job id or session"
 

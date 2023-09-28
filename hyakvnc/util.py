@@ -2,16 +2,16 @@ import subprocess
 import sys
 import time
 from pathlib import Path
-from typing import Callable, Optional, Union
+from typing import Callable, Optional, Union, Any
 
 
 def repeat_until(
     func: Callable,
-    condition: Callable[[int], bool],
+    condition: Callable,
     timeout: Optional[float] = None,
     poll_interval: float = 1.0,
     max_iter: Optional[int] = None,
-) -> bool:
+) -> Union[Any, None]:
     begin_time = time.time()
     assert timeout is None or timeout > 0, "Timeout must be greater than zero"
     assert poll_interval > 0, "Poll interval must be greater than zero"
@@ -20,13 +20,13 @@ def repeat_until(
     while time.time() < begin_time + timeout:
         if max_iter:
             if i >= max_iter:
-                return False
+                return None
         res = func()
         if condition(res):
-            return True
+            return res
         time.sleep(poll_interval)
         i += 1
-    return False
+    return None
 
 
 def wait_for_file(path: Union[Path, str], timeout: Optional[float] = None, poll_interval: float = 1.0):
