@@ -60,7 +60,7 @@ class HyakVncSession:
                 logger.debug(f"Could not find vnc log file at {self.vnc_log_file_path}")
             self.vnc_pid_file_path = self.vnc_log_file_path.with_suffix(".pid")
             if not self.vnc_pid_file_path.is_file():
-                logger.debug(f"Could not find vnc log file at {self.vnc_pid_file_path}")
+                logger.debug(f"Could not find vnc PID file at {self.vnc_pid_file_path}")
 
     def vnc_pid_file_exists(self) -> bool:
         if not self.vnc_pid_file_path:
