@@ -1,8 +1,9 @@
 import os
 import subprocess
+import sys
 import time
 from datetime import datetime, timedelta
-from typing import Optional, Union, List, Dict
+from typing import Optional, Union, List, Dict, Tuple
 
 from . import logger
 
@@ -201,7 +202,7 @@ class SlurmJobInfo:
         return SlurmJobInfo(**field_dict)
 
 
-def get_job(
+def get_job_infos(
     jobs: Optional[Union[int, List[int]]] = None, user: Optional[str] = os.getlogin(), cluster: Optional[str] = None
 ) -> Union[SlurmJobInfo, List[SlurmJobInfo], None]:
     """
@@ -210,6 +211,7 @@ def get_job(
     :param jobs: Job(s) to get
     :param cluster: Cluster to get jobs for
     :return: the specified slurm job(s) as a SlurmJobInfo object or list of SlurmJobInfos, or None if no jobs were found
+    :raises LookupError: if the specified job(s) could not be found
     """
     cmds: List[str] = ["squeue", "--noheader"]
     if user:
@@ -230,7 +232,7 @@ def get_job(
     cmds += ["--format", squeue_format_fields]
     res = subprocess.run(cmds, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True, shell=False)
     if res.returncode != 0:
-        raise ValueError(f"Could not get slurm jobs:\n{res.stderr}")
+        raise LookupError(f"Could not get slurm jobs:\n{res.stderr}")
 
     jobs = [SlurmJobInfo.from_squeue_line(line.strip()) for line in res.stdout.splitlines() if line.strip()]
     if job_is_int:
@@ -242,11 +244,33 @@ def get_job(
         return jobs
 
 
-def get_job_status(jobid: int) -> str:
-    cmd = f"squeue -j {jobid} -h -o %T"
+def get_job_info(job_id: int, cluster: Optional[str] = None) -> Union[SlurmJobInfo, None]:
+    """
+    Gets the specified SLURM job.
+    :param job_id: Job to get
+    :param cluster: Cluster to get jobs for
+    :return: the specified slurm job(s) as a SlurmJobInfo object
+    :raises LookupError: if the specified job(s) could not be found
+    """
+    cmds: List[str] = ["squeue", "--noheader"]
+    if cluster:
+        cmds += ["--clusters", cluster]
+    cmds += ["--jobs", str(job_id)]
+    squeue_format_fields = "\t".join([v.get("squeue_field", "") for k, v in SlurmJobInfo.fields.items()])
+    cmds += ["--format", squeue_format_fields]
+    res = subprocess.run(cmds, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True, shell=False)
+    if res.returncode != 0:
+        return None
+    jobs = [SlurmJobInfo.from_squeue_line(line.strip()) for line in res.stdout.splitlines() if line.strip()]
+    job = jobs[0] if len(jobs) > 0 else None
+    return job
+
+
+def get_job_status(job_id: int) -> str:
+    cmd = f"squeue -j {job_id} -h -o %T"
     res = subprocess.run(cmd.split(), stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
     if res.returncode != 0:
-        raise ValueError(f"Could not get status for job {jobid}:\n{res.stderr}")
+        raise RuntimeError(f"Could not get status for job {job_id}:\n{res.stderr}")
     return res.stdout.strip()
 
 
@@ -275,7 +299,7 @@ def wait_for_job_status(
     raise TimeoutError(f"Timed out waiting for job {job_id} to be in one of the following states: {states}")
 
 
-def get_historical_job(
+def get_historical_job_infos(
     after: Optional[Union[datetime, timedelta]] = None,
     before: Optional[Union[datetime, timedelta]] = None,
     job_id: Optional[int] = None,
@@ -290,6 +314,7 @@ def get_historical_job(
     :param user: User to get jobs for
     :param cluster: Cluster to get jobs for
     :return: the slurm jobs since the specified time as a list of SlurmJobInfos
+    :raises LookupError: if the slurm jobs could not be found
     """
     now = datetime.now()
     assert isinstance(after, (datetime, timedelta, type(None))), "after must be a datetime or timedelta or None"
@@ -314,7 +339,7 @@ def get_historical_job(
     cmds += ["--format", sacct_format_fields]
     res = subprocess.run(cmds, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True, shell=False)
     if res.returncode != 0:
-        raise ValueError(f"Could not get slurm jobs via `sacct`:\n{res.stderr}")
+        raise LookupError(f"Could not get slurm jobs via `sacct`:\n{res.stderr}")
 
     jobs = [
         SlurmJobInfo.from_squeue_line(line.strip(), delimiter="|") for line in res.stdout.splitlines() if line.strip()
@@ -322,30 +347,28 @@ def get_historical_job(
     return jobs
 
 
-def cancel_job(
-    jobs: Optional[Union[int, List[int]]] = None, user: Optional[str] = os.getlogin(), cluster: Optional[str] = None
-):
+def cancel_job(job: Optional[int] = None, user: Optional[str] = os.getlogin(), cluster: Optional[str] = None):
     """
     Cancels the specified jobs.
-    :param jobs: Jobs to cancel
+    :param job: Job to cancel
     :param user: User to cancel jobs for
     :param cluster: Cluster to cancel jobs for
     :return: None
+    :raises ValueError: if no job, user, or cluster is specified
+    :raises RuntimeError: if the jobs could not be cancelled
     """
-    assert jobs or user or cluster, "Must specify at least one of jobs, user, or cluster"
+    if job is None and user is None and cluster is None:
+        raise ValueError("Must specify at least one of job, user, or cluster")
     cmds = ["scancel"]
     if user:
         cmds += ["--user", user]
     if cluster:
         cmds += ["--clusters", cluster]
-    if jobs:
-        if isinstance(jobs, int):
-            jobs = [jobs]
-        cmds += [str(x) for x in jobs]
-
+    if job:
+        cmds += [str(job)]
     res = subprocess.run(cmds, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True, shell=False)
     if res.returncode != 0:
-        raise ValueError(f"Could not cancel jobs {jobs}:\n{res.stderr}")
+        raise RuntimeError(f"Could not cancel jobs with commands {cmds}: {res.stderr}")
 
 
 def get_slurm_version_tuple():
@@ -365,3 +388,167 @@ def get_slurm_version_tuple():
         return vt
     except (ValueError, IndexError, TypeError, AssertionError):
         raise RuntimeError(f"Could not parse SLURM version from string {res.stdout}")
+
+
+sbatch_option_info = {
+    "account": "--account",  # [charge job to specified account]
+    "acctg_freq": "--acctg-freq",  # [job accounting and profiling sampling intervals in seconds]
+    "array": "--array",  # [job array index values]
+    "batch": "--batch",  # [specify a list of node constraints]
+    "bb": "--bb",  # [burst buffer specifications]
+    "bbf": "--bbf",  # [burst buffer specification file]
+    "begin": "--begin",  # [defer job until HH:MM MM/DD/YY]
+    "chdir": "--chdir",  # [set working directory for batch script]
+    "cluster_constraint": "--cluster-constraint",  # [specify a list of cluster constraints]
+    "clusters": "--clusters",  # [comma separated list of clusters to issue]
+    "comment": "--comment",  # [arbitrary comment]
+    "constraint": "--constraint",  # [specify a list of constraints]
+    "container": "--container",  # [path to OCI container bundle]
+    "contiguous": "--contiguous",  # [demand a contiguous range of nodes]
+    "core_spec": "--core-spec",  # [count of reserved cores]
+    "cores_per_socket": "--cores-per-socket",  # [number of cores per socket to allocate]
+    "cpu_freq": "--cpu-freq",  # [requested cpu frequency (and governor)]
+    "cpus_per_gpu": "--cpus-per-gpu",  # [number of CPUs required per allocated GPU]
+    "cpus_per_task": "--cpus-per-task",  # [number of cpus required per task]
+    "deadline": "--deadline",  # [remove the job if no ending possible before]
+    "delay_boot": "--delay-boot",  # [delay boot for desired node features]
+    "dependency": "--dependency",  # [defer job until condition on jobid is satisfied]
+    "distribution": "--distribution",  # [distribution method for processes to nodes]
+    "error": "--error",  # [file for batch scripts standard error]
+    "exclude": "--exclude",  # [exclude a specific list of hosts]
+    "exclusive": "--exclusive",  # [allocate nodes in exclusive mode when]
+    "export": "--export",  # [specify environment variables to export]
+    "export_file": "--export-file",  # [specify environment variables file or file]
+    "extra_node_info": "--extra-node-info",  # [combine request of sockets per node]
+    "get_user_env": "--get-user-env",  # [load environment from local cluster]
+    "gid": "--gid",  # [group ID to run job as (user root only)]
+    "gpu_bind": "--gpu-bind",  # [task to gpu binding options]
+    "gpu_freq": "--gpu-freq",  # [frequency and voltage of GPUs]
+    "gpus": "--gpus",  # [count of GPUs required for the job]
+    "gpus_per_node": "--gpus-per-node",  # [number of GPUs required per allocated node]
+    "gpus_per_socket": "--gpus-per-socket",  # [number of GPUs required per allocated socket]
+    "gpus_per_task": "--gpus-per-task",  # [number of GPUs required per spawned task]
+    "gres": "--gres",  # [required generic resources]
+    "gres_flags": "--gres-flags",  # [flags related to GRES management]
+    "hint": "--hint",  # [bind tasks according to application hints]
+    "hold": "--hold",  # [submit job in held state]
+    "ignore_pbs": "--ignore-pbs",  # [ignore #PBS and #BSUB options in the batch script]
+    "input": "--input",  # [file for batch scripts standard input]
+    "job_name": "--job-name",  # [name of job]
+    "kill_on_invalid_dep": "--kill-on-invalid-dep",  # [terminate job if invalid dependency]
+    "licenses": "--licenses",  # [required license, comma separated]
+    "mail_type": "--mail-type",  # [notify on state change: BEGIN, END, FAIL or ALL]
+    "mail_user": "--mail-user",  # [who to send email notification for job state]
+    "mcs_label": "--mcs-label",  # [mcs label if mcs plugin mcs/group is used]
+    "mem": "--mem",  # [minimum amount of real memory]
+    "mem_bind": "--mem-bind",  # [bind memory to locality domains (ldom)]
+    "mem_per_cpu": "--mem-per-cpu",  # [maximum amount of real memory per allocated]
+    "mem_per_cpu,__mem": "--mem-per-cpu,--mem",  # [specified.]
+    "mem_per_gpu": "--mem-per-gpu",  # [real memory required per allocated GPU]
+    "mincpus": "--mincpus",  # [minimum number of logical processors (threads)]
+    "network": "--network",  # [specify information pertaining to the switch or network]
+    "nice": "--nice",  # [decrease scheduling priority by value]
+    "no_kill": "--no-kill",  # [do not kill job on node failure]
+    "no_requeue": "--no-requeue",  # [if set, do not permit the job to be requeued]
+    "nodefile": "--nodefile",  # [request a specific list of hosts]
+    "nodelist": "--nodelist",  # [request a specific list of hosts]
+    "nodes": "--nodes",  # [number of nodes on which to run (N = min\[-max\])]
+    "ntasks": "--ntasks",  # [number of tasks to run]
+    "ntasks_per_core": "--ntasks-per-core",  # [number of tasks to invoke on each core]
+    "ntasks_per_gpu": "--ntasks-per-gpu",  # [number of tasks to invoke for each GPU]
+    "ntasks_per_node": "--ntasks-per-node",  # [number of tasks to invoke on each node]
+    "ntasks_per_socket": "--ntasks-per-socket",  # [number of tasks to invoke on each socket]
+    "open_mode": "--open-mode",  # [ {append|truncate} output and error file}
+    "output": "--output",  # [file for batch scripts standard output]
+    "overcommit": "--overcommit",  # [overcommit resources]
+    "oversubscribe": "--oversubscribe",  # [over subscribe resources with other jobs]
+    "parsable": "--parsable",  # [outputs only the jobid and cluster name (if present)]
+    "partition": "--partition",  # [partition requested]
+    "power": "--power",  # [power management options]
+    "prefer": "--prefer",  # [features desired but not required by job]
+    "priority": "--priority",  # [set the priority of the job to value]
+    "profile": "--profile",  # [enable acct_gather_profile for detailed data]
+    "propagate": "--propagate",  # [propagate all \[or specific list of\] rlimits]
+    "qos": "--qos",  # [quality of service]
+    "quiet": "--quiet",  # [quiet mode (suppress informational messages)]
+    "reboot": "--reboot",  # [reboot compute nodes before starting job]
+    "requeue": "--requeue",  # [if set, permit the job to be requeued]
+    "reservation": "--reservation",  # [allocate resources from named reservation]
+    "signal": "--signal",  # [@time\] send signal when time limit within time seconds]
+    "sockets_per_node": "--sockets-per-node",  # [number of sockets per node to allocate]
+    "spread_job": "--spread-job",  # [spread job across as many nodes as possible]
+    "switches": "--switches",  # [{@max-time-to-wait}]
+    "test_only": "--test-only",  # [validate batch script but do not submit]
+    "thread_spec": "--thread-spec",  # [count of reserved threads]
+    "threads_per_core": "--threads-per-core",  # [number of threads per core to allocate]
+    "time": "--time",  # [time limit]
+    "time_min": "--time-min",  # [minimum time limit (if distinct)]
+    "tmp": "--tmp",  # [minimum amount of temporary disk]
+    "uid": "--uid",  # [user ID to run job as (user root only)]
+    "use_min_nodes": "--use-min-nodes",  # [if a range of node counts is given, prefer the]
+    "verbose": "--verbose",  # [verbose mode (multiple -vs increase verbosity)]
+    "wait": "--wait",  # [wait for completion of submitted job]
+    "wait_all_nodes": "--wait-all-nodes",
+    # [wait for all nodes to be allocated if 0 (default) or wait until all nodes ready (1)]]
+    "wckey": "--wckey",  # [wckey to run job under]
+    "wrap": "--wrap",  # [wrap command string in a sh script and submit]
+}
+
+
+class SbatchCommand:
+    def __init__(
+        self,
+        sbatch_options: Optional[Dict[str, Union[str, None]]] = None,
+        sbatch_args: Optional[List[str]] = None,
+        sbatch_executable: str = "sbatch",
+    ):
+        """
+        :param sbatch_options: sbatch options
+        :param sbatch_args: sbatch arguments
+        :param sbatch_executable: sbatch executable
+        """
+        command_list = [sbatch_executable]
+        for k, v in sbatch_options.items():
+            if k in sbatch_option_info:
+                command_list += [sbatch_option_info[k]]
+            else:
+                raise KeyError(f"Unrecognized sbatch option {k}")
+        if sbatch_args:
+            command_list += sbatch_args
+
+        self.command_list = command_list
+        self.sbatch_executable = sbatch_executable
+        self.sbatch_options = sbatch_options
+        self.sbatch_args = sbatch_args
+
+    def __call__(self, **run_kwargs) -> Tuple[int, Union[str, None]]:
+        """
+        Submits a job to SLURM using sbatch with the list of commands specified in the constructor.
+        :param run_args: args to pass to subprocess.run
+        :param run_kwargs: kwargs to pass to subprocess.run
+        """
+        run_kwargs = run_kwargs or dict()
+        run_kwargs.setdefault("stdout", subprocess.PIPE)
+        run_kwargs.setdefault("stderr", subprocess.PIPE)
+        run_kwargs.setdefault("shell", False)
+        run_kwargs.setdefault("universal_newlines", True)
+        run_kwargs.setdefault("encoding", sys.getdefaultencoding())
+        logger.debug("Running sbatch command with args\n\t{self.command_list}")
+        res = subprocess.run(self.command_list, **run_kwargs)
+        if res.returncode != 0:
+            raise RuntimeError(f"Could not launch sbatch job:\n{res.stderr}")
+        if not res.stdout:
+            raise RuntimeError("No sbatch output")
+        try:
+            out = res.stdout.strip().split()
+            job_id, cluster_name = None, None
+            if len(out) < 1:
+                raise RuntimeError(f"Could not parse jobid from sbatch output: {res.stdout}")
+            job_id = int(out[0])
+            if len(out) > 1:
+                cluster_name = out[1]
+            if len(out) > 2:
+                logger.warning(f"Unexpected sbatch output: {res.stdout}")
+            return job_id, cluster_name
+        except (ValueError, IndexError, TypeError, AttributeError):
+            raise RuntimeError(f"Could not parse jobid from sbatch output: {res.stdout}")

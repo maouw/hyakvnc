@@ -13,9 +13,16 @@ import json
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, Union
-from .vnc_instance import HyakVncInstance
+from .vncsession import HyakVncSession
 from .config import HyakVncConfig
-from .slurmutil import wait_for_job_status, get_job, get_historical_job, cancel_job
+from .slurmutil import (
+    wait_for_job_status,
+    get_job_info,
+    get_job_infos,
+    get_historical_job_infos,
+    cancel_job,
+    SbatchCommand,
+)
 from .util import wait_for_file, repeat_until
 from .version import VERSION
 from . import logger
@@ -32,8 +39,9 @@ app_config = HyakVncConfig()
 if HYAKVNC_CONFIG_PATH.is_file():
     try:
         app_config = HyakVncConfig.from_json(path=HYAKVNC_CONFIG_PATH)
-    except json.JSONDecodeError as e:
-        logger.warning(f"Could not load config from {HYAKVNC_CONFIG_PATH}: {e}")
+    except (json.JSONDecodeError, RuntimeError, ValueError):
+        logger.warning(f"Could not load config from {HYAKVNC_CONFIG_PATH}")
+
 
 # Record time app started in case we need to clean up some jobs:
 app_started = datetime.now()
@@ -42,26 +50,7 @@ app_started = datetime.now()
 app_job_ids = []
 
 
-def check_slurm_version(major_eq=22):
-    # Get SLURM version:
-    res = subprocess.run(
-        ["sinfo", "--version"], universal_newlines=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=False
-    )
-    if res.returncode != 0:
-        raise RuntimeError(f"Could not get SLURM version:\n{res.stderr})")
-    try:
-        v = res.stdout.strip().split(" ")[-1]
-        vi = [int(x) for x in v.split(".")]
-        if vi[0] != major_eq:
-            logger.warning(
-                f"hyakvnc has only been tested on SLURM version {major_eq}.x. Current version is {v}."
-                "You may encounter issues."
-            )
-    except (ValueError, IndexError, TypeError):
-        raise RuntimeError(f"Could not parse SLURM version: { res.stdout}")
-
-
-def cmd_create(container_path: Union[str, Path], dry_run=False) -> Union[HyakVncInstance, None]:
+def cmd_create(container_path: Union[str, Path], dry_run=False) -> Union[HyakVncSession, None]:
     """
     Allocates a compute node, starts a container, and launches a VNC session on it.
     :param container_path: Path to container to run
@@ -86,25 +75,25 @@ def cmd_create(container_path: Union[str, Path], dry_run=False) -> Union[HyakVnc
 
     cmds += ["--output", app_config.sbatch_output_path]
 
-    sbatch_optinfo = {
-        "account": "-A",
-        "partition": "-p",
-        "gpus": "-G",
-        "timelimit": "--time",
-        "mem": "--mem",
-        "cpus": "-c",
+    sbatch_opts = {
+        "parsable": None,
+        "job_name": app_config.job_prefix + "-" + container_name,
+        "output": app_config.sbatch_output_path,
     }
-    sbatch_options = [
-        str(item)
-        for pair in [
-            (sbatch_optinfo[k], v)
-            for k, v in app_config.__dict__.items()
-            if k in sbatch_optinfo.keys() and v is not None
-        ]
-        for item in pair
-    ]
-
-    cmds += sbatch_options
+    if app_config.account:
+        sbatch_opts["account"] = app_config.account
+    if app_config.partition:
+        sbatch_opts["partition"] = app_config.partition
+    if app_config.cluster:
+        sbatch_opts["clusters"] = app_config.cluster
+    if app_config.gpus:
+        sbatch_opts["gpus"] = app_config.gpus
+    if app_config.timelimit:
+        sbatch_opts["time"] = app_config.timelimit
+    if app_config.mem:
+        sbatch_opts["mem"] = app_config.mem
+    if app_config.cpus:
+        sbatch_opts["cpus_per_task"] = app_config.cpus
 
     # Set up the environment variables to pass to Apptainer:
     apptainer_env_vars_quoted = [f"{k}={shlex.quote(v)}" for k, v in app_config.apptainer_env_vars.items()]
@@ -112,7 +101,6 @@ def cmd_create(container_path: Union[str, Path], dry_run=False) -> Union[HyakVnc
 
     # Template to name the apptainer instance:
     apptainer_instance_name = f"{app_config.apptainer_instance_prefix}-$SLURM_JOB_ID-{container_name}"
-
     # Command to start the apptainer instance:
     apptainer_cmd = f"apptainer instance start {container_path} {apptainer_instance_name}"
 
@@ -120,46 +108,48 @@ def cmd_create(container_path: Union[str, Path], dry_run=False) -> Union[HyakVnc
     apptainer_cmd_with_rest = apptainer_env_vars_string + f"{apptainer_cmd} && while true; do sleep 10; done"
 
     # The sbatch wrap functionality allows submitting commands without an sbatch script:t
-    cmds += ["--wrap", apptainer_cmd_with_rest]
+    sbatch_opts["wrap"] = apptainer_cmd_with_rest
 
-    # Launch sbatch process:
-    logger.info("Launching sbatch process with command:\n" + repr(cmds))
+    sbatch_command = SbatchCommand(sbatch_options=sbatch_opts)
 
     if dry_run:
-        print(f"Would have run: {' '.join(cmds)}")
-        return
+        print("Would have launched sbatch process with command list:\n\t" + sbatch_command.command_list)
+        exit(0)
+
+    def kill_self(sig=signal.SIGSTOP):
+        os.kill(os.getpid(), sig)
+
+    def cancel_created_jobs():
+        for x in app_job_ids:
+            logger.info(f"Cancelling job {x}")
+            try:
+                cancel_job(x)
+            except (ValueError, RuntimeError):
+                logger.error(f"Could not cancel job {x}")
+            else:
+                logger.info(f"Cancelled job {x}")
 
     def create_node_signal_handler(signal_number, frame):
         """
         Pass SIGINT to subprocess and exit program.
         """
         logger.debug(f"hyakvnc create: Caught signal: {signal_number}. Cancelling jobs: {app_job_ids}")
-        for x in app_job_ids:
-            logger.info(f"Cancelling job {x}")
-            cancel_job(x)
-            logger.info(f"Cancelled job {x}")
+        cancel_created_jobs()
         exit(1)
 
     # Stop allocation when SIGINT (CTRL+C) and SIGTSTP (CTRL+Z) signals are detected.
-    signal.signal(signal.SIGINT, create_node_signal_handler)
-    signal.signal(signal.SIGTSTP, create_node_signal_handler)
+    for s in [signal.SIGINT, signal.SIGTSTP, signal.SIGKILL, signal.SIGTERM, signal.SIGABRT]:
+        signal.signal(s, create_node_signal_handler)
 
-    res = subprocess.run(cmds, universal_newlines=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=False)
-    if res.returncode != 0:
-        raise RuntimeError(f"Could not launch sbatch job:\n{res.stderr}")
-
-    if not res.stdout:
-        raise RuntimeError("No sbatch output")
-
+    job_id = None
     try:
-        job_id = int(res.stdout.strip().split(";")[0])
+        job_id, job_cluster = sbatch_command()
         app_job_ids.append(job_id)
-    except (ValueError, IndexError, TypeError):
-        raise RuntimeError(f"Could not parse jobid from sbatch output: {res.stdout}")
+    except RuntimeError as e:
+        logger.error(f"Could not submit sbatch job: {e}")
+        kill_self()
 
-    logger.info(f"Launched sbatch job {job_id}")
-    logger.info("Waiting for job to start running")
-
+    logger.info(f"Launched sbatch job {job_id}. Waiting for job to start running")
     try:
         wait_for_job_status(
             job_id,
@@ -168,27 +158,22 @@ def cmd_create(container_path: Union[str, Path], dry_run=False) -> Union[HyakVnc
             poll_interval=app_config.sbatch_post_poll_interval,
         )
     except TimeoutError:
-        job = get_historical_job(job_id=job_id)
-        state = "unknown"
-        if job and len(job) > 0:
-            job = job[0]
-            state = job.state
-        raise TimeoutError(
-            f"Job {job_id} ({state}) did not start running within {app_config.sbatch_post_timeout} seconds."
-        )
+        logger.error(f"Job {job_id} did not start running within {app_config.sbatch_post_timeout} seconds")
+        try:
+            job = get_historical_job_infos(job_id=job_id)
+        except (LookupError, RuntimeError) as e:
+            logger.error(f"Could not get historucal info for job {job_id}: {e}")
+        else:
+            if job and len(job) > 0:
+                job = job[0]
+                state = job.state
+                logger.warning(f"Job {job_id} was last in state ({state})")
+        finally:
+            cancel_created_jobs()
+            kill_self()
 
-    job = get_job(jobs=job_id)
-    if not job:
-        job = get_historical_job(job_id=job_id)
-        state = "unknown"
-        if job and len(job) > 0:
-            job = job[0]
-            state = job.state
-        raise RuntimeError(f"Job {job_id} is not running. Last state was {state}")
-
-    logger.info(f"Job {job_id} is now running")
-
-    real_instance_name = f"{app_config.apptainer_instance_prefix}-{job.job_id}-{container_name}"
+    real_instance_name = f"{app_config.apptainer_instance_prefix}-{job_id}-{container_name}"
+    job = get_job_info(job_id=job_id)
     instance_file = (
         Path(app_config.apptainer_config_dir)
         / "instances"
@@ -202,20 +187,21 @@ def cmd_create(container_path: Union[str, Path], dry_run=False) -> Union[HyakVnc
     logger.info("Waiting for Apptainer instance to start running")
     if wait_for_file(str(instance_file), timeout=app_config.sbatch_post_timeout):
         time.sleep(10)  # sleep to wait for apptainer to actually start vncserver <FIXME>
-
-        instance = HyakVncInstance.load_instance(
-            instance_prefix=app_config.apptainer_instance_prefix, path=instance_file, read_apptainer_config=False
-        )
-        if not repeat_until(lambda: instance.is_alive(), lambda alive: alive, timeout=app_config.sbatch_post_timeout):
-            logger.info("Could not find a running VNC session for the instance {instance}")
-            instance.cancel()
-            raise RuntimeError(f"Could not find a running VNC session for the instance {instance}")
+        try:
+            sesh = HyakVncSession.load_instance_from_path(job_id, app_config, instance_file)
+        except (ValueError, FileNotFoundError) as e:
+            logger.error(f"Could not load instance file: {instance_file} due to error: {e}")
+            kill_self()
         else:
+            logger.debug(f"Found instance file at {instance_file}")
+            if not repeat_until(lambda: sesh.is_alive(), lambda alive: alive, timeout=app_config.sbatch_post_timeout):
+                logger.error("Could not find a running VNC session for the instance {sesh}")
+                kill_self()
             print("Connection string for VNC session on Linux-compatible shell:")
-            print("  " + instance.get_openssh_connection_string(login_host=app_config.ssh_host, apple=False))
+            print("  " + sesh.get_openssh_connection_string(login_host=app_config.ssh_host, apple=False))
             print("Connection string for VNC session on macOS:")
-            print(" " + instance.get_openssh_connection_string(login_host=app_config.ssh_host, apple=True))
-            return instance
+            print(" " + sesh.get_openssh_connection_string(login_host=app_config.ssh_host, apple=True))
+            return sesh
     else:
         logger.info(f"Could not find instance file at {instance_file} before timeout")
         cancel_job(job_id)
@@ -225,51 +211,39 @@ def cmd_create(container_path: Union[str, Path], dry_run=False) -> Union[HyakVnc
 
 def cmd_stop(job_id: Optional[int] = None, stop_all: bool = False):
     assert (job_id is not None) ^ (stop_all), "Must specify either a job id or stop all"
-    if stop_all:
-        vnc_instances = HyakVncInstance.find_running_instances(
-            instance_prefix=app_config.apptainer_instance_prefix, apptainer_config_dir=app_config.apptainer_config_dir
-        )
-        for instance in vnc_instances:
-            instance.cancel()
-            print(f"Canceled job {instance.job_id}")
-    else:
-        cancel_job(job_id)
-        print(f"Canceled job {job_id}")
+    vnc_sessions = HyakVncSession.find_running_sessions(app_config, job_id=job_id)
+    for sesh in vnc_sessions:
+        sesh.stop()
+        print(f"Canceled job {sesh.job_id}")
 
 
 def cmd_status():
     logger.info("Finding running VNC jobs...")
-    vnc_instances = HyakVncInstance.find_running_instances(
-        instance_prefix=app_config.apptainer_instance_prefix, apptainer_config_dir=app_config.apptainer_config_dir
-    )
+    vnc_instances = HyakVncSession.find_running_sessions(app_config)
     if len(vnc_instances) == 0:
         logger.info("No running VNC jobs found")
-
     else:
         logger.info(f"Found {len(vnc_instances)} running VNC jobs:")
         for instance in vnc_instances:
             print(
-                f"Apptainer instance {instance.apptainer_instance_info.instance_name} running as",
+                f"Apptainer instance {instance.apptainer_instance_info.name} running as",
                 f"SLURM job {instance.job_id} with VNC on port {instance.vnc_port}",
             )
 
 
-def print_connection_string(job_id: Optional[int] = None, instance: Optional[HyakVncInstance] = None):
-    assert (job_id is not None) ^ (instance is not None), "Must specify either a job id or instance"
+def print_connection_string(job_id: Optional[int] = None, session: Optional[HyakVncSession] = None):
+    assert (job_id is not None) ^ (session is not None), "Must specify either a job id or session"
     if job_id:
-        instances = HyakVncInstance.find_running_instances(
-            instance_prefix=app_config.apptainer_instance_prefix, apptainer_config_dir=app_config.apptainer_config_dir
-        )
-        instance = [instance for instance in instances if instance.job_id == job_id]
-        if len(instance) == 0:
-            raise ValueError(f"Could not find instance with job id {job_id}")
-        instance = instance[0]
-    assert instance is not None, "Could not find instance"
+        sessions = HyakVncSession.find_running_sessions(app_config, job_id=job_id)
+        if len(sessions) == 0:
+            raise ValueError(f"Could not find session with job id {job_id}")
+        session = sessions[0]
+    assert session is not None, "Could not find session"
 
     print("OpenSSH string for VNC session:")
-    print("  " + instance.get_openssh_connection_string(login_host=app_config.ssh_host, apple=False))
+    print("  " + session.get_openssh_connection_string(login_host=app_config.ssh_host, apple=False))
     print("OpenSSH string for VNC session on macOS:")
-    print(" " + instance.get_openssh_connection_string(login_host=app_config.ssh_host, apple=True))
+    print(" " + session.get_openssh_connection_string(login_host=app_config.ssh_host, apple=True))
 
 
 def create_arg_parser():

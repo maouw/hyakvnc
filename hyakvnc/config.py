@@ -127,11 +127,11 @@ class HyakVncConfig:
         :return: HyakVncConfig loaded from JSON file
         """
         if not Path(path).is_file():
-            raise ValueError(f"Invalid path to configuration file: {path}")
+            raise RuntimeError(f"Invalid path to configuration file: {path}")
 
         try:
             with open(path, "r") as f:
                 contents = json.load(f)
                 return HyakVncConfig(**contents)
         except (json.JSONDecodeError, ValueError, TypeError) as e:
-            raise ValueError(f"Invalid JSON in configuration file: {path}") from e
+            raise RuntimeError(f"Invalid JSON in configuration file: {path}") from e

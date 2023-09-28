@@ -1,8 +1,8 @@
 import subprocess
+import sys
 import time
 from pathlib import Path
 from typing import Callable, Optional, Union
-from . import logger
 
 
 def repeat_until(
@@ -25,23 +25,61 @@ def wait_for_file(path: Union[Path, str], timeout: Optional[float] = None, poll_
     Waits for the specified file to be present.
     """
     path = Path(path)
-    logger.debug(f"Waiting for file `{path}` to exist")
     return repeat_until(lambda: path.exists(), lambda exists: exists, timeout=timeout, poll_interval=poll_interval)
 
 
-def check_remote_pid_exists_and_port_open(host: str, pid: int, port: int) -> bool:
-    cmd = f"ssh {host} ps -p {pid} && nc -z localhost {port}".split()
-    res = subprocess.run(cmd, shell=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+def check_remote_pid_exists_and_port_open(
+    pid: int, port: int, slurm_job_id: Optional[int] = None, host: Optional[str] = None
+) -> bool:
+    cmdv = list()
+    if slurm_job_id:
+        cmdv += ["srun", "--jobid", str(slurm_job_id)]
+    elif host:
+        cmdv += ["ssh", host]
+
+    cmdv += ["ps", "--no-headers", "-p", str(pid), "&&", "nc", "-z", "localhost", str(port)]
+    res = subprocess.run(
+        cmdv,
+        shell=False,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        universal_newlines=True,
+        encoding=sys.getdefaultencoding(),
+    )
     return res.returncode == 0
 
 
-def check_remote_pid_exists(host: str, pid: int) -> bool:
-    cmd = f"ssh {host} ps -p {pid}".split()
-    res = subprocess.run(cmd, shell=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+def check_remote_pid_exists(pid: int, slurm_job_id: Optional[int] = None, host: Optional[str] = None) -> bool:
+    cmdv = list()
+    if slurm_job_id:
+        cmdv += ["srun", "--jobid", str(slurm_job_id)]
+    elif host:
+        cmdv += ["ssh", host]
+    cmdv += ["ps", "--no-headers", "-p", str(pid)]
+    res = subprocess.run(
+        cmdv,
+        shell=False,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        universal_newlines=True,
+        encoding=sys.getdefaultencoding(),
+    )
     return res.returncode == 0
 
 
-def check_remote_port_open(host: str, port: int) -> bool:
-    cmd = f"ssh {host} nc -z localhost {port}".split()
-    res = subprocess.run(cmd, shell=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+def check_remote_port_open(port: int, slurm_job_id: Optional[int] = None, host: Optional[str] = None) -> bool:
+    cmdv = list()
+    if slurm_job_id:
+        cmdv += ["srun", "--jobid", str(slurm_job_id)]
+    elif host:
+        cmdv += ["ssh", host]
+    cmdv += ["nc", "-z", "localhost", str(port)]
+    res = subprocess.run(
+        cmdv,
+        shell=False,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        universal_newlines=True,
+        encoding=sys.getdefaultencoding(),
+    )
     return res.returncode == 0
