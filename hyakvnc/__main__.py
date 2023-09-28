@@ -39,6 +39,32 @@ def cmd_create(container_path: Union[str, Path], dry_run=False) -> Union[HyakVnc
     :param dry_run: Whether to do a dry run (do not actually submit job)
     :return: None
     """
+
+    def kill_self(sig=signal.SIGSTOP):
+        os.kill(os.getpid(), sig)
+
+    def cancel_created_jobs():
+        for x in app_job_ids:
+            logger.info(f"Cancelling job {x}")
+            try:
+                cancel_job(x)
+            except (ValueError, RuntimeError):
+                logger.error(f"Could not cancel job {x}")
+            else:
+                logger.info(f"Cancelled job {x}")
+
+    def create_node_signal_handler(signal_number, frame):
+        """
+        Pass SIGINT to subprocess and exit program.
+        """
+        logger.debug(f"hyakvnc create: Caught signal: {signal_number}. Cancelling jobs: {app_job_ids}")
+        cancel_created_jobs()
+        exit(1)
+
+    signal.signal(signal.SIGINT, create_node_signal_handler)
+    signal.signal(signal.SIGTSTP, create_node_signal_handler)
+    signal.signal(signal.SIGTERM, create_node_signal_handler)
+
     container_path = Path(container_path)
     container_name = container_path.stem
 
@@ -97,31 +123,6 @@ def cmd_create(container_path: Union[str, Path], dry_run=False) -> Union[HyakVnc
     if dry_run:
         print("Would have launched sbatch process with command list:\n\t" + sbatch_command.command_list)
         exit(0)
-
-    def kill_self(sig=signal.SIGSTOP):
-        os.kill(os.getpid(), sig)
-
-    def cancel_created_jobs():
-        for x in app_job_ids:
-            logger.info(f"Cancelling job {x}")
-            try:
-                cancel_job(x)
-            except (ValueError, RuntimeError):
-                logger.error(f"Could not cancel job {x}")
-            else:
-                logger.info(f"Cancelled job {x}")
-
-    def create_node_signal_handler(signal_number, frame):
-        """
-        Pass SIGINT to subprocess and exit program.
-        """
-        logger.debug(f"hyakvnc create: Caught signal: {signal_number}. Cancelling jobs: {app_job_ids}")
-        cancel_created_jobs()
-        exit(1)
-
-    signal.signal(signal.SIGINT, create_node_signal_handler)
-    signal.signal(signal.SIGTSTP, create_node_signal_handler)
-    signal.signal(signal.SIGTERM, create_node_signal_handler)
 
     job_id = None
     try:
@@ -204,14 +205,14 @@ def cmd_stop(job_id: Optional[int] = None, stop_all: bool = False):
 
 
 def cmd_status():
-    logger.info("Finding running VNC jobs...")
-
     def signal_handler(signal_number, frame):
         exit(1)
 
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTSTP, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
+    logger.info("Finding running VNC jobs...")
+
     vnc_sessions = HyakVncSession.find_running_sessions(app_config)
     if len(vnc_sessions) == 0:
         logger.info("No running VNC jobs found")
@@ -227,14 +228,15 @@ def cmd_status():
 def print_connection_string(
     job_id: Optional[int] = None, session: Optional[HyakVncSession] = None, platform: Optional[str] = None
 ):
-    assert (job_id is not None) ^ (session is not None), "Must specify either a job id or session"
-
     def signal_handler(signal_number, frame):
         exit(1)
 
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTSTP, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
+
+    assert (job_id is not None) ^ (session is not None), "Must specify either a job id or session"
+
     if job_id:
         sessions = HyakVncSession.find_running_sessions(app_config, job_id=job_id)
         if len(sessions) == 0:
