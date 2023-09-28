@@ -63,8 +63,6 @@ def cmd_create(container_path: Union[str, Path], dry_run=False) -> Union[HyakVnc
 
     signal.signal(signal.SIGINT, create_node_signal_handler)
     signal.signal(signal.SIGTSTP, create_node_signal_handler)
-    signal.signal(signal.SIGTERM, create_node_signal_handler)
-
     container_path = Path(container_path)
     container_name = container_path.stem
 
@@ -212,7 +210,6 @@ def cmd_status():
 
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTSTP, signal_handler)
-    signal.signal(signal.SIGTERM, signal_handler)
     logger.info("Finding running VNC jobs...")
 
     vnc_sessions = HyakVncSession.find_running_sessions(app_config)
@@ -235,7 +232,6 @@ def print_connection_string(
 
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTSTP, signal_handler)
-    signal.signal(signal.SIGTERM, signal_handler)
 
     assert (job_id is not None) ^ (session is not None), "Must specify either a job id or session"
 
