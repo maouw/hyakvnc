@@ -244,10 +244,10 @@ def print_connection_string(
 
     os_instructions_v = [f"{v.get('title', '')}:\n\t{v.get('instructions', '')}" for v in strings.values()]
     print("=" * line_width)
-    print("NOTE: The default VNC password is 'password'")
+    print("NOTE: The default VNC password is 'password'.\n")
     if len(os_instructions_v) > 0:
         os_instructions = ("\n\n" + ("-" * (line_width // 2)) + "\n\n").join(os_instructions_v)
-        print(f"Copy and paste the generated command into your terminal depending on your operating system:")
+        print(f"Copy and paste the generated command into your terminal depending on your operating system.")
         print()
         print(os_instructions)
         print("\n")
