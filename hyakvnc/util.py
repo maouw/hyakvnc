@@ -6,17 +6,26 @@ from typing import Callable, Optional, Union
 
 
 def repeat_until(
-    func: Callable, condition: Callable[[int], bool], timeout: Optional[float] = None, poll_interval: float = 1.0
-):
+    func: Callable,
+    condition: Callable[[int], bool],
+    timeout: Optional[float] = None,
+    poll_interval: float = 1.0,
+    max_iter: Optional[int] = None,
+) -> bool:
     begin_time = time.time()
     assert timeout is None or timeout > 0, "Timeout must be greater than zero"
     assert poll_interval > 0, "Poll interval must be greater than zero"
     timeout = timeout or -1.0
+    i = 0
     while time.time() < begin_time + timeout:
+        if max_iter:
+            if i >= max_iter:
+                return False
         res = func()
         if condition(res):
-            return res
+            return True
         time.sleep(poll_interval)
+        i += 1
     return False
 
 

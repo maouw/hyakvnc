@@ -169,7 +169,7 @@ def cmd_create(container_path: Union[str, Path], dry_run=False) -> Union[HyakVnc
 
     logger.info("Waiting for Apptainer instance to start running")
     if wait_for_file(str(instance_file), timeout=app_config.sbatch_post_timeout):
-        time.sleep(10)  # sleep to wait for apptainer to actually start vncserver <FIXME>
+        time.sleep(10)  # sleep to wait for apptainer to actually start vncserver
         try:
             sessions = HyakVncSession.find_running_sessions(app_config, job_id=job_id)
             if len(sessions) == 0:
@@ -182,13 +182,10 @@ def cmd_create(container_path: Union[str, Path], dry_run=False) -> Union[HyakVnc
             logger.error(f"Could not load instance file: {instance_file} due to error: {e}")
             kill_self()
         else:
-            if not repeat_until(lambda: sesh.is_alive(), lambda alive: alive, timeout=app_config.sbatch_post_timeout):
+            if not sesh.wait_until_alive(timeout=app_config.sbatch_post_timeout):
                 logger.error("Could not find a running VNC session for the instance {sesh}")
                 kill_self()
-            print("Connection string for VNC session on Linux-compatible shell:")
-            print("  " + sesh.get_openssh_connection_string(login_host=app_config.ssh_host, apple=False))
-            print("Connection string for VNC session on macOS:")
-            print(" " + sesh.get_openssh_connection_string(login_host=app_config.ssh_host, apple=True))
+            print_connection_string(session=sesh)
             return sesh
     else:
         logger.info(f"Could not find instance file at {instance_file} before timeout")

@@ -7,7 +7,7 @@ from . import logger
 from .apptainer import ApptainerInstanceInfo, apptainer_instance_list, apptainer_instance_stop
 from .config import HyakVncConfig
 from .slurmutil import get_job_infos, cancel_job
-from .util import check_remote_pid_exists_and_port_open, check_remote_pid_exists, check_remote_port_open
+from .util import check_remote_pid_exists_and_port_open, check_remote_pid_exists, check_remote_port_open, repeat_until
 
 
 class HyakVncSession:
@@ -76,9 +76,9 @@ class HyakVncSession:
         return False
 
     def is_alive(self) -> bool:
-        return self.instance_is_running() and self.port_is_open()
+        return self.apptainer_instance_is_running() and self.port_is_open()
 
-    def instance_is_running(self) -> bool:
+    def apptainer_instance_is_running(self) -> bool:
         running = check_remote_pid_exists(slurm_job_id=self.job_id, pid=self.apptainer_instance_info.pid)
         if not running:
             logger.debug(
@@ -91,15 +91,21 @@ class HyakVncSession:
             )
             return True
 
+    def wait_until_alive(self, timeout: Optional[float] = 300.0, poll_interval: float = 1.0):
+        """
+        Waits until the session is alive.
+        """
+        return repeat_until(lambda: self.is_alive(), lambda alive: alive, timeout=timeout, poll_interval=poll_interval)
+
     def port_is_open(self) -> bool:
         if not self.vnc_port:
-            logger.debug(f"Could not find VNC port for instance {self.apptainer_instance_info.name}. Port is not open.")
+            logger.debug(f"Could not find VNC port for session {self.apptainer_instance_info.name}. Port is not open.")
             return False
         if not check_remote_port_open(slurm_job_id=self.job_id, port=self.vnc_port):
-            logger.debug(f"Instance {self.apptainer_instance_info.name} does not have an open port on {self.vnc_port}")
+            logger.debug(f"Session {self.apptainer_instance_info.name} does not have an open port on {self.vnc_port}")
             return False
         else:
-            logger.debug(f"Instance {self.apptainer_instance_info.name} has an open port on {self.vnc_port}")
+            logger.debug(f"Session {self.apptainer_instance_info.name} has an open port on {self.vnc_port}")
             return True
 
     def get_openssh_connection_string(
@@ -173,31 +179,6 @@ class HyakVncSession:
         }
         s = pprint.pformat(dct, indent=2, width=120)
         return f"{self.__class__.__name__}:\n{s}"
-
-    @staticmethod
-    def load_instance_from_path(
-        job_id: int,
-        app_config: HyakVncConfig,
-        path: Union[Path, str],
-    ) -> Union["HyakVncSession", None]:
-        """
-        Loads a HyakVncSession from an ApptainerInstanceInfo file.
-        :param job_id: SLURM job ID of the instance
-        :param app_config: HyakVncConfig for the instance
-        :param path: path to ApptainerInstanceInfo file
-        :return: HyakVncSession
-        :raises ValueError: if instance_name and path are both None
-        :raises FileNotFoundError: if apptainer config dir does not exist
-        """
-        try:
-            apptainer_instance_info = ApptainerInstanceInfo.from_json(Path(path).expanduser())
-            hyakvnc_session = HyakVncSession(
-                job_id=job_id, apptainer_instance_info=apptainer_instance_info, app_config=app_config
-            )
-            return hyakvnc_session
-        except (ValueError, FileNotFoundError) as e:
-            logger.warning(f"Could not load instance from {path} due to {e}")
-        return None
 
     @staticmethod
     def find_running_sessions(app_config: HyakVncConfig, job_id: Optional[int] = None) -> List["HyakVncSession"]:
