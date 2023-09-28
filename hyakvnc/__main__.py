@@ -175,9 +175,11 @@ def cmd_create(container_path: Union[str, Path], dry_run=False) -> Union[HyakVnc
             sessions = HyakVncSession.find_running_sessions(app_config, job_id=job_id)
             if len(sessions) == 0:
                 logger.warning("No running VNC jobs found")
+                kill_self()
             sessions = [s for s in sessions if s.job_id == job_id]
             if len(sessions) == 0:
                 logger.warning("No running VNC jobs found")
+                kill_self()
             sesh = sessions[0]
         except (ValueError, FileNotFoundError) as e:
             logger.error(f"Could not load instance file: {instance_file} due to error: {e}")
@@ -192,7 +194,7 @@ def cmd_create(container_path: Union[str, Path], dry_run=False) -> Union[HyakVnc
         logger.info(f"Could not find instance file at {instance_file} before timeout")
         cancel_job(job_id)
         logger.info(f"Canceled job {job_id} before timeout")
-        raise TimeoutError(f"Could not find instance file at {instance_file} before timeout")
+        return None
 
 
 def cmd_stop(job_id: Optional[int] = None, stop_all: bool = False):
@@ -224,13 +226,17 @@ def print_connection_string(
     if job_id:
         sessions = HyakVncSession.find_running_sessions(app_config, job_id=job_id)
         if len(sessions) == 0:
-            raise ValueError(f"Could not find session with job id {job_id}")
+            logger.error(f"Could not find session with job id {job_id}")
+            return None
         session = sessions[0]
-    assert session is not None, "Could not find session"
+        if not sessions:
+            logger.error(f"Could not find session with job id {job_id}")
+            return None
 
     strings = session.get_connection_strings()
     if not strings:
-        raise ValueError("Could not find connection strings")
+        logger.error("Could not find connection strings for job id {job_id}")
+        return None
 
     manual = strings.pop("manual", None)
     terminal_width, terminal_height = shutil.get_terminal_size()
