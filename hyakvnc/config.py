@@ -61,9 +61,7 @@ class HyakVncConfig:
     ):
         self.log_path = str(Path(log_path).expanduser())
         log_handler_file = logging.FileHandler(self.log_path, mode="a")
-        log_handler_file.setFormatter(
-            logging.Formatter("%(levelname)s: %(asctime)s %(message)s", datefmt="%m/%d/%Y %I:%M:%S %p")
-        )
+        log_handler_file.setFormatter(logging.Formatter("%(levelname)s: %(asctime)s %(message)s"))
         log_handler_file.setLevel(logging.DEBUG)
         logger.addHandler(log_handler_file)
         logger.debug("Loading config")

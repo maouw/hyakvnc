@@ -316,10 +316,10 @@ if args.debug:
     os.environ["HYAKVNC_LOG_LEVEL"] = "DEBUG"
 
 log_level = logging.__dict__.get(os.getenv("HYAKVNC_LOG_LEVEL").upper(), logging.INFO)
+
 log_handler_console = logging.StreamHandler()
 log_handler_console.setFormatter(logging.Formatter("%(levelname)s - %(message)s"))
 log_handler_console.setLevel(log_level)
-
 logger.addHandler(log_handler_console)
 app_config = HyakVncConfig.load_app_config()
 
