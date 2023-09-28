@@ -198,9 +198,9 @@ class HyakVncSession:
                 if not running_instances:
                     logger.debug(f"Could not find any running apptainer instances on job {job_info.job_id}")
                     return outs
-
+                prefix = app_config.apptainer_instance_prefix + "-" + str(job_info.job_id) + "-"
                 for instance in running_instances:
-                    if instance.name.startswith(app_config.apptainer_instance_prefix):
+                    if instance.name.startswith(prefix):
                         logger.debug(f"Found apptainer instance {instance.name} with pid {instance.pid}")
                         sesh = HyakVncSession(job_info.job_id, instance, app_config)
                         sesh.parse_vnc_info()
