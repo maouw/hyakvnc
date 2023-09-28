@@ -123,7 +123,7 @@ def cmd_create(container_path: Union[str, Path], dry_run=False):
     sbatch_command = SbatchCommand(sbatch_options=sbatch_opts)
 
     if dry_run:
-        print(f"Would have launched sbatch process with command list:\n\t{sbatch_command.command_list}")
+        print(f"Would have launched sbatch process with command:\n\t{' '.join(sbatch_command.command_list)}")
         exit(0)
 
     job_id = None
