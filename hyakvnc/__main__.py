@@ -121,9 +121,8 @@ def cmd_create(container_path: Union[str, Path], dry_run=False) -> Union[HyakVnc
 
     signal.signal(signal.SIGINT, create_node_signal_handler)
     signal.signal(signal.SIGTSTP, create_node_signal_handler)
-    # signal.signal(signal.SIGKILL, create_node_signal_handler)
-    # signal.signal(signal.SIGTERM, create_node_signal_handler)
-    # signal.signal(signal.SIGABRT, create_node_signal_handler)
+    signal.signal(signal.SIGKILL, create_node_signal_handler)
+    signal.signal(signal.SIGTERM, create_node_signal_handler)
 
     job_id = None
     try:
@@ -207,6 +206,14 @@ def cmd_stop(job_id: Optional[int] = None, stop_all: bool = False):
 
 def cmd_status():
     logger.info("Finding running VNC jobs...")
+
+    def signal_handler(signal_number, frame):
+        exit(1)
+
+    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTSTP, signal_handler)
+    signal.signal(signal.SIGKILL, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
     vnc_sessions = HyakVncSession.find_running_sessions(app_config)
     if len(vnc_sessions) == 0:
         logger.info("No running VNC jobs found")
@@ -223,6 +230,14 @@ def print_connection_string(
     job_id: Optional[int] = None, session: Optional[HyakVncSession] = None, platform: Optional[str] = None
 ):
     assert (job_id is not None) ^ (session is not None), "Must specify either a job id or session"
+
+    def signal_handler(signal_number, frame):
+        exit(1)
+
+    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTSTP, signal_handler)
+    signal.signal(signal.SIGKILL, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
     if job_id:
         sessions = HyakVncSession.find_running_sessions(app_config, job_id=job_id)
         if len(sessions) == 0:
