@@ -204,15 +204,15 @@ def cmd_stop(job_id: Optional[int] = None, stop_all: bool = False):
 
 def cmd_status():
     logger.info("Finding running VNC jobs...")
-    vnc_instances = HyakVncSession.find_running_sessions(app_config)
-    if len(vnc_instances) == 0:
+    vnc_sessions = HyakVncSession.find_running_sessions(app_config)
+    if len(vnc_sessions) == 0:
         logger.info("No running VNC jobs found")
     else:
-        logger.info(f"Found {len(vnc_instances)} running VNC jobs:")
-        for instance in vnc_instances:
+        logger.info(f"Found {len(vnc_sessions)} running VNC jobs:")
+        for session in vnc_sessions:
             print(
-                f"Apptainer instance {instance.apptainer_instance_info.name} running as",
-                f"SLURM job {instance.job_id} with VNC on port {instance.vnc_port}",
+                f"Session {session.apptainer_instance_info.name} running as",
+                f"SLURM job {session.job_id} with VNC on port {session.vnc_port}",
             )
 
 

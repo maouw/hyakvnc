@@ -177,8 +177,11 @@ class HyakVncSession:
             "vnc_pid_file_path": str(self.vnc_pid_file_path),
             "job_id": str(self.job_id),
         }
-        s = pprint.pformat(dct, indent=2, width=120)
+        s = pprint.pformat(dct, indent=2, width=80)
         return f"{self.__class__.__name__}:\n{s}"
+
+    def __repr__(self):
+        return self.__str__()
 
     @staticmethod
     def find_running_sessions(app_config: HyakVncConfig, job_id: Optional[int] = None) -> List["HyakVncSession"]:
