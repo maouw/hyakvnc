@@ -242,18 +242,20 @@ def print_connection_string(
     terminal_width, terminal_height = shutil.get_terminal_size()
     line_width = max(1, terminal_width - 2)
 
-    os_instructions_v = [f"## {v.get('title')}:\n\t{v.get('instructions')}" for v in strings.values()]
+    os_instructions_v = [f"{v.get('title', '')}:\n\t{v.get('instructions', '')}" for v in strings.values()]
     print("=" * line_width)
+    print("NOTE: The default VNC password is 'password'")
     if len(os_instructions_v) > 0:
-        os_instructions = ("\n" + ("-" * (line_width // 2)) + "\n").join(os_instructions_v)
-        print(f"**Copy and paste the generated command into your terminal depending on your operating system:**\n\n")
+        os_instructions = ("\n\n" + ("-" * (line_width // 2)) + "\n\n").join(os_instructions_v)
+        print(f"Copy and paste the generated command into your terminal depending on your operating system:")
+        print()
         print(os_instructions)
-        print("\n\n")
+        print("\n")
 
     if manual:
         print("-" * line_width)
-        print(f"**If you need to connect by another method, use the following information:**\n\n")
-        print(str(manual))
+        print(f"If you need to connect by another method, use the following information:\n\n")
+        print(manual.get("instructions", ""))
         print("\n")
     print("=" * line_width)
 
