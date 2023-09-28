@@ -154,13 +154,13 @@ class HyakVncSession:
 
     def stop(self) -> None:
         if not self.job_id:
-            raise RuntimeError("Could not find job ID")
+            raise ValueError("Could not find job ID")
         logger.info(f"Cancelling job {self.job_id}")
         logger.info(f"Stopping Apptainer instance {self.apptainer_instance_info.name} on job {self.job_id}")
         apptainer_instance_stop(instance=self.apptainer_instance_info.name, slurm_job_id=self.job_id)
         logger.info(f"Stopping SLURM job {self.job_id}")
         cancel_job(self.job_id)
-        logger.info("Job {self.job_id} cancelled")
+        logger.info(f"Job {self.job_id} cancelled")
         if Path(self.vnc_pid_file_path).expanduser().is_file():
             logger.info(f"Removing PID file {self.vnc_pid_file_path}")
             try:
