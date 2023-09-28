@@ -511,12 +511,13 @@ class SbatchCommand:
         for k, v in sbatch_options.items():
             if k in sbatch_option_info:
                 command_list += [sbatch_option_info[k]]
+                command_list += [v] if v is not None else []
             else:
                 raise KeyError(f"Unrecognized sbatch option {k}")
         if sbatch_args:
             command_list += sbatch_args
 
-        self.command_list = command_list
+        self.command_list = [str(s) for s in command_list]
         self.sbatch_executable = sbatch_executable
         self.sbatch_options = sbatch_options
         self.sbatch_args = sbatch_args
@@ -533,14 +534,14 @@ class SbatchCommand:
         run_kwargs.setdefault("shell", False)
         run_kwargs.setdefault("universal_newlines", True)
         run_kwargs.setdefault("encoding", sys.getdefaultencoding())
-        logger.debug("Running sbatch command with args\n\t{self.command_list}")
+        logger.debug(f"Running sbatch command with args\n\t{self.command_list}")
         res = subprocess.run(self.command_list, **run_kwargs)
         if res.returncode != 0:
             raise RuntimeError(f"Could not launch sbatch job:\n{res.stderr}")
         if not res.stdout:
             raise RuntimeError("No sbatch output")
         try:
-            out = res.stdout.strip().split()
+            out = res.stdout.strip().split(";")
             job_id, cluster_name = None, None
             if len(out) < 1:
                 raise RuntimeError(f"Could not parse jobid from sbatch output: {res.stdout}")

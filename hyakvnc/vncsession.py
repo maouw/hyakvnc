@@ -58,29 +58,45 @@ class HyakVncSession:
             self.vnc_log_file_path = Path(vnc_log_file_paths[-1]).expanduser()
             if not self.vnc_log_file_path.is_file():
                 logger.debug(f"Could not find vnc log file at {self.vnc_log_file_path}")
-                self.vnc_pid_file_path = self.vnc_log_file_path.with_suffix(".pid")
+            self.vnc_pid_file_path = self.vnc_log_file_path.with_suffix(".pid")
             if not self.vnc_pid_file_path.is_file():
                 logger.debug(f"Could not find vnc log file at {self.vnc_pid_file_path}")
 
     def vnc_pid_file_exists(self) -> bool:
         if not self.vnc_pid_file_path:
+            vnc_log_file_path = self.vnc_log_file_path or "None"
+            logger.debug("No PID file path set. Log file: {vnc_log_file_path}")
             return False
-        return Path(self.vnc_pid_file_path).is_file()
+        p = Path(self.vnc_pid_file_path).expanduser()
+        if p.is_file():
+            logger.debug(f"Found PID file {self.vnc_pid_file_path}")
+            return True
+        else:
+            logger.debug(f"Could not find PID file {self.vnc_pid_file_path}")
+        return False
 
     def is_alive(self) -> bool:
-        if self.vnc_pid_file_exists():
-            return check_remote_pid_exists_and_port_open(
-                slurm_job_id=self.job_id, pid=self.apptainer_instance_info.pid, port=self.vnc_port
-            )
-        return False
+        return self.instance_is_running() and self.port_is_open()
 
     def instance_is_running(self) -> bool:
-        return check_remote_pid_exists(slurm_job_id=self.job_id, pid=self.apptainer_instance_info.pid)
+        running = check_remote_pid_exists(slurm_job_id=self.job_id, pid=self.apptainer_instance_info.pid)
+        if not running:
+            logger.debug(f"Instance {self.apptainer_instance_info.name} is not running (pid {self.apptainer_instance_info.pid} not found)")
+            return False
+        else:
+            logger.debug(f"Instance {self.apptainer_instance_info.name} is running (pid {self.apptainer_instance_info.pid} found)")
+            return True
 
     def port_is_open(self) -> bool:
-        if self.vnc_port:
-            return check_remote_port_open(slurm_job_id=self.job_id, port=self.vnc_port)
-        return False
+        if not self.vnc_port:
+            logger.debug(f"Could not find VNC port for instance {self.apptainer_instance_info.name}. Port is not open.")
+            return False
+        if not check_remote_port_open(slurm_job_id=self.job_id, port=self.vnc_port):
+            logger.debug(f"Instance {self.apptainer_instance_info.name} does not have an open port on {self.vnc_port}")
+            return False
+        else:
+            logger.debug(f"Instance {self.apptainer_instance_info.name} has an open port on {self.vnc_port}")
+            return True
 
     def get_openssh_connection_string(
         self,
@@ -201,8 +217,8 @@ class HyakVncSession:
                         sesh = HyakVncSession(job_info.job_id, instance, app_config)
                         sesh.parse_vnc_info()
                         if sesh.is_alive():
-                            logger.debug(f"Session {sesh.apptainer_instance_info.name} is alive")
+                            logger.debug(f"Session {sesh} is alive")
                             outs.append(sesh)
                         else:
-                            logger.debug(f"Session {sesh.apptainer_instance_info.name} not alive")
+                            logger.debug(f"Session {sesh} not alive")
         return outs

@@ -27,13 +27,12 @@ from .util import wait_for_file, repeat_until
 from .version import VERSION
 from . import logger
 
+app_config = HyakVncConfig()
+
 # Set path to load config from:
 HYAKVNC_CONFIG_PATH = Path(
     os.environ.setdefault("HYAKVNC_CONFIG_PATH", "~/.config/hyakvnc/hyakvnc-config.json")
 ).expanduser()
-
-# Set up default config:
-app_config = HyakVncConfig()
 
 # If that path exists, load config from file:
 if HYAKVNC_CONFIG_PATH.is_file():
@@ -41,7 +40,6 @@ if HYAKVNC_CONFIG_PATH.is_file():
         app_config = HyakVncConfig.from_json(path=HYAKVNC_CONFIG_PATH)
     except (json.JSONDecodeError, RuntimeError, ValueError):
         logger.warning(f"Could not load config from {HYAKVNC_CONFIG_PATH}")
-
 
 # Record time app started in case we need to clean up some jobs:
 app_started = datetime.now()
@@ -137,9 +135,12 @@ def cmd_create(container_path: Union[str, Path], dry_run=False) -> Union[HyakVnc
         cancel_created_jobs()
         exit(1)
 
-    # Stop allocation when SIGINT (CTRL+C) and SIGTSTP (CTRL+Z) signals are detected.
-    for s in [signal.SIGINT, signal.SIGTSTP, signal.SIGKILL, signal.SIGTERM, signal.SIGABRT]:
-        signal.signal(s, create_node_signal_handler)
+
+    signal.signal(signal.SIGINT, create_node_signal_handler)
+    signal.signal(signal.SIGTSTP, create_node_signal_handler)
+    #signal.signal(signal.SIGKILL, create_node_signal_handler)
+    #signal.signal(signal.SIGTERM, create_node_signal_handler)
+    #signal.signal(signal.SIGABRT, create_node_signal_handler)
 
     job_id = None
     try:
@@ -162,7 +163,7 @@ def cmd_create(container_path: Union[str, Path], dry_run=False) -> Union[HyakVnc
         try:
             job = get_historical_job_infos(job_id=job_id)
         except (LookupError, RuntimeError) as e:
-            logger.error(f"Could not get historucal info for job {job_id}: {e}")
+            logger.error(f"Could not get historical info for job {job_id}: {e}")
         else:
             if job and len(job) > 0:
                 job = job[0]
@@ -188,12 +189,17 @@ def cmd_create(container_path: Union[str, Path], dry_run=False) -> Union[HyakVnc
     if wait_for_file(str(instance_file), timeout=app_config.sbatch_post_timeout):
         time.sleep(10)  # sleep to wait for apptainer to actually start vncserver <FIXME>
         try:
-            sesh = HyakVncSession.load_instance_from_path(job_id, app_config, instance_file)
+            sessions = HyakVncSession.find_running_sessions(app_config, job_id=job_id)
+            if len(sessions) == 0:
+                logger.warning("No running VNC jobs found")
+            sessions = [s for s in sessions if s.job_id == job_id]
+            if len(sessions) == 0:
+                logger.warning("No running VNC jobs found")
+            sesh = sessions[0]
         except (ValueError, FileNotFoundError) as e:
             logger.error(f"Could not load instance file: {instance_file} due to error: {e}")
             kill_self()
         else:
-            logger.debug(f"Found instance file at {instance_file}")
             if not repeat_until(lambda: sesh.is_alive(), lambda alive: alive, timeout=app_config.sbatch_post_timeout):
                 logger.error("Could not find a running VNC session for the instance {sesh}")
                 kill_self()
@@ -244,6 +250,9 @@ def print_connection_string(job_id: Optional[int] = None, session: Optional[Hyak
     print("  " + session.get_openssh_connection_string(login_host=app_config.ssh_host, apple=False))
     print("OpenSSH string for VNC session on macOS:")
     print(" " + session.get_openssh_connection_string(login_host=app_config.ssh_host, apple=True))
+
+def print_config():
+    print(app_config.to_json())
 
 
 def create_arg_parser():
@@ -328,7 +337,6 @@ log_level = logging.__dict__.get(os.getenv("HYAKVNC_LOG_LEVEL").upper(), logging
 
 logger.setLevel(log_level)
 
-
 def main():
     if args.print_version:
         print(VERSION)
@@ -357,7 +365,7 @@ def main():
         print_connection_string(args.job_id)
 
     elif args.command == "print-config":
-        pprint.pprint(app_config.__dict__, indent=2, width=79)
+        print_config()
 
     else:
         arg_parser.print_help()
