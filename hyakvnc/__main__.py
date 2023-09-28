@@ -236,10 +236,10 @@ def print_connection_string(
     terminal_width, terminal_height = shutil.get_terminal_size()
     line_width = max(1, terminal_width - 2)
 
-    os_instructions_v = [f"## {v.title}:\n\t{str(v)}" for v in strings.values()]
+    os_instructions_v = [f"## {v.get('title')}:\n\t{v.get('instructions')}" for v in strings.values()]
     print("=" * line_width)
     if len(os_instructions_v) > 0:
-        os_instructions = ("\n" + ("-" * (line_width // 2))).join(os_instructions_v)
+        os_instructions = ("\n" + ("-" * (line_width // 2)) + "\n").join(os_instructions_v)
         print(f"**Copy and paste the generated command into your terminal depending on your operating system:**\n\n")
         print(os_instructions)
         print("\n\n")

@@ -108,14 +108,19 @@ class HyakVncSession:
             logger.debug(f"Session {self.apptainer_instance_info.name} has an open port on {self.vnc_port}")
             return True
 
-    def get_connection_strings(self, debug: Optional[bool] = False) -> Dict[str, str]:
+    def get_connection_strings(self, debug: Optional[bool] = False) -> Dict[str, Dict[str, str]]:
         generators = {
             "linux": LinuxConnectionStringGenerator,
             "macos": MacOsConnectionStringGenerator,
             "manual": ManualConnectionStringGenerator,
         }
         result = {
-            k: str(g(self.app_config.ssh_host, self.apptainer_instance_info.instance_host, self.vnc_port))
+            k: {
+                "title": g.title,
+                "instructions": str(
+                    g(self.app_config.ssh_host, self.apptainer_instance_info.instance_host, self.vnc_port)
+                ),
+            }
             for k, g in generators.items()
         }
         return result
