@@ -299,6 +299,54 @@ def wait_for_job_status(
     raise TimeoutError(f"Timed out waiting for job {job_id} to be in one of the following states: {states}")
 
 
+slurm_states_active = {
+    "SIGNALING",
+    "CONFIGURING",
+    "STAGE_OUT",
+    "SUSPENDED",
+    "REQUEUE_HOLD",
+    "REQUEUE_FED",
+    "PENDING",
+    "RESV_DEL_HOLD",
+    "STOPPED",
+    "RUNNING",
+    "RESIZING",
+    "REQUEUED",
+}
+slurm_states_success = {"COMPLETED", "COMPLETING"}
+slurm_states_cancelled = {"CANCELLED", "REVOKED"}
+slurm_states_timeout = {"DEADLINE", "TIMEOUT"}
+slurm_states_failed = {"PREEMPTED", "OUT_OF_MEMORY", "FAILED", "NODE_FAIL", "BOOT_FAIL"}
+
+
+def wait_for_job_running(job_id: int, timeout: Optional[float] = None, poll_interval: float = 1.0) -> bool:
+    """
+    Waits for the specified job to be in one of the specified states.
+    :param job_id: job id to wait for
+    :param timeout: timeout for waiting for job to be in one of the specified states
+    :param poll_interval: poll interval for waiting for job to be in one of the specified states
+    :return: True if the job is in one of the specified states, False otherwise
+    :raises TimeoutError: if the job is not in one of the specified states after the timeout
+    """
+    begin_time = time.time()
+    assert isinstance(job_id, int), "Job id must be an integer"
+    assert (timeout is None) or (timeout > 0), "Timeout must be greater than zero"
+    assert poll_interval > 0, "Poll interval must be greater than zero"
+    timeout = timeout or -1.0
+    while time.time() < begin_time + timeout:
+        try:
+            res = get_job_status(job_id)
+        except (RuntimeError, LookupError):
+            return False
+        else:
+            if res == "RUNNING":
+                return True
+            elif res not in slurm_states_active:
+                return False
+        time.sleep(poll_interval)
+    return False
+
+
 def get_historical_job_infos(
     after: Optional[Union[datetime, timedelta]] = None,
     before: Optional[Union[datetime, timedelta]] = None,

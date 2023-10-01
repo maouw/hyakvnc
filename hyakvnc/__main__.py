@@ -11,6 +11,8 @@ import time
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, Union
+
+from hyakvnc.apptainer import ApptainerInstanceInfo
 from .vncsession import HyakVncSession
 from .config import HyakVncConfig
 from .slurmutil import (
@@ -19,6 +21,8 @@ from .slurmutil import (
     get_historical_job_infos,
     cancel_job,
     SbatchCommand,
+    get_job_status,
+    wait_for_job_running,
 )
 from .util import wait_for_file, repeat_until
 from .version import VERSION
@@ -110,12 +114,16 @@ def cmd_create(container_path: Union[str, Path], dry_run=False):
     # Template to name the apptainer instance:
     apptainer_instance_name = f"{app_config.apptainer_instance_prefix}-$SLURM_JOB_ID-{container_name}"
     # Command to start the apptainer instance:
-    apptainer_cmd = f"apptainer instance start --writable-tmpfs --cleanenv {container_path} {apptainer_instance_name}"
+    apptainer_cmd = (
+        "apptainer instance start "
+        + str(container_path)
+        + " "
+        + str(apptainer_instance_name)
+        + " && while true; do sleep 2; done"
+    )
 
     # Command to start the apptainer instance and keep it running:
-    apptainer_cmd_with_rest = (
-        apptainer_env_vars_string + apptainer_cmd + " && while true; do sleep 10; done"
-    )
+    apptainer_cmd_with_rest = apptainer_env_vars_string + apptainer_cmd
 
     # The sbatch wrap functionality allows submitting commands without an sbatch script:t
     sbatch_opts["wrap"] = apptainer_cmd_with_rest
@@ -137,14 +145,10 @@ def cmd_create(container_path: Union[str, Path], dry_run=False):
     logger.info(
         f"Launched sbatch job {job_id} with account {app_config.account} on partition {app_config.partition}. Waiting for job to start running"
     )
-    try:
-        wait_for_job_status(
-            job_id,
-            states=["RUNNING"],
-            timeout=app_config.sbatch_post_timeout,
-            poll_interval=app_config.sbatch_post_poll_interval,
-        )
-    except TimeoutError:
+
+    if not wait_for_job_running(
+        job_id, timeout=app_config.sbatch_post_timeout, poll_interval=app_config.sbatch_post_poll_interval
+    ):
         logger.error(f"Job {job_id} did not start running within {app_config.sbatch_post_timeout} seconds")
         try:
             job = get_historical_job_infos(job_id=job_id)
@@ -171,37 +175,41 @@ def cmd_create(container_path: Union[str, Path], dry_run=False):
         / f"{real_instance_name}.json"
     ).expanduser()
 
-    logger.info("Waiting for Apptainer instance to start running")
-    if wait_for_file(str(instance_file), timeout=app_config.sbatch_post_timeout):
-        logger.info("Apptainer instance started running. Waiting for VNC session to start")
-        time.sleep(5)
-
-        def get_session():
-            try:
-                sessions = HyakVncSession.find_running_sessions(app_config, job_id=job_id)
-                if sessions:
-                    my_sessions = [s for s in sessions if s.job_id == job_id]
-                    if my_sessions:
-                        return my_sessions[0]
-            except LookupError as e:
-                logger.debug(f"Could not get session info for job {job_id}: {e}")
-            return None
-
-        sesh = repeat_until(lambda: get_session(), lambda x: x is not None, timeout=app_config.sbatch_post_timeout)
-        if not sesh:
-            logger.warning(f"No running VNC sessions found for job {job_id}. Canceling and exiting.")
-            kill_self()
-        else:
-            if sesh.wait_until_alive(timeout=app_config.sbatch_post_timeout):
-                print_connection_string(session=sesh)
-                exit(0)
-            else:
-                logger.error("VNC session for SLURM job {job_id} doesn't seem to be alive")
-                sesh.stop()
-                exit(1)
-    else:
-        logger.info(f"Could not find instance file at {instance_file} before timeout")
+    logger.info(f"Job is running on nodes {job.node_list}. Waiting for Apptainer instance to start running.")
+    if not wait_for_file(str(instance_file), timeout=app_config.sbatch_post_timeout):
+        logger.error(f"Could not find instance file at {instance_file} before timeout")
         kill_self()
+    logger.info("Apptainer instance started running. Waiting for VNC session to start")
+    time.sleep(5)
+    try:
+        instance_info = ApptainerInstanceInfo.from_json(instance_file)
+        sesh = HyakVncSession(job_id, instance_info, app_config)
+    except (ValueError, FileNotFoundError, RuntimeError) as e:
+        logger.error("Could not parse instance file: {instance_file}")
+        kill_self()
+    else:
+        time.sleep(1)
+        try:
+            sesh.parse_vnc_info()
+        except RuntimeError as e:
+            logger.error(f"Could not parse VNC info: {e}")
+            sesh.stop()
+            kill_self()
+        time.sleep(1)
+        if Path(sesh.vnc_log_file_path).expanduser().is_file():
+            if not Path(sesh.vnc_pid_file_path).expanduser().is_file():
+                logger.error(f"Could not find PID file for job at {sesh.vnc_pid_file_path}")
+                with open(sesh.vnc_log_file_path, "r") as f:
+                    log_contents = f.read()
+                    logger.error(f"VNC session for SLURM job {job_id} failed to start. Log contents:\n{log_contents}")
+                sesh.stop()
+                kill_self()
+        if not sesh.wait_until_alive(timeout=app_config.sbatch_post_timeout):
+            logger.error(f"VNC session for SLURM job {job_id} doesn't seem to be alive")
+            sesh.stop()
+            kill_self()
+        print_connection_string(session=sesh)
+        exit(0)
 
 
 def cmd_stop(job_id: Optional[int] = None, stop_all: bool = False):
@@ -382,6 +390,16 @@ def main():
     # check_slurm_version()
 
     if args.command == "create":
+        if args.mem:
+            app_config.mem = args.mem
+        if args.cpus:
+            app_config.cpus = args.cpus
+        if args.time:
+            app_config.timelimit = f"{args.time}:00:00"
+        if args.gpus:
+            app_config.gpus = args.gpus
+        if args.timeout:
+            app_config.sbatch_post_timeout = float(args.timeout)
         try:
             cmd_create(args.container, dry_run=args.dry_run)
         except (TimeoutError, RuntimeError) as e:

@@ -1,5 +1,6 @@
 import pprint
 import re
+import time
 from pathlib import Path
 from typing import Optional, Union, List, Dict
 
@@ -29,8 +30,8 @@ class HyakVncSession:
         self.apptainer_instance_info = apptainer_instance_info
         self.app_config = app_config
         self.vnc_port = None
-        self.vnc_log_file_path = None
-        self.vnc_pid_file_path = None
+        self.vnc_log_file_path = ""
+        self.vnc_pid_file_path = ""
 
     def parse_vnc_info(self) -> None:
         logOutPath = self.apptainer_instance_info.logOutPath
@@ -59,8 +60,6 @@ class HyakVncSession:
             if not self.vnc_log_file_path.is_file():
                 logger.debug(f"Could not find vnc log file at {self.vnc_log_file_path}")
             self.vnc_pid_file_path = self.vnc_log_file_path.with_suffix(".pid")
-            if not self.vnc_pid_file_path.is_file():
-                logger.debug(f"Could not find vnc PID file at {self.vnc_pid_file_path}")
 
     def vnc_pid_file_exists(self) -> bool:
         if not self.vnc_pid_file_path:
@@ -190,7 +189,7 @@ class HyakVncSession:
                         try:
                             sesh.parse_vnc_info()
                         except RuntimeError as e:
-                            logger.debug("Could not parse VNC info for session {sesh}: {e}")
+                            logger.debug(f"Could not parse VNC info for session {sesh}: {e}")
                         else:
                             if sesh.is_alive():
                                 logger.debug(f"Session {sesh} is alive")

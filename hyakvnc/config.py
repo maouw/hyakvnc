@@ -51,10 +51,10 @@ class HyakVncConfig:
         ] = "klone.hyak.uw.edu",  # intermediate host address between local machine and compute node
         account: Optional[str] = None,  # account to use for sbatch jobs | -A, --account, SBATCH_ACCOUNT
         partition: Optional[str] = None,  # partition to use for sbatch jobs | -p, --partition, SBATCH_PARTITION
-        cluster: Optional[str] = "klone",  # cluster to use for sbatch jobs |  --clusters, SBATCH_CLUSTERS
+        cluster: Optional[str] = None,  # cluster to use for sbatch jobs |  --clusters, SBATCH_CLUSTERS
         gpus: Optional[str] = None,  # number of gpus to use for sbatch jobs | -G, --gpus, SBATCH_GPUS
         timelimit: Optional[str] = None,  # time limit for sbatch jobs | --time, SBATCH_TIMELIMIT
-        mem: Optional[str] = "8G",  # memory limit for sbatch jobs | --mem, SBATCH_MEM
+        mem: Optional[str] = None,  # memory limit for sbatch jobs | --mem, SBATCH_MEM
         cpus: Optional[
             int
         ] = 4,  # number of cpus to use for sbatch jobs | -c, --cpus-per-task (not settable by env var)
@@ -83,9 +83,9 @@ class HyakVncConfig:
             get_default_partition(cluster=self.cluster, account=self.account),
         )
         self.gpus = gpus or get_first_env(["HYAKVNC_SLURM_GPUS", "SBATCH_GPUS"], None)
-        self.timelimit = timelimit or get_first_env(["HYAKVNC_SLURM_TIMELIMIT", "SBATCH_TIMELIMIT"], None)
-        self.mem = mem or get_first_env(["HYAKVNC_SLURM_MEM", "SBATCH_MEM"], None)
-        self.cpus = int(cpus or get_first_env(["HYAKVNC_SLURM_CPUS", "SBATCH_CPUS_PER_TASK"]))
+        self.timelimit = timelimit or get_first_env(["HYAKVNC_SLURM_TIMELIMIT", "SBATCH_TIMELIMIT"], "1:00:00")
+        self.mem = mem or get_first_env(["HYAKVNC_SLURM_MEM", "SBATCH_MEM"], "2G")
+        self.cpus = int(cpus or get_first_env(["HYAKVNC_SLURM_CPUS", "SBATCH_CPUS_PER_TASK"], default="2"))
         self.sbatch_output_path = sbatch_output_path or get_first_env(
             ["HYAKVNC_SBATCH_OUTPUT_PATH", "SBATCH_OUTPUT"], "/dev/stdout"
         )
