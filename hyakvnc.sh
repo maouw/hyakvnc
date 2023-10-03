@@ -282,7 +282,7 @@ function check_slurmjob_port_open {
 			shift
 			;;
 		-*)
-			log ERROR "Unknown option for check_slurmjob_port_open: ${1:-}\n"
+			log ERROR "Unknown option for check_slurmjob_port_open: ${1:-}"
 			return 1
 			;;
 		*)
