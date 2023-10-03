@@ -975,8 +975,9 @@ mkdir -p "${HYAKVNC_DIR}/pids" || (log ERROR "Failed to create HYAKVNC PIDs dire
 while true; do
 	case "${1:-}" in
 	-h | --help | help)
-		cmd_help
-		return 0
+		shift
+		cmd_help "$@"
+		exit 0
 		;;
 	-d | --debug) # Debug mode
 		shift
@@ -985,40 +986,32 @@ while true; do
 	-V | --version)
 		shift
 		echo "HyakVNC version ${HYAKVNC_VERSION}"
-		return 0
+		exit 0
 		;;
 	create)
 		shift
-		help_create "$@"
-
-		return 0
+		cmd_create "$@"
+		exit 0
 		;;
 	status)
 		shift
-		help_status "$@"
-		return 0
+		cmd_status "$@"
+		exit 0
 		;;
 	stop)
 		shift
 		help_stop "$@"
-		return 0
+		exit 0
 		;;
 	show)
 		shift
 		help_show "$@"
-		return 0
+		exit 0
 		;;
-	help)
-		shift
-		cmd_help "$@"
+	*) 	log ERROR "Unknown command: ${1-:}"
+		echo
+		cmd_help
+		exit 1
 		;;
-
 	esac
 done
-
-if compgen -A function | grep -qE "^cmd_${ACTION}$"; then
-	"cmd_${ACTION}" "$@"
-else
-	log ERROR "Unknown command: ${ACTION}"
-	cmd_help "$@"
-fi
