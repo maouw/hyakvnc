@@ -1,5 +1,6 @@
 #! /usr/bin/env bash
 
+HYAKVNC_VERSION="0.3.0"
 if [ -n "${XDEBUG:-}" ]; then
 	set -x
 fi
@@ -971,8 +972,49 @@ mkdir -p "${HYAKVNC_DIR}/pids" || (log ERROR "Failed to create HYAKVNC PIDs dire
 
 # If the first argument is a function in this file, set it to the action:
 
-ACTION="${1:-help}"
-shift
+while true; do
+	case "${1:-}" in
+	-h | --help | help)
+		cmd_help
+		return 0
+		;;
+	-d | --debug) # Debug mode
+		shift
+		export HYAKVNC_LOG_LEVEL=2
+		;;
+	-V | --version)
+		shift
+		echo "HyakVNC version ${HYAKVNC_VERSION}"
+		return 0
+		;;
+	create)
+		shift
+		help_create "$@"
+
+		return 0
+		;;
+	status)
+		shift
+		help_status "$@"
+		return 0
+		;;
+	stop)
+		shift
+		help_stop "$@"
+		return 0
+		;;
+	show)
+		shift
+		help_show "$@"
+		return 0
+		;;
+	help)
+		shift
+		cmd_help "$@"
+		;;
+
+	esac
+done
 
 if compgen -A function | grep -qE "^cmd_${ACTION}$"; then
 	"cmd_${ACTION}" "$@"
