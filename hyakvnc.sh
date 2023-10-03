@@ -1008,7 +1008,7 @@ while true; do
 		help_show "$@"
 		exit 0
 		;;
-	*) 	log ERROR "Unknown command: ${1-:}"
+	*) 	log ERROR "Unknown command: ${1:-}"
 		echo
 		cmd_help
 		exit 1
