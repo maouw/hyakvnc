@@ -1,5 +1,9 @@
 #! /usr/bin/env bash
 
+if [ -n "${XDEBUG:-}" ]; then
+	set -x
+fi
+
 # hyakvnc - A script to launch VNC sessions on Hyak
 
 # = Preferences and settings:
@@ -387,14 +391,14 @@ function print_connection_info {
 	[ -z "${port:-}" ] && log ERROR "Port must be specified" && return 1
 	viewer_port="${viewer_port:-${HYAKVNC_VNC_VIEWER_PORT:-${port}}}"
 
-	echo -e "Copy and paste these instructions into a command line terminal on your local machine to connect to the VNC session."
-	echo -e "You may need to install a VNC client if you don't already have one."
-	echo -e "If you are using Windows or are having trouble, try using the manual connection information."
+	echo "Copy and paste these instructions into a command line terminal on your local machine to connect to the VNC session."
+	echo "You may need to install a VNC client if you don't already have one."
+	echo "If you are using Windows or are having trouble, try using the manual connection information."
 	echo
 
 	local base_connect_string="ssh -o StrictHostKeyChecking=no -J ${USER}@${HYAKVNC_SSH_HOST} ${node} -L ${viewer_port}:localhost:${port} sleep 10; vncviewer localhost:${viewer_port}"
 	echo "Linux terminal (bash/zsh):"
-	echo -e "${base_connect_string}"
+	${base_connect_string}
 	echo
 
 	echo "macOS terminal:"
@@ -433,31 +437,32 @@ function cleanup_launched_jobs_and_exit() {
 
 # = Commands
 function help_create {
-	echo -e "Usage: hyakvnc create [create options...] -c <container> [extra args to pass to apptainer...]"
-	echo -e
-	echo -e "Description:"
-	echo -e "  Create a VNC session on Hyak."
-	echo -e
-	echo -e "Options:"
-	echo -e "  -h, --help" "\t" "Show this help message and exit"
-	echo -e "  -c, --container" "\t" "Path to container image (required)"
-	echo -e "  -j, --jobid" "\t" "Don't launch a new job; instead, attach to this SLURM job ID (optional)"
-	echo -e "  -A, --account" "\t" "Slurm account to use (default: ${HYAKVNC_SLURM_ACCOUNT})"
-	echo -e "  -p, --partition" "\t" "Slurm partition to use (default: ${HYAKVNC_SLURM_PARTITION})"
-	echo -e "  -C, --cpus" "\t" "Number of CPUs to request (default: ${HYAKVNC_SLURM_CPUS})"
-	echo -e "  -m, --mem" "\t" "Amount of memory to request (default: ${HYAKVNC_SLURM_MEM})"
-	echo -e "  -t, --timelimit" "\t" "Slurm timelimit to use (default: ${HYAKVNC_SLURM_TIMELIMIT})"
-	echo -e "  -g, --gpus" "\t" "Number of GPUs to request (default: ${HYAKVNC_SLURM_GRES})"
-	echo -e
-	echo -e "Extra arguments:"
-	echo -e "  Any extra arguments will be passed to apptainer instance start."
-	echo -e "  See 'apptainer instance start --help' for more information."
-	echo -e
-	echo -e "Examples:"
-	echo -e "  # Create a VNC session using the container ~/containers/mycontainer.sif"
-	echo -e "  # Use the SLURM account escience, the partition gpu-a40, 4 CPUs, 1GB of memory, 1 GPU, and 1 hour of time"
-	echo -e "  hyakvnc create -c ~/containers/mycontainer.sif -A escience -p gpu-a40 -C 4 -m 1G -t 1:00:00 -g 1"
-	echo -e
+	cat <<EOF
+Usage: hyakvnc create [create options...] -c <container> [extra args to pass to apptainer...]
+
+Description:
+  Create a VNC session on Hyak.
+
+Options:
+  -h, --help	Show this help message and exit
+  -c, --container	Path to container image (required)
+  -j, --jobid	Don't launch a new job; instead, attach to this SLURM job ID (optional)
+  -A, --account	Slurm account to use (default: ${HYAKVNC_SLURM_ACCOUNT})
+  -p, --partition	Slurm partition to use (default: ${HYAKVNC_SLURM_PARTITION})
+  -C, --cpus	Number of CPUs to request (default: ${HYAKVNC_SLURM_CPUS})
+  -m, --mem	Amount of memory to request (default: ${HYAKVNC_SLURM_MEM})
+  -t, --timelimit	Slurm timelimit to use (default: ${HYAKVNC_SLURM_TIMELIMIT})
+  -g, --gpus	Number of GPUs to request (default: ${HYAKVNC_SLURM_GRES})
+
+Extra arguments:
+  Any extra arguments will be passed to apptainer instance start.
+  See 'apptainer instance start --help' for more information.
+
+Examples:
+  # Create a VNC session using the container ~/containers/mycontainer.sif
+  # Use the SLURM account escience, the partition gpu-a40, 4 CPUs, 1GB of memory, 1 GPU, and 1 hour of time
+  hyakvnc create -c ~/containers/mycontainer.sif -A escience -p gpu-a40 -C 4 -m 1G -t 1:00:00 -g 1
+EOF
 }
 
 # create
@@ -699,22 +704,24 @@ function cmd_create {
 }
 
 function help_status {
-	echo -e "Usage: hyakvnc status [status options...]"
-	echo -e
-	echo -e "Description:"
-	echo -e "  Check status of VNC session(s) on Hyak."
-	echo -e
-	echo -e "Options:"
-	echo -e "  -h, --help" "\t" "Show this help message and exit"
-	echo -e "  -d, --debug" "\t" "Print debug info"
-	echo -e "  -j, --jobid" "\t" "Only check status of provided SLURM job ID (optional)"
-	echo -e "Examples:"
-	echo -e "  # Create a VNC session using the container ~/containers/mycontainer.sif"
-	echo -e "  # Check the status of job no. 12345:"
-	echo -e "  hyakvnc status -j 12345"
-	echo -e "  # Check the status of all VNC jobs:"
-	echo -e "  hyakvnc status"
-	echo -e
+	cat <<EOF
+Usage: hyakvnc status [status options...]
+
+Description:
+  Check status of VNC session(s) on Hyak.
+
+Options:
+  -h, --help	Show this help message and exit
+  -d, --debug	Print debug info
+  -j, --jobid	Only check status of provided SLURM job ID (optional)
+
+Examples:
+  # Create a VNC session using the container ~/containers/mycontainer.sif
+  # Check the status of job no. 12345:
+  hyakvnc status -j 12345
+  # Check the status of all VNC jobs:
+  hyakvnc status
+EOF
 }
 
 function cmd_status {
@@ -772,43 +779,44 @@ function cmd_status {
 	done
 }
 
-function help_cmd_stop {
-	echo -e "Usage: hyakvnc stop [-a] [<jobids>...]"
-	echo -e
-	echo -e "Description:"
-	echo -e "  Stop a provided HyakVNC sesssion and clean up its job directory"
-	echo -e
-	echo -e "Options:"
-	echo -e "  -h, --help" "\t" "Show this help message and exit"
-	echo -e "  -c, --cancel" "\t" "Also cancel the SLURM job"
-	echo -e "  -a, --all" "\t" "Stop all jobs"
-	echo -e
-	echo -e
-	echo -e "Examples:"
-	echo -e "  # Stop a VNC session running on job 123456:"
-	echo -e "  hyakvnc stop 123456"
-	echo -e "  # Stop a VNC session running on job 123456 and also cancel the job:"
-	echo -e "  hyakvnc stop -c 123456"
-	echo -e "  # Stop all VNC sessions:"
-	echo -e "  hyakvnc stop -a"
-	echo -e "  # Stop all VNC sessions and also cancel the jobs:"
-	echo -e "  hyakvnc stop -a -c"
-	echo -e
+function help_stop {
+	cat <<EOF
+Usage: hyakvnc stop [-a] [<jobids>...]
+	
+Description:
+  Stop a provided HyakVNC sesssion and clean up its job directory
+
+Options:
+  -h, --help	Show this help message and exit
+  -c, --cancel	Also cancel the SLURM job
+  -a, --all	Stop all jobs
+
+Examples:
+  # Stop a VNC session running on job 123456:
+  hyakvnc stop 123456
+  # Stop a VNC session running on job 123456 and also cancel the job:
+  hyakvnc stop -c 123456
+  # Stop all VNC sessions:
+  hyakvnc stop -a
+  # Stop all VNC sessions and also cancel the jobs:
+  hyakvnc stop -a -c
+EOF
 }
 
-function help_cmd_show {
-	echo -e "Usage: hyakvnc show <jobid>"
-	echo -e
-	echo -e "Description:"
-	echo -e "  Show connection information for a HyakVNC sesssion"
-	echo -e
-	echo -e "Options:"
-	echo -e "  -h, --help" "\t" "Show this help message and exit"
-	echo -e
-	echo -e "Examples:"
-	echo -e "  # Show connection information for session running on job 123456:"
-	echo -e "  hyakvnc show 123456"
-	echo -e
+function help_show {
+	cat <<EOF
+Usage: hyakvnc show <jobid>
+
+Description:
+  Show connection information for a HyakVNC sesssion
+
+Options:
+  -h, --help	Show this help message and exit
+
+Examples:
+  # Show connection information for session running on job 123456:
+  hyakvnc show 123456
+EOF
 }
 
 function cmd_stop {
@@ -817,6 +825,14 @@ function cmd_stop {
 	# Parse arguments:
 	while true; do
 		case ${1:-} in
+		-h | --help | help)
+			help_stop
+			return 0
+			;;
+		-d | --debug) # Debug mode
+			shift
+			export HYAKVNC_LOG_LEVEL=2
+			;;
 		-a | --all)
 			shift
 			all=1
@@ -855,6 +871,14 @@ function cmd_show {
 	# Parse arguments:
 	while true; do
 		case "${1:-}" in
+		-h | --help | help)
+			help_show
+			return 0
+			;;
+		-d | --debug) # Debug mode
+			shift
+			export HYAKVNC_LOG_LEVEL=2
+			;;
 		-a | --all)
 			shift
 			all=1
@@ -917,40 +941,42 @@ function cmd_help {
 		esac
 	done
 
-	echo -e "HyakVNC -- A tool for launching VNC sessions on Hyak"
-	echo -e "Usage: hyakvnc [options] [create|status|stop|show|help] [options] [args]"
-	echo -e
-	echo -e "Description:"
-	echo -e "  Stop a provided HyakVNC sesssion and clean up its job directory"
-	echo -e
-	echo -e "Options:"
-	echo -e "  -h, --help" "\t" "Show this help message and exit"
-	echo -e "  -d, --debug" "\t" "Also cancel the SLURM job"
-	echo -e "  -V, --version" "\t" "Print version information and exit"
-	echo -e "Available commands:"
-	echo -e "  create" "\t" "Create a new VNC session"
-	echo -e "  status" "\t" "Check status of VNC session(s)"
-	echo -e "  stop" "\t" "Stop a VNC session"
-	echo -e "  show" "\t" "Show connection information for a VNC session"
-	echo -e "  help" "\t" "Show help for a command"
-	echo -e
+	cat <<EOF
+HyakVNC -- A tool for launching VNC sessions on Hyak $0
+Usage: hyakvnc [options] [create|status|stop|show|help] [options] [args]
+
+Description:
+	Stop a provided HyakVNC sesssion and clean up its job directory
+
+Options:
+	-h, --help	Show this help message and exit
+	-d, --debug	Also cancel the SLURM job
+	-V, --version	Print version information and exit
+
+Available commands:
+	create	Create a new VNC session
+	status	Check status of VNC session(s)
+	stop	Stop a VNC session
+	show	Show connection information for a VNC session
+	help	Show help for a command
+EOF
 }
 
 # = Main script:
 # Initalize directories:
-mkdir -p "${HYAKVNC_DIR}/jobs" || log ERROR "Failed to create HYAKVNC jobs directory ${HYAKVNC_DIR}/jobs" && exit 1
-mkdir -p "${HYAKVNC_DIR}/pids" || log ERROR "Failed to create HYAKVNC PIDs directory ${HYAKVNC_DIR}/pids" && exit 1
+mkdir -p "${HYAKVNC_DIR}/jobs" || (log ERROR "Failed to create HYAKVNC jobs directory ${HYAKVNC_DIR}/jobs" && exit 1)
+mkdir -p "${HYAKVNC_DIR}/pids" || (log ERROR "Failed to create HYAKVNC PIDs directory ${HYAKVNC_DIR}/pids" && exit 1)
 
 # Parse first argument as action:
 
 # If the first argument is a function in this file, set it to the action:
 
 ACTION="${1:-help}"
+shift
 
 if compgen -A function | grep -qE "^cmd_${ACTION}$"; then
-	shift
+	"cmd_${ACTION}" "$@"
 else
 	log ERROR "Unknown command: ${ACTION}"
-	echo "Usage: "
 	cmd_help "$@"
 fi
