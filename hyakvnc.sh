@@ -10,7 +10,7 @@ fi
 # = Preferences and settings:
 # == App preferences:
 HYAKVNC_LOG_PATH="${HYAKVNC_LOG_PATH:-$HOME/.hyakvnc.log}"
-HYAKVNC_LOG_LEVEL="${HYAKVNC_LOG_LEVEL:-3}"
+HYAKVNC_LOG_LEVEL="${HYAKVNC_LOG_LEVEL:-INFO}"
 HYAKVNC_DIR="${HYAKVNC_DIR:-$HOME/.hyakvnc}"
 HYAKVNC_CONFIG_DIR="${HYAKVNC_CONFIG_DIR:-$HOME/.config/hyakvnc}"
 HYAKVNC_SSH_HOST="${HYAKVNC_SSH_HOST:-klone.hyak.uw.edu}"
@@ -49,81 +49,38 @@ LAUNCHED_JOBIDS=() # Array of launched jobs
 
 # = Utility functions:
 
-# log()
-# Log a message, given a level and a message
+
+
+declare -A log_levels=(["OFF"]=0 ["FATAL"]=1 ["ERROR"]=2 ["WARN"]=3 ["INFO"]=4 ["DEBUG"]=5 ["TRACE"]=6 ["ALL"]=100)
+declare -A log_level_colors=(["FATAL"]=5 ["ERROR"]=1 ["WARN"]=3 ["INFO"]=4 ["DEBUG"]=6 ["TRACE"]=2)
+
 function log {
-	LEVEL="${1:-}"
-	MESSAGE="${2:-}"
-	[ -z "${MESSAGE}" ] && return 0
-
+	local level levelno colorno curlevelno funcname
+	[ $# -lt 1 ] && return 1
+	local level=${1:-}
 	shift
-	shift
+	HYAKVNC_LOG_LEVEL="${HYAKVNC_LOG_LEVEL:-INFO}"
+	[ -z "${level}" ] &&  echo "${FUNCNAME[0]}(): log level" && return 1
+	levelno="${log_levels[${level}]}"
+	[ -z "${levelno}" ] && >&2 echo "Unknown log level: ${level}" && return 1
+	curlevelno="${log_levels[${HYAKVNC_LOG_LEVEL}]}"
+	[ -z "${curlevelno}" ] && curlevelno="${log_levels["INFO"}]}"
 
-	# if level is symbolic, get a numeric value
-	case "$LEVEL" in
-	OFF) LEVNUM=0 ;;
-	TRACE) LEVNUM=1 ;;
-	DEBUG) LEVNUM=2 ;;
-	INFO) LEVNUM=3 ;;
-	WARN) LEVNUM=4 ;;
-	ERROR) LEVNUM=5 ;;
-	CRITICAL) LEVNUM=6 ;;
-	[0-6]) LEVNUM="$LEVEL" ;;
-	*) LEVNUM=3 ;; # default to INFO
-	esac
+	[ "${levelno}" -lt "${HYAKVNC_LOG_LEVEL}" ] && return 0
+	colorno="${log_level_colors[${level}]}"
+	[ -z "${colorno}" ] && colorno=0
 
-	case "$LEVEL" in
-	1 | t | trace | T | TRACE)
-		if [ "$LEVNUM" -ge "${HYAKVNC_LOG_LEVEL}" ]; then
-			tput -Txterm setaf 2 2>/dev/null
-			printf "TRACE: %s\n" "${MESSAGE}" 1>&2
-			tput -Txterm sgr0 2>/dev/null
+	funcname=""
 
-		fi
-		;;
-	2 | d | debug | D | DEBUG)
-		if [ "$LEVNUM" -ge "${HYAKVNC_LOG_LEVEL}" ]; then
-			tput -Txterm setaf 6 2>/dev/null
-			printf "DEBUG: %s\n" "${MESSAGE}" 1>&2
-			tput -Txterm sgr0 2>/dev/null
+	[ "${levelno}" -ge "${log_level_colors[DEBUG]}" ] && funcname="${FUNCNAME[1]}() - "
 
-		fi
-		;;
 
-	3 | i | info | I | INFO)
-		if [ "$LEVNUM" -ge "${HYAKVNC_LOG_LEVEL}" ]; then
-			tput -Txterm setaf 4 2>/dev/null
-			printf "INFO: %s\n" "${MESSAGE}" 1>&2
-			tput -Txterm sgr0 2>/dev/null
+	# If we're in a terminal, use colors:
 
-		fi
-		;;
-	4 | w | warn | warning | W | WARN | WARNING)
-		if [ "$LEVNUM" -ge "${HYAKVNC_LOG_LEVEL}" ]; then
-			tput -Txterm setaf 3 2>/dev/null
-			printf "WARNING: %s\n" "${MESSAGE}" 1>&2
-			tput -Txterm sgr0 2>/dev/null
-		fi
-
-		;;
-
-	5 | e | error | E | ERROR)
-		if [ "$LEVNUM" -ge "${HYAKVNC_LOG_LEVEL}" ]; then
-			tput -Txterm setaf 1 2>/dev/null
-			printf "ERROR: %s\n" "${MESSAGE}" 1>&2
-			tput -Txterm sgr0 2>/dev/null
-		fi
-		;;
-	6 | c | critical | C | CRITICAL)
-		if [ "$LEVNUM" -ge "${HYAKVNC_LOG_LEVEL}" ]; then
-			tput -Txterm setaf 1 2>/dev/null
-			printf "CRITICAL: %s\n" "${MESSAGE}" 1>&2
-			tput -Txterm sgr0 2>/dev/null
-		fi
-		;;
-	esac
-
-	return 0
+	tput setaf "$colorno" 2>/dev/null
+	(printf "%s: %s" "${level}" "${funcname}"  >&2) 2> >( tee -a "${HYAKVNC_LOG_PATH:-/dev/null}")
+	tput sgr0 2>/dev/null
+	(printf "%s\n" "${*}"  >&2) 2> >( tee -a "${HYAKVNC_LOG_PATH:-/dev/null}")
 }
 
 # xvnc_ps_for_job()
