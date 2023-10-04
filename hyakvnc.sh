@@ -233,9 +233,6 @@ function stop_hyakvnc_session {
 			shift
 			should_cancel=1
 			;;
-		-*)
-			return 1
-			;;
 		*)
 			jobid="${1:-}"
 			break
@@ -244,6 +241,7 @@ function stop_hyakvnc_session {
 	done
 	[ -z "${jobid}" ] && log ERROR "Job ID must be specified" && return 1
 	instance_name="${HYAKVNC_APPTAINER_INSTANCE_PREFIX}${jobid}"
+	log DEBUG "Stopping VNC session for job ${jobid} with instance name ${instance_name}"
 	srun --jobid "${jobid}" sh -c "${HYAKVNC_APPTAINER_BIN} instance stop ${instance_name}" || log WARNING "Apptainer failed to stop VNC process for job ${jobid} with instance name ${instance_name}"
 	pidfile="${HYAKVNC_DIR}/pids/${jobid}.pid"
 	[ -e "${pidfile}" ] && rm "${pidfile}" && log DEBUG "Removed PID file ${pidfile}"
@@ -323,7 +321,7 @@ function print_connection_info {
 
 # cleanup_launched_jobs_and_exit()
 # Cancel any jobs that were launched and exit
-function cleanup_launched_jobs_and_exit() {
+function cleanup_launched_jobs_and_exit {
 	local jobdir jobid
 	trap - SIGINT SIGTSTP SIGTERM SIGHUP SIGABRT SIGQUIT
 	# Cancel any jobs that were launched:
@@ -458,9 +456,9 @@ function cmd_create {
 	container_basename="$(basename "${HYAKVNC_CONTAINER}")"
 	[ -z "$container_basename" ] && log ERROR "Failed to get container basename from ${HYAKVNC_CONTAINER}" && exit 1
 	container_name="${container_basename%.*}"
-	[ -z "$container_basename" ] && log ERROR "Failed to get container name from ${container_basename}" && exit 1
+	[ -z "$container_name" ] && log ERROR "Failed to get container name from ${container_basename}" && exit 1
 
-	[ -z "${HYAKVNC_SLURM_JOB_NAME}" ] && export HYAKVNC_SLURM_JOB_NAME="${HYAKVNC_SLURM_JOB_PREFIX}${container_name}"
+	[ -z "${HYAKVNC_SLURM_JOB_NAME}" ] && export HYAKVNC_SLURM_JOB_NAME="${HYAKVNC_SLURM_JOB_PREFIX}${container_name}" && log TRACE "Set HYAKVNC_SLURM_JOB_NAME to ${HYAKVNC_SLURM_JOB_NAME}"
 
 	# Set sbatch arugments or environment variables:
 	#   CPUs has to be specified as a sbatch argument because it's not settable by environment variable:
@@ -503,7 +501,7 @@ function cmd_create {
 	sbatch_args+=("\"${HYAKVNC_APPTAINER_BIN}\" instance start --app \"${HYAKVNC_APPTAINER_VNC_APP_NAME}\" --pid-file \"${HYAKVNC_DIR}/pids/\$SLURM_JOBID.pid\"  ${apptainer_start_args[*]} \"${HYAKVNC_CONTAINER}\" \"${HYAKVNC_APPTAINER_INSTANCE_PREFIX}\${SLURM_JOB_ID}\" && sleep infinity")
 
 	# Trap signals to clean up the job if the user exits the script:
-	if [ -z "$XNOTRAP" ]; then
+	if [ -z "${XNOTRAP:-}" ]; then
 		trap cleanup_launched_jobs_and_exit SIGINT SIGTSTP SIGTERM SIGHUP SIGABRT SIGQUIT
 	fi
 	sbatch_result=$(sbatch "${sbatch_args[@]}") || { log ERROR "Failed to launch job" && exit 1; }
@@ -538,7 +536,7 @@ function cmd_create {
 	done
 
 	# Identify the node the job is running on:
-	local job_nodelist job_nodes launched_node launched_ppid_file xvnc_psinfo xvnc_port xvnc_name xvnc_host xvnc_pidfile xvnc_pid
+	local job_nodelist job_nodes launched_node launched_ppid_file xvnc_psinfo xvnc_port xvnc_name xvnc_host xvnc_pid
 	job_nodelist="$(squeue --job "${launched_jobid}" --clusters "${launched_cluster}" --format "%N" --noheader)" || { log ERROR "Failed to get job nodes" && exit 1; }
 	[ -z "${job_nodelist}" ] && { log ERROR "Failed to get job nodes" && exit 1; }
 
@@ -571,15 +569,8 @@ function cmd_create {
 
 	# Get details about the Xvnc process:
 	cmd_show "${launched_jobid}" || { log ERROR "Failed to get Xvnc process info for job ${launched_jobid}" && exit 1; }
-	#xvnc_psinfo=$(xvnc_psinfo_for_job "${launched_jobid}") || { log ERROR "Failed to get Xvnc process info for job" && exit 1; }
-	#[ -z "${xvnc_psinfo}" ] && { log ERROR "Failed to get Xvnc process info from job" && exit 1; }
-	#IFS=';' read -r xvnc_host xvnc_port xvnc_name xvnc_pid <<<"${xvnc_psinfo}"
-
-	# Print connection strings:
-	#print_connection_info --node "${xvnc_host}" --port "${xvnc_port}" --viewer-port "${HYAKVNC_VNC_VIEWER_PORT}" || { log ERROR "Failed to print connection info" && exit 1; }
-
 	# Stop trapping the signals:
-	if [ -z "$XNOTRAP" ]; then
+	if [ -z "${XNOTRAP:-}" ]; then
 		trap - SIGINT SIGTSTP SIGTERM SIGHUP SIGABRT SIGQUIT
 	fi
 	return 0
@@ -676,7 +667,7 @@ EOF
 
 function cmd_stop {
 	local jobids all jobid should_cancel stop_hyakvnc_session_args
-	stop_hyakvnc_session_args=""
+	stop_hyakvnc_session_args=()
 	# Parse arguments:
 	while true; do
 		case ${1:-} in
@@ -701,7 +692,7 @@ function cmd_stop {
 			return 1
 			;;
 		*)
-			jobids="${@:-}"
+			jobids="${*:-}"
 			break
 			;;
 		esac
@@ -715,7 +706,7 @@ function cmd_stop {
 
 	# Cancel any jobs that were launched:
 	for jobid in ${jobids}; do
-		stop_hyakvnc_session "${stop_hyakvnc_session_args[@]}" --jobid "${jobid}" && log INFO "Stopped job ${jobid}"
+		stop_hyakvnc_session "${stop_hyakvnc_session_args[@]}" "${jobid}" && log INFO "Stopped job ${jobid}"
 	done
 	return 0
 }
@@ -753,7 +744,7 @@ function cmd_show {
 			return 1
 			;;
 		*)
-			jobid="${@-}"
+			jobid="${*-}"
 			shift
 			break
 			;;
