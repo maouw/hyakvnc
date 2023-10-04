@@ -468,7 +468,6 @@ EOF
 
 # create
 function cmd_create {
-	log INFO "Creating VNC job"
 	local apptainer_start_args=()
 	local sbatch_args=(--parsable)
 	local container_basename container_name start
@@ -546,6 +545,7 @@ function cmd_create {
 			;;
 		esac
 	done
+	log INFO "Creating VNC job"
 
 	# Check that container is specified
 	[ -z "${HYAKVNC_CONTAINER}" ] && log ERROR "Container image must be specified" && exit 1
@@ -726,7 +726,6 @@ EOF
 }
 
 function cmd_status {
-	log INFO "Checking status of VNC jobs"
 	local account running_jobid running_jobids
 	while true; do
 		case ${1:-} in
@@ -751,6 +750,7 @@ function cmd_status {
 			;;
 		esac
 	done
+	log INFO "Checking status of VNC jobs"
 
 	# Loop over directories in ${HYAKVNC_DIR}/jobs
 	squeue_args=(--me --states=RUNNING --noheader --format '%j %i')
