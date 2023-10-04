@@ -141,27 +141,27 @@ function xvnc_psinfo_for_job {
 	jobid="${1:-}"
 	ppid="${2:-}"
 	[ -z "${jobid}" ] && log ERROR "Job ID must be specified" && return 1
+	[ -z "${ppid}" ] && { ppid=$(get_hyakvnc_instance_ppid_for_job "${jobid}") || { log ERROR "Failed to get VNC process info from job ${jobid}" && return 1; }; }
 	[ -z "${ppid}" ] && log ERROR "PPID must be specified" && return 1
-	
+
 	# Get the Xvnc process information for the job:
 	xvnc_ps=$(srun --jobid "${jobid}" --quiet --error /dev/null sh -c "pgrep --parent ${ppid} --exact Xvnc --list-full || echo")
 	[ -z "${xvnc_ps}" ] && log WARNING "Failed to get VNC process info fpr job ${jobid}" && return 1
 
 	local xvnc_port xvnc_name xvnc_pid xvnc_pidfile xvnc_host
-		# Get the port and hostname:display part from the Xvnc process info.
+	# Get the port and hostname:display part from the Xvnc process info.
 	#   (The process info looks like this: '4280 /opt/TurboVNC/bin/Xvnc :1 -desktop TurboVNC: g3050:1 () -auth ...')
-	xvnc_port=$(echo "${xvnc_ps}" | grep -oE 'rfbport[[:space:]]+[0-9]+' | grep -oE '[0-9]+') || { return 1 ; }
-	xvnc_name=$(echo "${xvnc_ps}" | grep -oE 'TurboVNC: .*:[0-9]+ \(\)' | cut -d' ' -f2) || { return 1 ; }
+	xvnc_port=$(echo "${xvnc_ps}" | grep -oE 'rfbport[[:space:]]+[0-9]+' | grep -oE '[0-9]+') || { return 1; }
+	xvnc_name=$(echo "${xvnc_ps}" | grep -oE 'TurboVNC: .*:[0-9]+ \(\)' | cut -d' ' -f2) || { return 1; }
 
 	# The Xvnc process should be leaving a PID file named in the format "job_node:DISPLAY.pid". If it's not, this could be a problem:
-	[ -z "${xvnc_host:=${xvnc_name%%:*}}" ] && return 1 ;
+	[ -z "${xvnc_host:=${xvnc_name%%:*}}" ] && return 1
 	# Look for the PID file for the Xvnc process in the ~/.vnc directory:
-	[ -e "${xvnc_pidfile:=${HOME}/.vnc/${xvnc_name}.pid}" ] || { log ERROR "Xvnc PID file doesn't exist at ${xvnc_pidfile}" && return 1 ; }
-	xvnc_pid=$(grep -m1 -oE '^[0-9]+' "${xvnc_pidfile}") || { log ERROR "Failed to get VNC PID from PID file at  ${xvnc_pidfile}" && return 1 ; }
-	[ -z "${xvnc_pid}" ] && log ERROR "Failed to get VNC PID from PID file at  ${xvnc_pidfile}" && return  1 ; 
-	echo "${xvnc_host} ${xvnc_port} ${xvnc_name} ${xvnc_pid}"
+	[ -e "${xvnc_pidfile:=${HOME}/.vnc/${xvnc_name}.pid}" ] || { log ERROR "Xvnc PID file doesn't exist at ${xvnc_pidfile}" && return 1; }
+	xvnc_pid=$(grep -m1 -oE '^[0-9]+' "${xvnc_pidfile}") || { log ERROR "Failed to get VNC PID from PID file at  ${xvnc_pidfile}" && return 1; }
+	[ -z "${xvnc_pid}" ] && log ERROR "Failed to get VNC PID from PID file at  ${xvnc_pidfile}" && return 1
+	echo "${xvnc_host};${xvnc_port};${xvnc_name};${xvnc_pid}"
 }
-
 
 # get_default_slurm_cluster()
 # Get the default SLURM cluster
@@ -178,7 +178,7 @@ function get_default_slurm_cluster {
 function get_default_slurm_account {
 	local account
 	# Get the default account:
-	account=$(sacctmgr show user -nPs "${USER}" format=defaultaccount | grep -o -m 1 -E '\S+') || { log ERROR "Failed to get default account" && return 1 ; }
+	account=$(sacctmgr show user -nPs "${USER}" format=defaultaccount | grep -o -m 1 -E '\S+') || { log ERROR "Failed to get default account" && return 1; }
 	echo "${account}"
 }
 
@@ -186,7 +186,7 @@ function get_default_slurm_account {
 # Gets the SLURM partitions for the specified user and account on the specified cluster
 function get_slurm_partitions {
 	local partitions
-	partitions=$(sacctmgr show -nPs user "${1}" format=qos where account="${2}" cluster="${3}" | grep -o -m 1 -E '\S+' | tr ',' ' ') || { log ERROR "Failed to get SLURM partitions" && return 1 ; }
+	partitions=$(sacctmgr show -nPs user "${1}" format=qos where account="${2}" cluster="${3}" | grep -o -m 1 -E '\S+' | tr ',' ' ') || { log ERROR "Failed to get SLURM partitions" && return 1; }
 	# Remove the account prefix from the partitions and return
 	echo "${partitions//${2:-}-/}" && return 0
 }
@@ -194,8 +194,8 @@ function get_slurm_partitions {
 # get_default_slurm_partition()
 # Gets the SLURM partitions for the specified user and account on the specified cluster
 function get_default_slurm_partition {
-	local  partition partitions	
-	partitions=$(get_slurm_partitions "${1}" "${2}" "${3}") || { log ERROR "Failed to get SLURM partitions" && return 1 ; }
+	local partition partitions
+	partitions=$(get_slurm_partitions "${1}" "${2}" "${3}") || { log ERROR "Failed to get SLURM partitions" && return 1; }
 	[ -z "${partitions}" ] && log ERROR "Failed to get default SLURM partition" && return 1
 	partition="${partitions% *}"
 	[ -z "${partition}" ] && log ERROR "Failed to get default SLURM partition" && return 1
@@ -235,7 +235,7 @@ function get_slurm_job_info {
 function get_squeue_job_status {
 	local jobid="${1:-}"
 	[ -z "${jobid}" ] && log ERROR "Job ID must be specified" && return 1
-	squeue -j "${1}" -h -o '%T' || { log ERROR "Failed to get status for job ${jobid}" && return 1 ; }
+	squeue -j "${1}" -h -o '%T' || { log ERROR "Failed to get status for job ${jobid}" && return 1; }
 }
 
 # check_slurmjob_port_open()
@@ -287,7 +287,7 @@ function check_slurmjob_port_open {
 # stop_hyakvnc_session
 # Stop a Hyak VNC session, given a job ID
 function stop_hyakvnc_session {
-	local jobid jobdir running_job_node instance_name should_cancel
+	local jobid should_cancel instance_name pidfile
 	while true; do
 		case ${1:-} in
 		-c | --cancel)
@@ -305,22 +305,10 @@ function stop_hyakvnc_session {
 		esac
 	done
 	[ -z "${jobid}" ] && log ERROR "Job ID must be specified" && return 1
-	jobdir="${HYAKVNC_DIR}/jobs/${jobid}"
-	[ -e "${jobdir}" ] || { log ERROR "Job directory ${jobdir} does not exist" && return 1 ; }
-	running_job_node=$(squeue --job "${jobid}" --format "%N" --noheader) || log WARNING "Failed to get node for job ${jobid}"
-	[ -z "${running_job_node}" ] && log WARNING "Failed to get node for job ${jobid}. Is it still running?" && return 1
-	local xvnc_port xvnc_pid
-	xvnc_port=$(cat "${jobdir}/xvnc_port.txt") || log WARNING "Failed to read VNC port from ${jobdir}/xvnc_port.txt"
-	xvnc_pid=$(cat "${jobdir}/xvnc_pid.txt") || log WARNING "Failed to read VNC PID from ${jobdir}/xvnc_pid.txt"
-	if check_slurmjob_port_open -j "${jobid}" -p "${xvnc_port}" --pid "${xvnc_pid}"; then
-		log DEBUG "Job ${jobid} is running on ${running_job_node} with VNC port ${xvnc_port}"
-	else
-		log WARNING "Job ${jobid} on ${running_job_node} does not appear to be running VNC on port ${xvnc_port}"
-	fi
-	srun --jobid "${jobid}" --quiet --error /dev/null sh -c "apptainer instance stop ${instance_name}" || log WARNING "Apptainer failed to stop VNC process for job ${jobid} with instance name ${instance_name}"
-
-	# Remove the job directory:
-	rm -rf "${jobdir}" || log DEBUG "Failed to remove job directory ${jobdir}"
+	instance_name="${HYAKVNC_APPTAINER_INSTANCE_PREFIX}${jobid}"
+	srun --jobid "${jobid}" sh -c "apptainer instance stop ${instance_name}" || log WARNING "Apptainer failed to stop VNC process for job ${jobid} with instance name ${instance_name}"
+	pidfile="${HYAKVNC_DIR}/pids/${jobid}.pid"
+	[ -e "${pidfile}" ] && rm "${pidfile}" && log DEBUG "Removed PID file ${pidfile}"
 
 	if [ -n "${should_cancel}" ]; then
 		log INFO "Cancelling job ${jobid}"
@@ -542,7 +530,7 @@ function cmd_create {
 
 	export HYAKVNC_SLURM_ACCOUNT="${HYAKVNC_SLURM_ACCOUNT:-$(get_default_slurm_account)}"
 	export HYAKVNC_SLURM_CLUSTER="${HYAKVNC_SLURM_CLUSTER:-$(get_default_slurm_cluster)}"
-	export HYAKVNC_SLURM_PARTITION="${HYAKVNC_SLURM_PARTITION:-$(get_default_slurm_partition "${USER}" "${HYAKVNC_SLURM_ACCOUNT}"  "${HYAKVNC_SLURM_CLUSTER}" )}"
+	export HYAKVNC_SLURM_PARTITION="${HYAKVNC_SLURM_PARTITION:-$(get_default_slurm_partition "${USER}" "${HYAKVNC_SLURM_ACCOUNT}" "${HYAKVNC_SLURM_CLUSTER}")}"
 
 	[ -n "${HYAKVNC_SLURM_ACCOUNT}" ] && export SBATCH_ACCOUNT="${HYAKVNC_SLURM_ACCOUNT}" && log TRACE "Set SBATCH_ACCOUNT to ${SBATCH_ACCOUNT}"
 	[ -n "${HYAKVNC_SLURM_PARTITION}" ] && export SBATCH_PARTITION="${HYAKVNC_SLURM_PARTITION}" && log TRACE "Set SBATCH_PARTITION to ${SBATCH_PARTITION}"
@@ -578,7 +566,7 @@ function cmd_create {
 
 	# Trap signals to clean up the job if the user exits the script:
 	trap cleanup_launched_jobs_and_exit SIGINT SIGTSTP SIGTERM SIGHUP SIGABRT SIGQUIT
-	sbatch_result=$(sbatch "${sbatch_args[@]}") || { log ERROR "Failed to launch job" && exit 1 ; }
+	sbatch_result=$(sbatch "${sbatch_args[@]}") || { log ERROR "Failed to launch job" && exit 1; }
 	# Quit if no job ID was returned:
 	[ -z "${sbatch_result:-}" ] && log ERROR "Failed to launch job" && exit 1
 
@@ -610,12 +598,12 @@ function cmd_create {
 	done
 
 	# Identify the node the job is running on:
-	local job_nodelist job_nodes launched_node launched_ppid_file xvnc_psinfo vxvnc_psinfo xvnc_port xvnc_name xvnc_host xvnc_pidfile xvnc_pid
-	job_nodelist="$(squeue --job "${launched_jobid}" --clusters "${launched_cluster}" --format "%N" --noheader)" || { log ERROR "Failed to get job nodes" && exit 1 ; }
-	[ -z "${job_nodelist}" ] && { log ERROR "Failed to get job nodes" && exit 1 ; }
+	local job_nodelist job_nodes launched_node launched_ppid_file xvnc_psinfo xvnc_port xvnc_name xvnc_host xvnc_pidfile xvnc_pid
+	job_nodelist="$(squeue --job "${launched_jobid}" --clusters "${launched_cluster}" --format "%N" --noheader)" || { log ERROR "Failed to get job nodes" && exit 1; }
+	[ -z "${job_nodelist}" ] && { log ERROR "Failed to get job nodes" && exit 1; }
 
 	# Expand the job nodelist:
-	job_nodes=$(expand_slurm_node_range "${job_nodelist}") || { log ERROR "Failed to expand job nodelist ${job_nodelist}" && exit 1 ; }
+	job_nodes=$(expand_slurm_node_range "${job_nodelist}") || { log ERROR "Failed to expand job nodelist ${job_nodelist}" && exit 1; }
 	[ -z "${job_nodes}" ] && log ERROR "Failed to expand job nodelist ${job_nodelist}" && exit 1
 
 	# Get the first node in the list:
@@ -632,25 +620,17 @@ function cmd_create {
 	done
 
 	local launched_ppid
-	launched_ppid=$(cat "${launched_ppid_file}") || { log ERROR "Failed to read Xvnc PID from ${launched_ppid_file}" && exit 1 ; }
+	launched_ppid=$(cat "${launched_ppid_file}") || { log ERROR "Failed to read Xvnc PID from ${launched_ppid_file}" && exit 1; }
 	[ -z "${launched_ppid}" ] && log ERROR "Failed to read Xvnc PID from ${launched_ppid_file}" && exit 1
 
 	# Set up the job directory:
 	jobdir="${HYAKVNC_DIR}/jobs/${launched_jobid}"
-	mkdir -p "${jobdir}" || { log ERROR "Failed to create job directory ${jobdir}" && exit 1 ; }
+	mkdir -p "${jobdir}" || { log ERROR "Failed to create job directory ${jobdir}" && exit 1; }
 
 	# Get details about the Xvnc process:
-	xvnc_psinfo=$(xvnc_ps_for_job "${launched_jobid}" "${launched_ppid}") || { log ERROR "Failed to get Xvnc process info for job" && exit 1 ; }
-	[ -z "${xvnc_psinfo}" ] && { log ERROR "Failed to get Xvnc process info from job" && exit 1 ; }
-
-	# shellcheck disable=SC2206
-	vxvnc_psinfo=(${xvnc_psinfo})
-	[ "${#vxvnc_psinfo[@]}" -ne 4 ] && { log ERROR "Failed to parse Xvnc process info from job" && exit 1 ; }
-	
-	xvnc_port="${vxvnc_psinfo[0]}"
-	xvnc_host="${vxvnc_psinfo[1]}"
-	xvnc_name="${vxvnc_psinfo[2]}"
-	xvnc_pid="${vxvnc_psinfo[3]}"
+	xvnc_psinfo=$(xvnc_psinfo_for_job "${launched_jobid}" "${launched_ppid}") || { log ERROR "Failed to get Xvnc process info for job" && exit 1; }
+	[ -z "${xvnc_psinfo}" ] && { log ERROR "Failed to get Xvnc process info from job" && exit 1; }
+	IFS=';' read -r xvnc_port xvnc_host xvnc_name xvnc_pid <<<"${xvnc_psinfo}"
 
 	# Wait for port to be open on the job node for the Xvnc process:
 	start=$EPOCHSECONDS
@@ -663,19 +643,19 @@ function cmd_create {
 		sleep 1
 	done
 
-	# Write metadata:
-	echo "${xvnc_ps}" >"${jobdir}/xvnc_ps.txt"
-	echo "${xvnc_name}" >"${jobdir}/xvnc_name.txt"
-	echo "${xvnc_port}" >"${jobdir}/xvnc_port.txt"
-	echo "${xvnc_pidfile}" >"${jobdir}/xvnc_pidfile.txt"
-	echo "${xvnc_pid}" >"${jobdir}/xvnc_pid.txt"
-	echo "${launched_ppid_file}" >"${jobdir}/instance_ppid_file.txt"
-	echo "${launched_jobid}" >"${jobdir}/jobid.txt"
-	echo "${launched_cluster}" >"${jobdir}/launched_cluster.txt"
-	echo "${launched_node}" >"${jobdir}/launched_node.txt"
+	# # Write metadata:
+	# echo "${xvnc_ps}" >"${jobdir}/xvnc_ps.txt"
+	# echo "${xvnc_name}" >"${jobdir}/xvnc_name.txt"
+	# echo "${xvnc_port}" >"${jobdir}/xvnc_port.txt"
+	# echo "${xvnc_pidfile}" >"${jobdir}/xvnc_pidfile.txt"
+	# echo "${xvnc_pid}" >"${jobdir}/xvnc_pid.txt"
+	# echo "${launched_ppid_file}" >"${jobdir}/instance_ppid_file.txt"
+	# echo "${launched_jobid}" >"${jobdir}/jobid.txt"
+	# echo "${launched_cluster}" >"${jobdir}/launched_cluster.txt"
+	# echo "${launched_node}" >"${jobdir}/launched_node.txt"
 
 	# Print connection strings:
-	print_connection_info --node "${xvnc_host}" --port "${xvnc_port}" --viewer-port "${HYAKVNC_VNC_VIEWER_PORT}" || { log ERROR "Failed to print connection info" && exit 1 ; }
+	print_connection_info --node "${xvnc_host}" --port "${xvnc_port}" --viewer-port "${HYAKVNC_VNC_VIEWER_PORT}" || { log ERROR "Failed to print connection info" && exit 1; }
 
 	# Stop trapping the signals:
 	trap - SIGINT SIGTSTP SIGTERM SIGHUP SIGABRT SIGQUIT
@@ -733,25 +713,18 @@ function cmd_status {
 	# Loop over directories in ${HYAKVNC_DIR}/jobs
 	squeue_args=(--me --states=RUNNING --noheader --format '%j %i')
 	[ -n "${running_jobid:-}" ] && squeue_args+=(--job "${running_jobid}")
-	running_jobids=$(squeue "${squeue_args[@]}" | grep -E "^${HYAKVNC_SLURM_JOB_PREFIX}" | grep -oE '[0-9]+$') || { log WARNING "Found no running job IDs with names that match the prefix ${HYAKVNC_SLURM_JOB_PREFIX}" && return 1 ; }
+	running_jobids=$(squeue "${squeue_args[@]}" | grep -E "^${HYAKVNC_SLURM_JOB_PREFIX}" | grep -oE '[0-9]+$') || { log WARNING "Found no running job IDs with names that match the prefix ${HYAKVNC_SLURM_JOB_PREFIX}" && return 1; }
 	[ -z "${running_jobids:-}" ] && log WARNING "Found no running job IDs with names that match the prefix ${HYAKVNC_SLURM_JOB_PREFIX}" && return 1
 
 	for running_jobid in ${running_jobids:-}; do
-		local running_job_node jobdir xvnc_name xvnc_port xvnc_pid xvnc_ps launched_cluster launched_node
-
-		running_job_node=$(squeue --job "${running_jobid}" --format "%N" --noheader) || { log WARNING "Failed to get node for job ${running_jobid}" && continue ; }
+		local running_job_node jobdir xvnc_name xvnc_port xvnc_pid xvnc_psinfo launched_cluster launched_node
+		running_job_node=$(squeue --job "${running_jobid}" --format "%N" --noheader) || { log WARNING "Failed to get node for job ${running_jobid}" && continue; }
 		[ -z "${running_job_node}" ] && log WARNING "Failed to get node for job ${running_jobid}" && continue
 
-		jobdir="${HYAKVNC_DIR}/jobs/${running_jobid}"
-		[ -e "${jobdir}" ] || continue
-		[ -d "${jobdir}" ] || continue
+		xvnc_psinfo=$(xvnc_psinfo_for_job "${running_jobid}") || { log WARNING "Failed to get Xvnc process info for job ${running_jobid}" && continue; }
+		[ -z "${xvnc_psinfo}" ] && { log WARNING "Failed to get Xvnc process info from job ${running_jobid}" && continue; }
+		IFS=';' read -r xvnc_port xvnc_host xvnc_name xvnc_pid <<<"${xvnc_psinfo}"
 
-
-		xvnc_name=$(cat "${jobdir}/xvnc_name.txt") || { log WARNING "Failed to read VNC name from ${jobdir}/xvnc_name.txt" && continue ; }
-		xvnc_port=$(cat "${jobdir}/xvnc_port.txt") || { log WARNING "Failed to read VNC port from ${jobdir}/xvnc_port.txt" && continue ; }
-		xvnc_pid=$(cat "${jobdir}/xvnc_pid.txt") || { log WARNING "Failed to read VNC PID from ${jobdir}/xvnc_pid.txt" && continue ; }
-		launched_cluster=$(cat "${jobdir}/launched_cluster.txt") || log WARNING "Failed to read cluster from ${jobdir}/cluster.txt"
-		launched_node=$(cat "${jobdir}/launched_node.txt") || log WARNING "Failed to read launched node from ${jobdir}/launched_node.txt"
 		if check_slurmjob_port_open -j "${running_jobid}" -p "${xvnc_port}" --pid "${xvnc_pid}"; then
 			echo "Job ${jobid} is running on ${running_job_node} with VNC port ${xvnc_port}"
 		else
@@ -781,22 +754,6 @@ Examples:
   hyakvnc stop -a
   # Stop all VNC sessions and also cancel the jobs:
   hyakvnc stop -a -c
-EOF
-}
-
-function help_show {
-	cat <<EOF
-Usage: hyakvnc show <jobid>
-
-Description:
-  Show connection information for a HyakVNC sesssion
-
-Options:
-  -h, --help	Show this help message and exit
-
-Examples:
-  # Show connection information for session running on job 123456:
-  hyakvnc show 123456
 EOF
 }
 
@@ -846,9 +803,23 @@ function cmd_stop {
 	return 0
 }
 
+function help_show {
+	cat <<EOF
+Usage: hyakvnc show <jobid>
+
+Description:
+  Show connection information for a HyakVNC sesssion
+
+Options:
+  -h, --help	Show this help message and exit
+
+Examples:
+  # Show connection information for session running on job 123456:
+  hyakvnc show 123456
+EOF
+}
 function cmd_show {
-	local jobids all jobid should_cancel stop_hyakvnc_session_args
-	stop_hyakvnc_session_args=""
+	local jobid
 	# Parse arguments:
 	while true; do
 		case "${1:-}" in
@@ -860,36 +831,23 @@ function cmd_show {
 			shift
 			export HYAKVNC_LOG_LEVEL=2
 			;;
-		-a | --all)
-			shift
-			all=1
-			;;
-		-c | --cancel)
-			shift
-			stop_hyakvnc_session_args+=(--cancel)
-			;;
 		-*)
-			log ERROR "Unknown option for stop: ${1:-}\n"
+			log ERROR "Unknown option for show: ${1:-}\n"
 			return 1
 			;;
 		*)
-			jobids="${*:-}"
+			jobid="${1:-}"
+			shift
 			break
 			;;
 		esac
 	done
+	[ -z "${jobid}" ] && log ERROR "Must specify running job IDs" && exit 1
+	xvnc_psinfo=$(xvnc_psinfo_for_job "${launched_jobid}" "${launched_ppid}") || { log ERROR "Failed to get Xvnc process info for job" && exit 1; }
+	[ -z "${xvnc_psinfo}" ] && { log ERROR "Failed to get Xvnc process info from job" && exit 1; }
+	IFS=';' read -r xvnc_port xvnc_host xvnc_name xvnc_pid <<<"${xvnc_psinfo}"
 
-	if [ -n "$all" ]; then
-		jobids=$(squeue --me --format '%j %i' --noheader | grep -E "^${HYAKVNC_SLURM_JOB_PREFIX}" | grep -oE '[0-9]+$') || log WARNING "Found no running job IDs with names that match the prefix ${HYAKVNC_SLURM_JOB_PREFIX}"
-	fi
-
-	[ -z "${jobids}" ] && log ERROR "Must specify running job IDs" && exit 1
-
-	# Cancel any jobs that were launched:
-	for jobid in ${jobids}; do
-		stop_hyakvnc_session "${stop_hyakvnc_session_args[@]}" --jobid "${jobid}" && log INFO "Stopped job ${jobid}"
-	done
-	return 0
+	print_connection_info --node "${xvnc_host}" --port "${xvnc_port}" --viewer-port "${HYAKVNC_VNC_VIEWER_PORT}" || { log ERROR "Failed to print connection info" && exit 1; }
 }
 
 function cmd_help {
