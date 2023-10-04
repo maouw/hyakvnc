@@ -474,7 +474,7 @@ function cmd_create {
 	local container_basename container_name start
 	while true; do
 		case ${1:-} in
-		-h | --help | help)
+		-h | --help)
 			help_create
 			return 0
 			;;
@@ -730,7 +730,7 @@ function cmd_status {
 	local account running_jobid running_jobids
 	while true; do
 		case ${1:-} in
-		-h | --help | help)
+		-h | --help)
 			help_status
 			return 0
 			;;
@@ -826,7 +826,7 @@ function cmd_stop {
 	# Parse arguments:
 	while true; do
 		case ${1:-} in
-		-h | --help | help)
+		-h | --help)
 			help_stop
 			return 0
 			;;
@@ -872,7 +872,7 @@ function cmd_show {
 	# Parse arguments:
 	while true; do
 		case "${1:-}" in
-		-h | --help | help)
+		-h | --help)
 			help_show
 			return 0
 			;;
@@ -1008,7 +1008,8 @@ while true; do
 		help_show "$@"
 		exit 0
 		;;
-	*) 	log ERROR "Unknown command: ${1:-}"
+	*)
+		log ERROR "Unknown command: ${1:-}"
 		echo
 		cmd_help
 		exit 1
