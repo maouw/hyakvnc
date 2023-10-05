@@ -800,6 +800,9 @@ if ! (return 0 2>/dev/null); then
 			echo "HyakVNC version ${HYAKVNC_VERSION}"
 			exit 0
 			;;
+		*)
+			break
+			;;
 		esac
 	done
 
