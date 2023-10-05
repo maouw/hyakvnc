@@ -481,7 +481,7 @@ function cmd_create {
 		;;
 	esac
 
-	apptainer_start_args+=("--bind" "\"${alljobsdir}/\${SLURM_JOB_ID}:/vnc\"")
+	apptainer_start_args+=("--bind" "\"${alljobsdir}/\${SLURM_JOB_ID}/vnc:/vnc\"")
 	apptainer_start_args+=("--bind" "\"${alljobsdir}/\${SLURM_JOB_ID}/tmp:/tmp\"")
 	# Set up extra bind paths:
 	[ -n "${HYAKVNC_SET_APPTAINER_BIND_PATHS:-}" ] && apptainer_start_args+=("--bind" "\"${HYAKVNC_SET_APPTAINER_BIND_PATHS}\"")
@@ -521,6 +521,7 @@ function cmd_create {
 		if ((EPOCHSECONDS - start > HYAKVNC_SBATCH_POST_TIMEOUT)); then
 			log ERROR "Timed out waiting for job to start" && exit 1
 		fi
+		sleep 1
 		squeue_result=$(squeue --job "${launched_jobid}" --format "%T" --noheader)
 		case "${squeue_result:-}" in
 		SIGNALING | PENDING | CONFIGURING | STAGE_OUT | SUSPENDED | REQUEUE_HOLD | REQUEUE_FED | RESV_DEL_HOLD | STOPPED | RESIZING | REQUEUED)
@@ -541,9 +542,10 @@ function cmd_create {
 		if ((EPOCHSECONDS - start > HYAKVNC_SBATCH_POST_TIMEOUT)); then
 			log ERROR "Timed out waiting for job to open its directories" && exit 1
 		fi
-		[ ! -d "${jobdir}" ] && log DEBUG "Job directory does not exist yet" && continue
-		[ ! -e "${jobdir}/vnc/socket.uds" ] && log DEBUG "Job socket does not exist yet" && continue
-		[ ! -S "${jobdir}/vnc/socket.uds" ] && log DEBUG "Job socket is not a socket" && continue
+		sleep 1
+		[ ! -d "${jobdir}" ] && log TRACE "Job directory does not exist yet" && continue
+		[ ! -e "${jobdir}/vnc/socket.uds" ] && log TRACE "Job socket does not exist yet" && continue
+		[ ! -S "${jobdir}/vnc/socket.uds" ] && log TRACE "Job socket is not a socket" && continue
 		break
 	done
 
