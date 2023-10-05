@@ -530,15 +530,23 @@ function cmd_create {
 			;;
 		RUNNING)
 			log DEBUG "Job ${launched_jobid} is ${squeue_result}"
-			[ ! -d "${jobdir}" ] && log DEBUG "Job directory does not exist yet" && continue
-			[ ! -e "${jobdir}/vnc/socket.uds" ] && log DEBUG "Job socket does not exist yet" && continue
-			[ ! -S "${jobdir}/vnc/socket.uds" ] && log DEBUG "Job socket is not a socket" && continue
 			break
 			;;
 		*) log ERROR "Job ${launched_jobid} is in unexpected state ${squeue_result}" && exit 1 ;;
 		esac
 	done
-	
+
+	start=$EPOCHSECONDS
+	while true; do
+		if ((EPOCHSECONDS - start > HYAKVNC_SBATCH_POST_TIMEOUT)); then
+			log ERROR "Timed out waiting for job to open its directories" && exit 1
+		fi
+		[ ! -d "${jobdir}" ] && log DEBUG "Job directory does not exist yet" && continue
+		[ ! -e "${jobdir}/vnc/socket.uds" ] && log DEBUG "Job socket does not exist yet" && continue
+		[ ! -S "${jobdir}/vnc/socket.uds" ] && log DEBUG "Job socket is not a socket" && continue
+		break
+	done
+
 	# Get details about the Xvnc process:
 	cmd_show "${launched_jobid}" || { log ERROR "Failed to get Xvnc process info for job ${launched_jobid}" && exit 1; }
 	# Stop trapping the signals:
