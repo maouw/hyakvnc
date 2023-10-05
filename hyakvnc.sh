@@ -71,9 +71,8 @@ function log {
 
 	# If we're in a terminal, use colors:
 	#tput setaf "$colorno" 2>/dev/null
-	(printf "%s: %s" "${level}" "${funcname}" >&2) 2> >(tee -a "${HYAKVNC_LOG_PATH:-/dev/null}")
+	(printf "%s: %s%s" "${level}" "${funcname}" "${*}" >&2) 2> >(tee -a "${HYAKVNC_LOG_PATH:-/dev/null}")
 	#tput sgr0 2>/dev/null
-	(printf "%s\n" "${*}" >&2) 2> >(tee -a "${HYAKVNC_LOG_PATH:-/dev/null}")
 }
 
 # get_default_slurm_cluster()
