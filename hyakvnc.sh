@@ -15,16 +15,18 @@ HYAKVNC_DIR="${HYAKVNC_DIR:-$HOME/.hyakvnc}"
 HYAKVNC_CONFIG_DIR="${HYAKVNC_CONFIG_DIR:-$HOME/.config/hyakvnc}"
 HYAKVNC_SSH_HOST="${HYAKVNC_SSH_HOST:-klone.hyak.uw.edu}"
 HYAKVNC_VNC_PASSWORD="${HYAKVNC_VNC_PASSWORD:-password}"
+HYAKVNC_VNC_DISPLAY="${HYAKVNC_VNC_DISPLAY:-:1}"
+
 HYAKVNC_STANDARD_TIMEOUT="${HYAKVNC_STANDARD_TIMEOUT:-30}" # How long to wait for a command to complete before timing out
 
 # === macOS bundle identifiers for VNC viewer executables:
 HYAKVNC_MACOS_VNC_VIEWER_BUNDLEIDS="${HYAKVNC_MACOS_VNC_VIEWER_BUNDLEIDS:-com.turbovnc.vncviewer.VncViewer com.realvnc.vncviewer com.tigervnc.vncviewer}"
 
 # == Apptainer preferences:
-HYAKVNC_CONTAINER="${HYAKVNC_CONTAINER:-}"                                                             # Path to container image
-HYAKVNC_APPTAINER_BIN="${HYAKVNC_APPTAINER_BIN:-apptainer}"                                            # Name of apptainer binary
-HYAKVNC_APPTAINER_CONFIG_DIR="${HYAKVNC_APPTAINER_CONFIG_DIR:-$HOME/.apptainer}"                       # Path to apptainer config directory
-HYAKVNC_APPTAINER_INSTANCE_PREFIX="${HYAKVNC_APPTAINER_INSTANCE_PREFIX:-hyakvnc-}"                     # Prefix for apptainer instance names
+HYAKVNC_CONTAINER="${HYAKVNC_CONTAINER:-}"                                       # Path to container image
+HYAKVNC_APPTAINER_BIN="${HYAKVNC_APPTAINER_BIN:-apptainer}"                      # Name of apptainer binary
+HYAKVNC_APPTAINER_CONFIG_DIR="${HYAKVNC_APPTAINER_CONFIG_DIR:-$HOME/.apptainer}" # Path to apptainer config directory
+
 HYAKVNC_APPTAINER_WRITABLE_TMPFS="${HYAKVNC_APPTAINER_WRITABLE_TMPFS:-${APPTAINER_WRITABLE_TMPFS:-1}}" # Whether to use a writable tmpfs for the container
 HYAKVNC_APPTAINER_CLEANENV="${HYAKVNC_APPTAINER_CLEANENV:-${APPTAINER_CLEANENV:-1}}"                   # Whether to use a clean environment for the container
 HYAKVNC_SET_APPTAINER_BIND_PATHS="${HYAKVNC_SET_APPTAINER_BIND_PATHS:-}"                               # Bind paths to set for the container
@@ -35,7 +37,7 @@ HYAKVNC_APPTAINER_VNC_APP_NAME="${HYAKVNC_APPTAINER_VNC_APP_NAME:-vncserver}"   
 HYAKVNC_SLURM_JOB_PREFIX="${HYAKVNC_SLURM_JOB_PREFIX:-hyakvnc-}"
 HYAKVNC_SBATCH_POST_TIMEOUT="${HYAKVNC_SBATCH_POST_TIMEOUT:-120}"                   # How long after submitting via sbatch to wait for the job to start before timing out
 HYAKVNC_SLURM_OUTPUT="${HYAKVNC_SLURM_OUTPUT:-${SBATCH_OUTPUT:-}}"                  # Where to send sbatch output
-HYAKVNC_SLURM_JOB_NAME="${HYAKVNC_SLURM_JOBNAME:-${SBATCH_JOB_NAME:-}}"             # Name of the sbatch job
+HYAKVNC_SLURM_JOB_NAME="${HYAKVNC_SLURM_JOB_NAME:-${SBATCH_JOB_NAME:-}}"            # Name of the sbatch job
 HYAKVNC_SLURM_ACCOUNT="${HYAKVNC_SLURM_ACCOUNT:-${SBATCH_ACCOUNT:-}}"               # Slurm account to use
 HYAKVNC_SLURM_PARTITION="${HYAKVNC_SLURM_PARTITION:-${SBATCH_PARTITION:-}}"         # Slurm partition to use
 HYAKVNC_SLURM_CLUSTER="${HYAKVNC_SLURM_CLUSTER:-${SBATCH_CLUSTERS:-}}"              # Slurm cluster to use
@@ -49,8 +51,6 @@ LAUNCHED_JOBIDS=() # Array of launched jobs
 
 # = Utility functions:
 
-
-
 declare -A log_levels=(["OFF"]=0 ["FATAL"]=1 ["ERROR"]=2 ["WARN"]=3 ["INFO"]=4 ["DEBUG"]=5 ["TRACE"]=6 ["ALL"]=100)
 declare -A log_level_colors=(["FATAL"]=5 ["ERROR"]=1 ["WARN"]=3 ["INFO"]=4 ["DEBUG"]=6 ["TRACE"]=2)
 
@@ -60,49 +60,23 @@ function log {
 	local level=${1:-}
 	shift
 	HYAKVNC_LOG_LEVEL="${HYAKVNC_LOG_LEVEL:-INFO}"
-	[ -z "${level}" ] &&  echo "${FUNCNAME[0]}(): log level" && return 1
+	[ -z "${level}" ] && echo "${FUNCNAME[0]}(): log level" && return 1
 	levelno="${log_levels[${level}]}"
-	[ -z "${levelno}" ] && >&2 echo "Unknown log level: ${level}" && return 1
+	[ -z "${levelno}" ] && echo >&2 "Unknown log level: ${level}" && return 1
 	curlevelno="${log_levels[${HYAKVNC_LOG_LEVEL}]}"
-	[ -z "${curlevelno}" ] && curlevelno="${log_levels["INFO"}]}"
-
-	[ "${levelno}" -lt "${HYAKVNC_LOG_LEVEL}" ] && return 0
+	[ -z "${curlevelno}" ] && echo >&2 "Unknown log level: ${HYAKVNC_LOG_LEVEL}" && return 1
+	curlevelno="${curlevelno:-${log_levels[INFO]}}"
+	[ "${levelno}" -lt "${curlevelno}" ] && return 0
 	colorno="${log_level_colors[${level}]}"
 	[ -z "${colorno}" ] && colorno=0
-
 	funcname=""
-
 	[ "${levelno}" -ge "${log_level_colors[DEBUG]}" ] && funcname="${FUNCNAME[1]}() - "
 
-
 	# If we're in a terminal, use colors:
-
 	tput setaf "$colorno" 2>/dev/null
-	(printf "%s: %s" "${level}" "${funcname}"  >&2) 2> >( tee -a "${HYAKVNC_LOG_PATH:-/dev/null}")
+	(printf "%s: %s" "${level}" "${funcname}" >&2) 2> >(tee -a "${HYAKVNC_LOG_PATH:-/dev/null}")
 	tput sgr0 2>/dev/null
-	(printf "%s\n" "${*}"  >&2) 2> >( tee -a "${HYAKVNC_LOG_PATH:-/dev/null}")
-}
-
-# xvnc_ps_for_job()
-# Get Xvnc process info for a job, given job ID, cluster, and either PID or PID file:
-function xvnc_psinfo_for_job {
-	local jobid xvnc_ps
-	jobid="${1:-}"
-	[ -z "${jobid}" ] && log ERROR "Job ID must be specified" && return 1
-
-	# Get the Xvnc process information for the job:
-	xvnc_ps=$(srun --jobid "${jobid}" --quiet --error /dev/null sh -c "${HYAKVNC_APPTAINER_BIN} exec instance://${HYAKVNC_APPTAINER_INSTANCE_PREFIX}${jobid} pgrep --exact Xvnc  -a || echo")
-	[ -z "${xvnc_ps}" ] && log WARNING "Failed to get VNC process info forr job ${jobid}" && return 1
-
-	local xvnc_port xvnc_name xvnc_pid xvnc_host
-	# Get the port and hostname:display part from the Xvnc process info.
-	#   (The process info looks like this: '4280 /opt/TurboVNC/bin/Xvnc :1 -desktop TurboVNC: g3050:1 () -auth ...')
-	xvnc_pid=$(echo "${xvnc_ps}" | grep -oE '^[0-9]+') || { return 1; }
-	xvnc_port=$(echo "${xvnc_ps}" | grep -oE 'rfbport[[:space:]]+[0-9]+' | grep -oE '[0-9]+') || { return 1; }
-	xvnc_name=$(echo "${xvnc_ps}" | grep -oE 'TurboVNC: .*:[0-9]+ \(\)' | cut -d' ' -f2) || { return 1; }
-	# The Xvnc process should be leaving a PID file named in the format "job_node:DISPLAY.pid". If it's not, this could be a problem:
-	[ -z "${xvnc_host:=${xvnc_name%%:*}}" ] && return 1
-	echo "${xvnc_host};${xvnc_port};${xvnc_name};${xvnc_pid}"
+	(printf "%s\n" "${*}" >&2) 2> >(tee -a "${HYAKVNC_LOG_PATH:-/dev/null}")
 }
 
 # get_default_slurm_cluster()
@@ -183,12 +157,16 @@ function get_squeue_job_status {
 # stop_hyakvnc_session
 # Stop a Hyak VNC session, given a job ID
 function stop_hyakvnc_session {
-	local jobid should_cancel instance_name pidfile
+	local jobid should_cancel no_rm
 	while true; do
 		case ${1:-} in
 		-c | --cancel)
 			shift
 			should_cancel=1
+			;;
+		--no-rm) # Don't remove the job directory
+			shift
+			no_rm=1
 			;;
 		*)
 			jobid="${1:-}"
@@ -196,12 +174,25 @@ function stop_hyakvnc_session {
 			;;
 		esac
 	done
+
 	[ -z "${jobid}" ] && log ERROR "Job ID must be specified" && return 1
-	instance_name="${HYAKVNC_APPTAINER_INSTANCE_PREFIX}${jobid}"
-	log DEBUG "Stopping VNC session for job ${jobid} with instance name ${instance_name}"
-	srun --jobid "${jobid}" sh -c "${HYAKVNC_APPTAINER_BIN} instance stop ${instance_name}" || log WARNING "Apptainer failed to stop VNC process for job ${jobid} with instance name ${instance_name}"
-	pidfile="${HYAKVNC_DIR}/pids/${jobid}.pid"
-	[ -e "${pidfile}" ] && rm "${pidfile}" && log DEBUG "Removed PID file ${pidfile}"
+	log DEBUG "Stopping VNC session for job ${jobid}"
+	local jobdir pid
+	jobdir="${HYAKVNC_DIR}/jobs/${jobid}"
+	if [ -d "${jobdir}" ]; then
+		local pidfile
+		for pidfile in "${jobdir}/vnc/"*"${HYAKVNC_VNC_DISPLAY}".pid; do
+			if [ -e "${pidfile}" ]; then
+				read -r pid <"${pidfile}"
+				[ -z "${pid}" ] && log WARN "Failed to get pid from ${pidfile}" && break
+				srun --jobid "${jobid}" kill "${pid}" || log WARN "Failed to stop VNC process for job ${jobid} with pid ${pid}"
+				break
+			fi
+		done
+		[ -n "${no_rm}" ] || rm -rf "${jobdir}/vnc" && log DEBUG "Removed VNC directory ${jobdir}/vnc"
+	else
+		log WARN "Job directory ${jobdir} does not exist"
+	fi
 
 	if [ -n "${should_cancel}" ]; then
 		log INFO "Cancelling job ${jobid}"
@@ -211,29 +202,39 @@ function stop_hyakvnc_session {
 }
 
 # print_connection_info()
-# Print connection instructions for a job, given job ID, port, \
-# and (optional) port to open on the client:
+# Print connection instructions for a job, given job ID
+# Arguments: -j | --jobid <jobid> (required) [ -p | --viewer-port <viewer_port> ] [ -n |--node <node> ] [ -s | --ssh-host <ssh_host> ]
+#
+# The generated connection string should look like this, depending on the the OS:
+# ssh -f -L 6111:'/mmfs1/home/altan/.hyakvnc/jobs/14930429/socket.uds' -J altan@klone.hyak.uw.edu altan@g3071 sleep 10; vncviewer localhost:6111
 function print_connection_info {
-	local node port viewer_port
+	local jobid jobdir node socket_path viewer_port launch_hostname ssh_host
+	viewer_port="${HYAKVNC_LOCALHOST_PORT:-5901}"
+	ssh_host="${HYAKVNC_SSH_HOST:-klone.hyak.uw.edu}"
+
 	# Parse arguments:
 	while true; do
 		case ${1:-} in
+		-j | --jobid)
+			shift
+			jobid="${1:-}"
+			shift
+			;;
+		-p | --viewer-port)
+			shift
+			viewer_port="${1:-viewer_port}"
+			shift
+			;;
 		-n | --node)
 			shift
 			node="${1:-}"
 			shift
 			;;
-		-p | --port)
+		-s | --ssh-host)
 			shift
-			port="${1:-}"
-			shift
-			;;
-		--viewer-port)
-			shift
-			viewer_port="${1:-}"
+			ssh_host="${1:-}"
 			shift
 			;;
-
 		-*)
 			log ERROR "Unknown option for print_connection_info: ${1:-}\n"
 			return 1
@@ -243,36 +244,69 @@ function print_connection_info {
 			;;
 		esac
 	done
-	[ -z "${node:-}" ] && log ERROR "Node must be specified" && return 1
-	[ -z "${port:-}" ] && log ERROR "Port must be specified" && return 1
-	viewer_port="${viewer_port:-${HYAKVNC_VNC_VIEWER_PORT:-${port}}}"
 
-	echo "Copy and paste these instructions into a command line terminal on your local machine to connect to the VNC session."
-	echo "You may need to install a VNC client if you don't already have one."
-	echo "If you are using Windows or are having trouble, try using the manual connection information."
+	# Check arguments:
+	[ -z "${jobid}" ] && log ERROR "Job ID must be specified" && return 1
+	[ -z "${viewer_port}" ] && log ERROR "Viewer port must be specified" && return 1
+	[ -z "${ssh_host}" ] && log ERROR "SSH host must be specified" && return 1
+
+	jobdir="${HYAKVNC_DIR}/jobs/${jobid}"
+	[ -d "${jobdir}" ] || { log ERROR "Job directory ${jobdir} does not exist" && return 1; }
+
+	socket_path="${HYAKVNC_DIR}/jobs/${jobid}/socket.uds"
+	[ -e "${socket_path}" ] || { log ERROR "Socket file ${socket_path} does not exist" && return 1; }
+	[ -S "${socket_path}" ] || { log ERROR "Socket file ${socket_path} is not a socket" && return 1; }
+
+	[ -n "$node" ] || node=$(squeue -h -j "${jobid}" -o '%N' | grep -o -m 1 -E '\S+') || log DEBUG "Failed to get node for job ${jobid} from squeue"
+
+	if [ -r "${HYAKVNC_DIR}/jobs/${jobid}/hostname" ] && read -r launch_hostname <"${HYAKVNC_DIR}/jobs/${jobid}/hostname" && [ -n "$launch_hostname" ]; then
+		[ node != "${launch_hostname}" ] && log WARN "Node for ${jobid} from hostname file (${launch_hostname}) does not match node from squeue (${node}). Was the job restarted?"
+		[ -z "${node}" ] && log DEBUG "Node for ${jobid} from squeue is blank. Setting to ${launch_hostname}" && node="${launch_hostname}"
+	else
+		log WARN "Failed to get originally launched node for job ${jobid} from ${HYAKVNC_DIR}/jobs/${jobid}/hostname"
+	fi
+
+	[ -z "${node}" ] && log ERROR "No node identified for job ${jobid}" && return 1
+
+	# Print connection instruction header:
+
+	# Print connection instructions:
+
+	local ssh_args
+	ssh_args=()
+	ssh_args+=("-o StrictHostKeyChecking=no")
+	ssh_args+=("-L" "${viewer_port}:${socket_path}")
+	ssh_args+=("-J" "${USER}@${HYAKVNC_SSH_HOST}")
+	ssh_args+=("${USER}@${node}")
+
+	cat <<EOF
+Copy and paste these instructions into a command line terminal on your local machine to connect to the VNC session.
+You may need to install a VNC client if you don't already have one.
+If you are using Windows or are having trouble, try using the manual connection information.
+EOF
+
+	echo "LINUX TERMINAL (bash/zsh):"
+	echo "ssh -f ${ssh_args[*]} sleep 10 && vncviewer localhost:${viewer_port}"
 	echo
 
-	local base_connect_string="ssh -f -o StrictHostKeyChecking=no -J ${USER}@${HYAKVNC_SSH_HOST} ${node} -L ${viewer_port}:localhost:${port} sleep 10 && vncviewer localhost:${viewer_port}"
-	echo "Linux terminal (bash/zsh):"
-	echo "${base_connect_string}"
-	echo
-
-	echo "macOS terminal:"
-	printf "%s " "${base_connect_string}"
+	echo "MACOS TERMINAL"
+	printf "ssh -f %s sleep 10 && " "${ssh_args[*]}"
+	# Print a command to open a VNC viewer for each bundle ID:
 	for bundleid in ${HYAKVNC_MACOS_VNC_VIEWER_BUNDLEIDS}; do
 		printf "open -b %s --args localhost:%s 2>/dev/null || " "${bundleid}" "${viewer_port}"
 	done
-	printf " || echo 'No VNC viewer found. Please install one or try entering the connection information manually.'\n"
+	# And finally, print a command to warn the user if no VNC viewer was found:
+	printf "No VNC viewer found. Please install one or try entering the connection information manually.\n"
 	echo
 
-	echo "Windows:"
+	echo "WINDOWS"
 	echo "(See below)"
 	echo
 
-	echo "Manual connection information:"
-	echo -e "Configure your SSH client to connect to the address ${node} with username ${USER} through the \"jump host\" at the address \"${HYAKVNC_SSH_HOST}\"."
-	echo -e "Enable local port forwarding from port ${viewer_port} on your machine ('localhost' or 127.0.0.1) to port ${port} on the remote host."
-	echo -e "In your VNC client, connect to 'localhost' or 127.0.0.1 on port ${viewer_port}"
+	echo "MANUAL CONNECTION INFORMATION"
+	echo "Configure your SSH client to connect to the address ${node} with username ${USER} through the \"jump host\" (possibly labeled a via, proxy, or gateway host) at the address \"${HYAKVNC_SSH_HOST}\"."
+	echo "Enable local port forwarding from port ${viewer_port} on your machine ('localhost' or 127.0.0.1) to the socket ${socket_path} on the remote host."
+	echo "In your VNC client, connect to 'localhost' or 127.0.0.1 on port ${viewer_port}"
 	echo
 }
 
@@ -284,7 +318,7 @@ function cleanup_launched_jobs_and_exit {
 	# Cancel any jobs that were launched:
 	for jobid in "${LAUNCHED_JOBIDS[@]}"; do
 		jobdir="${HYAKVNC_DIR}/jobs/${jobid}"
-		log WARNING "Cancelling launched job ${jobid}"
+		log WARN "Cancelling launched job ${jobid}"
 		scancel "${jobid}" || log ERROR "Failed to cancel job ${jobid}"
 		[ -d "${jobdir}" ] && rm -rf "${jobdir}" && log DEBUG "Removed job directory ${jobdir}"
 	done
@@ -311,8 +345,8 @@ Options:
   -g, --gpus	Number of GPUs to request (default: ${HYAKVNC_SLURM_GRES})
 
 Extra arguments:
-  Any extra arguments will be passed to apptainer instance start.
-  See 'apptainer instance start --help' for more information.
+  Any extra arguments will be passed to apptainer run.
+  See 'apptainer run --help' for more information.
 
 Examples:
   # Create a VNC session using the container ~/containers/mycontainer.sif
@@ -334,7 +368,7 @@ function cmd_create {
 			;;
 		-d | --debug) # Debug mode
 			shift
-			export HYAKVNC_LOG_LEVEL=2
+			export HYAKVNC_LOG_LEVEL="DEBUG"
 			;;
 		-c | --container)
 			shift
@@ -400,7 +434,6 @@ function cmd_create {
 			;;
 		esac
 	done
-	log INFO "Creating VNC job"
 
 	# Check that container is specified
 	[ -z "${HYAKVNC_CONTAINER}" ] && log ERROR "Container image must be specified" && exit 1
@@ -414,6 +447,8 @@ function cmd_create {
 	[ -z "$container_basename" ] && log ERROR "Failed to get container basename from ${HYAKVNC_CONTAINER}" && exit 1
 	container_name="${container_basename%.*}"
 	[ -z "$container_name" ] && log ERROR "Failed to get container name from ${container_basename}" && exit 1
+
+	log INFO "Creating HyakVNC job for container ${container_basename}"
 
 	[ -z "${HYAKVNC_SLURM_JOB_NAME}" ] && export HYAKVNC_SLURM_JOB_NAME="${HYAKVNC_SLURM_JOB_PREFIX}${container_name}" && log TRACE "Set HYAKVNC_SLURM_JOB_NAME to ${HYAKVNC_SLURM_JOB_NAME}"
 
@@ -434,41 +469,51 @@ function cmd_create {
 	[ -n "${HYAKVNC_SLURM_MEM}" ] && export SBATCH_MEM="${HYAKVNC_SLURM_MEM}" && log TRACE "Set SBATCH_MEM to ${SBATCH_MEM}"
 	[ -n "${HYAKVNC_SLURM_OUTPUT}" ] && export SBATCH_OUTPUT="${HYAKVNC_SLURM_OUTPUT}" && log TRACE "Set SBATCH_OUTPUT to ${SBATCH_OUTPUT}"
 
-	case "${HYAKVNC_APPTAINER_WRITABLE_TMPFS}" in
-	1 | true | yes | y | Y | TRUE | YES)
-		apptainer_start_args+=(--writable-tmpfs)
-		;;
-	esac
+	local alljobsdir jobdir
+	alljobsdir="${HYAKVNC_DIR}/jobs"
+	mkdir -p "${alljobsdir}" || { log ERROR "Failed to create directory ${alljobsdir}" && exit 1; }
 
+	apptainer_start_args+=("run" "--app" "${HYAKVNC_APPTAINER_VNC_APP_NAME}")
+	apptainer_start_args+=("--writable-tmpfs")
 	case "${HYAKVNC_APPTAINER_CLEANENV}" in
 	1 | true | yes | y | Y | TRUE | YES)
-		apptainer_start_args+=(--cleanenv)
+		apptainer_start_args+=("--cleanenv")
 		;;
 	esac
 
-	# Set up the bind paths:
-	[ -n "${HYAKVNC_SET_APPTAINER_BIND_PATHS:-}" ] && apptainer_start_args+=(--bind "${HYAKVNC_SET_APPTAINER_BIND_PATHS}")
+	apptainer_start_args+=("--bind" "\"${alljobsdir}/\${SLURM_JOB_ID}:/vnc\"")
+	apptainer_start_args+=("--bind" "\"${alljobsdir}\${SLURM_JOB_ID}/tmp:/tmp\"")
+	# Set up extra bind paths:
+	[ -n "${HYAKVNC_SET_APPTAINER_BIND_PATHS:-}" ] && apptainer_start_args+=("--bind" "\"${HYAKVNC_SET_APPTAINER_BIND_PATHS}\"")
 
-	[ -z "${HYAKVNC_SBATCH_JOBID}" ] && sbatch_args=("${sbatch_args[@]}" --job-name "${HYAKVNC_SLURM_JOB_PREFIX}")
+	apptainer_start_args+=("\"${HYAKVNC_CONTAINER}\"")
 
+	# Final command should look like:
+	# sbatch -A escience -c 4 --job-name hyakvnc-x -p gpu-a40 --output sjob2.txt --mem=4G --time=1:00:00 --wrap "mkdir -vp $HOME/.hyakvnc/jobs/\$SLURM_JOB_ID/{tmp,vnc} && apptainer run --app vncserver -B \"$HOME/.hyakvnc/jobs/\$SLURM_JOB_ID/tmp:/tmp\" -B \"$HOME/.hyakvnc/jobs/\$SLURM_JOB_ID/vnc:/vnc\" --cleanenv --writable-tmpfs /mmfs1/home/altan/gdata/containers/ubuntu22.04_turbovnc.sif
 	# <TODO> If a job ID was specified, don't launch a new job
 	# <TODO> If a job ID was specified, check that the job exists and is running
 
 	sbatch_args+=(--wrap)
-	sbatch_args+=("\"${HYAKVNC_APPTAINER_BIN}\" instance start --app \"${HYAKVNC_APPTAINER_VNC_APP_NAME}\" --pid-file \"${HYAKVNC_DIR}/pids/\$SLURM_JOBID.pid\"  ${apptainer_start_args[*]} \"${HYAKVNC_CONTAINER}\" \"${HYAKVNC_APPTAINER_INSTANCE_PREFIX}\${SLURM_JOB_ID}\" && sleep infinity")
+	sbatch_args+=("mkdir -vp \"${alljobsdir}/\${SLURM_JOB_ID}/{tmp,vnc}\" && \"${HYAKVNC_APPTAINER_BIN}\" run ${apptainer_start_args[*]}")
 
 	# Trap signals to clean up the job if the user exits the script:
 	if [ -z "${XNOTRAP:-}" ]; then
 		trap cleanup_launched_jobs_and_exit SIGINT SIGTSTP SIGTERM SIGHUP SIGABRT SIGQUIT
 	fi
+
+	log DEBUG "Launching job with command: sbatch ${sbatch_args[*]}"
 	sbatch_result=$(sbatch "${sbatch_args[@]}") || { log ERROR "Failed to launch job" && exit 1; }
 	# Quit if no job ID was returned:
 	[ -z "${sbatch_result:-}" ] && log ERROR "Failed to launch job" && exit 1
 
 	# Parse job ID and cluster from sbatch result (semicolon separated):
 	launched_jobid="${sbatch_result%%;*}"
-	launched_cluster="${sbatch_result##*;}"
-	[ -z "${launched_jobid:-}" ] && log ERROR "Failed to launch job" && exit 1
+	[ -z "${launched_jobid:-}" ] && log ERROR "Failed to get job ID for job" && exit 1
+
+	# Add the job ID to the list of launched jobs:
+	LAUNCHED_JOBIDS+=("${launched_jobid}")
+
+	jobdir="${alljobsdir}/${launched_jobid}"
 
 	# Wait for sbatch job to start running by monitoring the output of squeue:
 	start=$EPOCHSECONDS
@@ -476,7 +521,7 @@ function cmd_create {
 		if ((EPOCHSECONDS - start > HYAKVNC_SBATCH_POST_TIMEOUT)); then
 			log ERROR "Timed out waiting for job to start" && exit 1
 		fi
-
+		sleep
 		squeue_result=$(squeue --job "${launched_jobid}" --format "%T" --noheader)
 		case "${squeue_result:-}" in
 		SIGNALING | PENDING | CONFIGURING | STAGE_OUT | SUSPENDED | REQUEUE_HOLD | REQUEUE_FED | RESV_DEL_HOLD | STOPPED | RESIZING | REQUEUED)
@@ -486,43 +531,18 @@ function cmd_create {
 			;;
 		RUNNING)
 			log DEBUG "Job ${launched_jobid} is ${squeue_result}"
+			sleep 1
+			[ ! -d "${jobdir}" ] && log TRACE "Job directory does not exist yet" && continue
+			sleep 1
+			[ ! -e "${jobdir}/vnc/socket.uds" ] && log TRACE "Job socket does not exist yet" && continue
+			sleep 1
+			[ ! -S "${jobdir}/vnc/socket.uds" ] && log TRACE "Job socket is not a socket" && continue
+			sleep 1
 			break
 			;;
 		*) log ERROR "Job ${launched_jobid} is in unexpected state ${squeue_result}" && exit 1 ;;
 		esac
 	done
-
-	# Identify the node the job is running on:
-	local job_nodelist job_nodes launched_node launched_ppid_file xvnc_psinfo xvnc_port xvnc_name xvnc_host xvnc_pid
-	job_nodelist="$(squeue --job "${launched_jobid}" --clusters "${launched_cluster}" --format "%N" --noheader)" || { log ERROR "Failed to get job nodes" && exit 1; }
-	[ -z "${job_nodelist}" ] && { log ERROR "Failed to get job nodes" && exit 1; }
-
-	# Expand the job nodelist:
-	job_nodes=$(expand_slurm_node_range "${job_nodelist}") || { log ERROR "Failed to expand job nodelist ${job_nodelist}" && exit 1; }
-	[ -z "${job_nodes}" ] && log ERROR "Failed to expand job nodelist ${job_nodelist}" && exit 1
-
-	# Get the first node in the list:
-	launched_node="${job_nodes%% *}"
-	[ -z "${launched_node}" ] && log ERROR "Failed to parse job node from nodelist ${job_nodelist}" && exit 1
-
-	# Find the PID file for the apptainer instance:
-	launched_ppid_file="${HYAKVNC_DIR}/pids/${launched_jobid}.pid"
-
-	# Wait for the PID file to be created:
-	start=$EPOCHSECONDS
-	until [ -r "${launched_ppid_file}" ]; do
-		((EPOCHSECONDS - start > HYAKVNC_STANDARD_TIMEOUT)) && log ERROR "Timed out waiting for Xvnc pidfile to be created at ${launched_ppid_file}" && exit 1
-	done
-
-	local launched_ppid
-	launched_ppid=$(cat "${launched_ppid_file}") || { log ERROR "Failed to read Xvnc PID from ${launched_ppid_file}" && exit 1; }
-	[ -z "${launched_ppid}" ] && log ERROR "Failed to read Xvnc PID from ${launched_ppid_file}" && exit 1
-
-	# Set up the job directory:
-	jobdir="${HYAKVNC_DIR}/jobs/${launched_jobid}"
-	mkdir -p "${jobdir}" || { log ERROR "Failed to create job directory ${jobdir}" && exit 1; }
-
-	sleep 1
 
 	# Get details about the Xvnc process:
 	cmd_show "${launched_jobid}" || { log ERROR "Failed to get Xvnc process info for job ${launched_jobid}" && exit 1; }
@@ -546,7 +566,6 @@ Options:
   -j, --jobid	Only check status of provided SLURM job ID (optional)
 
 Examples:
-  # Create a VNC session using the container ~/containers/mycontainer.sif
   # Check the status of job no. 12345:
   hyakvnc status -j 12345
   # Check the status of all VNC jobs:
@@ -584,17 +603,18 @@ function cmd_status {
 	# Loop over directories in ${HYAKVNC_DIR}/jobs
 	squeue_args=(--me --states=RUNNING --noheader --format '%j %i')
 	[ -n "${running_jobid:-}" ] && squeue_args+=(--job "${running_jobid}")
-	running_jobids=$(squeue "${squeue_args[@]}" | grep -E "^${HYAKVNC_SLURM_JOB_PREFIX}" | grep -oE '[0-9]+$') || { log WARNING "Found no running job IDs with names that match the prefix ${HYAKVNC_SLURM_JOB_PREFIX}" && return 1; }
-	[ -z "${running_jobids:-}" ] && log WARNING "Found no running job IDs with names that match the prefix ${HYAKVNC_SLURM_JOB_PREFIX}" && return 1
+	running_jobids=$(squeue "${squeue_args[@]}" | grep -E "^${HYAKVNC_SLURM_JOB_PREFIX}" | grep -oE '[0-9]+$') || { log WARN "Found no running job IDs with names that match the prefix ${HYAKVNC_SLURM_JOB_PREFIX}" && return 1; }
+	[ -z "${running_jobids:-}" ] && log WARN "Found no running job IDs with names that match the prefix ${HYAKVNC_SLURM_JOB_PREFIX}" && return 1
 
 	for running_jobid in ${running_jobids:-}; do
-		local running_job_node jobdir xvnc_name xvnc_port xvnc_pid xvnc_psinfo launched_cluster launched_node
-		running_job_node=$(squeue --job "${running_jobid}" --format "%N" --noheader) || { log WARNING "Failed to get node for job ${running_jobid}" && continue; }
-		[ -z "${running_job_node}" ] && log WARNING "Failed to get node for job ${running_jobid}" && continue
-		xvnc_psinfo=$(xvnc_psinfo_for_job "${running_jobid}") || { log WARNING "Failed to get Xvnc process info for job ${running_jobid}" && continue; }
-		[ -z "${xvnc_psinfo}" ] && { log WARNING "Failed to get Xvnc process info from job ${running_jobid}" && continue; }
-		IFS=';' read -r xvnc_host xvnc_port xvnc_name xvnc_pid <<<"${xvnc_psinfo}"
-		echo "Job ${running_jobid} is running on ${running_job_node} with VNC port ${xvnc_port} on node ${running_job_node}"
+		local running_job_node jobdir
+		running_job_node=$(squeue --job "${running_jobid}" --format "%N" --noheader) || { log WARN "Failed to get node for job ${running_jobid}" && continue; }
+		[ -z "${running_job_node}" ] && log WARN "Failed to get node for job ${running_jobid}" && continue
+		jobdir="${HYAKVNC_DIR}/jobs/${running_jobid}"
+		[ ! -d "${jobdir}" ] && log WARN "Job directory ${jobdir} does not exist" && continue
+		[ ! -e "${jobdir}/vnc/socket.uds" ] && log WARN "Job socket not found at ${jobdir}/vnc/socket.uds" && continue
+		[ ! -S "${jobdir}/vnc/socket.uds" ] && log WARN "Job socket at ${jobdir}/vnc/socket.uds is not a socket" && continue
+		echo "Job ${running_jobid} is running on ${running_job_node} on node ${running_job_node}"
 	done
 }
 
@@ -656,7 +676,7 @@ function cmd_stop {
 	done
 
 	if [ -n "$all" ]; then
-		jobids=$(squeue --me --format '%j %i' --noheader | grep -E "^${HYAKVNC_SLURM_JOB_PREFIX}" | grep -oE '[0-9]+$') || log WARNING "Found no running job IDs with names that match the prefix ${HYAKVNC_SLURM_JOB_PREFIX}"
+		jobids=$(squeue --me --format '%j %i' --noheader | grep -E "^${HYAKVNC_SLURM_JOB_PREFIX}" | grep -oE '[0-9]+$') || log WARN "Found no running job IDs with names that match the prefix ${HYAKVNC_SLURM_JOB_PREFIX}"
 	fi
 
 	[ -z "${jobids}" ] && log ERROR "Must specify running job IDs" && exit 1
@@ -709,11 +729,10 @@ function cmd_show {
 	done
 	[ -z "${jobid}" ] && log ERROR "Must specify running job IDs" && exit 1
 
-	xvnc_psinfo=$(xvnc_psinfo_for_job "${jobid}") || { log ERROR "Failed to get Xvnc process info for job" && exit 1; }
-	[ -z "${xvnc_psinfo}" ] && { log ERROR "Failed to get Xvnc process info from job" && exit 1; }
-	IFS=';' read -r xvnc_host xvnc_port xvnc_name xvnc_pid <<<"${xvnc_psinfo}"
+	running_jobids=$(squeue --job "${jobid}" --noheader --format '%j %i' | grep -E "^${HYAKVNC_SLURM_JOB_PREFIX}" | grep -oE '[0-9]+$') || { log WARN "Found no running job for job ${jobid} with names that match the prefix ${HYAKVNC_SLURM_JOB_PREFIX}" && return 1; }
 
-	print_connection_info --node "${xvnc_host}" --port "${xvnc_port}" --viewer-port "${HYAKVNC_VNC_VIEWER_PORT}" || { log ERROR "Failed to print connection info" && exit 1; }
+	print_connection_info "$jobid" || { log ERROR "Failed to print connection info for job ${jobid}" && return 1; }
+	return 0
 }
 
 function cmd_help {
