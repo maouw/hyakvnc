@@ -47,7 +47,7 @@ HYAKVNC_APPTAINER_ADD_ARGS="${HYAKVNC_APPTAINER_ADD_ARGS:-}"                    
 HYAKVNC_SLURM_JOB_PREFIX="${HYAKVNC_SLURM_JOB_PREFIX:-hyakvnc-}"  # %% Prefix to use for hyakvnc SLURM job names
 HYAKVNC_SBATCH_POST_TIMEOUT="${HYAKVNC_SBATCH_POST_TIMEOUT:-120}" # %% How long after submitting via sbatch to wait for the job to start before timing out
 
-HYAKVNC_SLURM_OUTPUT_DIR="${HYAKVNC_SLURM_OUTPUT_DIR:-${HYAKVNC_DIR}/slurm-output}"                        # %% Directory to store SLURM output files
+HYAKVNC_SLURM_OUTPUT_DIR="${HYAKVNC_SLURM_OUTPUT_DIR:-${HYAKVNC_DIR}/slurm-output}"                      # %% Directory to store SLURM output files
 HYAKVNC_SLURM_OUTPUT="${HYAKVNC_SLURM_OUTPUT:-${SBATCH_OUTPUT:-${HYAKVNC_SLURM_OUTPUT_DIR}/job-%j.out}}" # %% Where to send sbatch output
 
 HYAKVNC_SLURM_JOB_NAME="${HYAKVNC_SLURM_JOB_NAME:-${SBATCH_JOB_NAME:-}}"            # %% Name of the sbatch job
@@ -784,6 +784,25 @@ mkdir -p "${HYAKVNC_SLURM_OUTPUT_DIR}" || (log ERROR "Failed to create HYAKVNC j
 
 # Invoke main with args if not sourced
 if ! (return 0 2>/dev/null); then
+	while true; do
+		case "${1:-}" in
+		-h | --help | help)
+			shift
+			cmd_help "${@:-}"
+			exit 0
+			;;
+		-d | --debug) # Debug mode
+			shift
+			export HYAKVNC_LOG_LEVEL=DEBUG
+			;;
+		-V | --version)
+			shift
+			echo "HyakVNC version ${HYAKVNC_VERSION}"
+			exit 0
+			;;
+		esac
+	done
+
 	# Set default SLURM cluster, accont, and partition if empty:
 	if [ -z "${HYAKVNC_SLURM_CLUSTER}" ]; then
 		HYAKVNC_SLURM_CLUSTER="$(sacctmgr show cluster -nPs format=Cluster)" || { log ERROR "Failed to get default SLURM account" && exit 1; }
@@ -808,20 +827,6 @@ if ! (return 0 2>/dev/null); then
 	# Parse first argument as action:
 	while true; do
 		case "${1:-}" in
-		-h | --help | help)
-			shift
-			cmd_help "${@:-}"
-			exit 0
-			;;
-		-d | --debug) # Debug mode
-			shift
-			export HYAKVNC_LOG_LEVEL=DEBUG
-			;;
-		-V | --version)
-			shift
-			echo "HyakVNC version ${HYAKVNC_VERSION}"
-			exit 0
-			;;
 		create)
 			shift
 			cmd_create "${@:-}"
