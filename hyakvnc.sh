@@ -550,7 +550,7 @@ function cmd_create {
 	done
 
 	# Get details about the Xvnc process:
-	cmd_show "${launched_jobid}" || { log ERROR "Failed to get Xvnc process info for job ${launched_jobid}" && exit 1; }
+	print_connection_info -j "$jobid" || { log ERROR "Failed to print connection info for job ${jobid}" && return 1; }
 	# Stop trapping the signals:
 	if [ -z "${XNOTRAP:-}" ]; then
 		trap - SIGINT SIGTSTP SIGTERM SIGHUP SIGABRT SIGQUIT
