@@ -521,7 +521,6 @@ function cmd_create {
 		if ((EPOCHSECONDS - start > HYAKVNC_SBATCH_POST_TIMEOUT)); then
 			log ERROR "Timed out waiting for job to start" && exit 1
 		fi
-		sleep 1
 		squeue_result=$(squeue --job "${launched_jobid}" --format "%T" --noheader)
 		case "${squeue_result:-}" in
 		SIGNALING | PENDING | CONFIGURING | STAGE_OUT | SUSPENDED | REQUEUE_HOLD | REQUEUE_FED | RESV_DEL_HOLD | STOPPED | RESIZING | REQUEUED)
@@ -531,17 +530,21 @@ function cmd_create {
 			;;
 		RUNNING)
 			log DEBUG "Job ${launched_jobid} is ${squeue_result}"
-			sleep 1
-			[ ! -d "${jobdir}" ] && log TRACE "Job directory does not exist yet" && continue
-			sleep 1
-			[ ! -e "${jobdir}/vnc/socket.uds" ] && log TRACE "Job socket does not exist yet" && continue
-			sleep 1
-			[ ! -S "${jobdir}/vnc/socket.uds" ] && log TRACE "Job socket is not a socket" && continue
-			sleep 1
 			break
 			;;
 		*) log ERROR "Job ${launched_jobid} is in unexpected state ${squeue_result}" && exit 1 ;;
 		esac
+	done
+
+	start=$EPOCHSECONDS
+	while true; do
+		if ((EPOCHSECONDS - start > HYAKVNC_SBATCH_POST_TIMEOUT)); then
+			log ERROR "Timed out waiting for job to start" && exit 1
+		fi
+		[ ! -d "${jobdir}" ] && log TRACE "Job directory does not exist yet" && continue
+		[ ! -e "${jobdir}/vnc/socket.uds" ] && log TRACE "Job socket does not exist yet" && continue
+		[ ! -S "${jobdir}/vnc/socket.uds" ] && log TRACE "Job socket is not a socket" && continue
+		break
 	done
 
 	# Get details about the Xvnc process:
@@ -602,8 +605,8 @@ function cmd_status {
 	squeue_args=(--me --states=RUNNING --noheader --format '%j %i')
 	[ -n "${running_jobid:-}" ] && squeue_args+=(--job "${running_jobid}")
 	running_jobids=$(squeue "${squeue_args[@]}" | grep -E "^${HYAKVNC_SLURM_JOB_PREFIX}" | grep -oE '[0-9]+$') || { log WARN "Found no running job IDs with names that match the set job name prefix ${HYAKVNC_SLURM_JOB_PREFIX}" && return 1; }
-	[ -z "${running_jobids:}" ] && log WARN "Found no running job IDs with names that match the prefix ${HYAKVNC_SLURM_JOB_PREFIX}" && return 1
-	
+	[ -z "${running_jobids:-}" ] && log WARN "Found no running job IDs with names that match the prefix ${HYAKVNC_SLURM_JOB_PREFIX}" && return 1
+
 	for running_jobid in ${running_jobids:-}; do
 		local running_job_node jobdir
 		running_job_node=$(squeue --job "${running_jobid}" --format "%N" --noheader) || { log WARN "Failed to get node for job ${running_jobid}" && continue; }
