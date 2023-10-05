@@ -734,7 +734,7 @@ function cmd_show {
 
 	running_jobids=$(squeue --job "${jobid}" --noheader --format '%j %i' | grep -E "^${HYAKVNC_SLURM_JOB_PREFIX}" | grep -oE '[0-9]+$') || { log WARN "Found no running job for job ${jobid} with names that match the prefix ${HYAKVNC_SLURM_JOB_PREFIX}" && return 1; }
 
-	print_connection_info "$jobid" || { log ERROR "Failed to print connection info for job ${jobid}" && return 1; }
+	print_connection_info -j "$jobid" || { log ERROR "Failed to print connection info for job ${jobid}" && return 1; }
 	return 0
 }
 
