@@ -66,7 +66,7 @@ function log {
 	curlevelno="${log_levels[${HYAKVNC_LOG_LEVEL}]}"
 	[ -z "${curlevelno}" ] && echo >&2 "Unknown log level: ${HYAKVNC_LOG_LEVEL}" && return 1
 	curlevelno="${curlevelno:-${log_levels[INFO]}}"
-	[ "${levelno}" -lt "${curlevelno}" ] && return 0
+	[ "${curlevelno}" -lt "${levelno}" ] && return 0
 	colorno="${log_level_colors[${level}]}"
 	[ -z "${colorno}" ] && colorno=0
 	funcname=""
