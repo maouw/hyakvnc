@@ -70,9 +70,9 @@ function log {
 	# [ "${levelno}" -ge "${log_level_colors[DEBUG]}" ] && funcname="${FUNCNAME[1]}() - "
 
 	# If we're in a terminal, use colors:
-	tput setaf "$colorno" 2>/dev/null
+	#tput setaf "$colorno" 2>/dev/null
 	(printf "%s: %s" "${level}" "${funcname}" >&2) 2> >(tee -a "${HYAKVNC_LOG_PATH:-/dev/null}")
-	tput sgr0 2>/dev/null
+	#tput sgr0 2>/dev/null
 	(printf "%s\n" "${*}" >&2) 2> >(tee -a "${HYAKVNC_LOG_PATH:-/dev/null}")
 }
 
