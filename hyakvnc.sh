@@ -504,7 +504,7 @@ function cmd_create {
 	# Wait for sbatch job to start running by monitoring the output of squeue:
 	start=${EPOCHSECONDS:-}
 	while true; do
-		if ((EPOCHSECONDS - start > HYAKVNC_SBATCH_POST_TIMEOUT)); then
+		if ((${EPOCHSECONDS:-} - start > HYAKVNC_SBATCH_POST_TIMEOUT)); then
 			log ERROR "Timed out waiting for job to start" && exit 1
 		fi
 		sleep 1
@@ -526,7 +526,7 @@ function cmd_create {
 	log DEBUG "Waiting for job ${launched_jobid} to create its socket file at ${jobdir}/vnc/socket.uds"
 	start=${EPOCHSECONDS:-}
 	while true; do
-		if ((EPOCHSECONDS - start > HYAKVNC_STANDARD_TIMEOUT)); then
+		if ((${EPOCHSECONDS:-} - start > HYAKVNC_STANDARD_TIMEOUT)); then
 			log ERROR "Timed out waiting for job to open its directories" && exit 1
 		fi
 		sleep 1
