@@ -28,7 +28,7 @@ HYAKVNC_STANDARD_TIMEOUT="${HYAKVNC_STANDARD_TIMEOUT:-30}"         # %% How long
 HYAKVNC_VNC_PASSWORD="${HYAKVNC_VNC_PASSWORD:-password}" # %% Password to use for new VNC sessions
 HYAKVNC_VNC_DISPLAY="${HYAKVNC_VNC_DISPLAY:-:1}"         # %% VNC display to use
 
-HYAKVNC_MACOS_VNC_VIEWER_BUNDLEIDS="${HYAKVNC_MACOS_VNC_VIEWER_BUNDLEIDS:-com.turbovnc.vncviewer.VncViewer com.realvnc.vncviewer com.tigervnc.vncviewer}" # %% macOS bundle identifiers for VNC viewer executables
+HYAKVNC_MACOS_VNC_VIEWER_BUNDLEIDS="${HYAKVNC_MACOS_VNC_VIEWER_BUNDLEIDS:-com.realvnc.vncviewer com.tigervnc.vncviewer}" # %% macOS bundle identifiers for VNC viewer executables
 
 # ## Apptainer preferences:
 HYAKVNC_APPTAINER_BIN="${HYAKVNC_APPTAINER_BIN:-apptainer}"    # %% Name of apptainer binary
@@ -285,7 +285,7 @@ EOF
 		printf "open -b %s --args localhost:%s 2>/dev/null || " "${bundleid}" "${viewer_port}"
 	done
 	# And finally, print a command to warn the user if no VNC viewer was found:
-	printf "No VNC viewer found. Please install one or try entering the connection information manually.\n"
+	printf "echo 'No VNC viewer found. Please install one or try entering the connection information manually.'\n"
 	echo
 
 	echo "WINDOWS"
