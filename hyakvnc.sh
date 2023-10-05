@@ -684,7 +684,8 @@ function help_show {
 Usage: hyakvnc show <jobid>
  
 Description:
-  Show connection information for a HyakVNC sesssion
+  Show connection information for a HyakVNC sesssion.
+  If no job ID is provided, a menu will be shown to select from running jobs.
 
 Options:
   -h, --help	Show this help message and exit
@@ -708,28 +709,24 @@ function cmd_show {
 			shift
 			export HYAKVNC_LOG_LEVEL=DEBUG
 			;;
-		-j | --jobid)
-			shift
-			jobid="${1:-}"
-			shift
-			;;
 		-*)
 			log ERROR "Unknown option for show: ${1:-}\n"
 			return 1
 			;;
 		*)
+			jobid="${1:-}"
 			break
 			;;
 		esac
 	done
 
 	if [ -z "${jobid}" ]; then
-		if [ -t 0 ] ; then
+		if [ -t 0 ]; then
 			echo "Reading available job IDs to select from a menu"
 			running_jobids=$(squeue --noheader --format '%j %i' | grep -E "^${HYAKVNC_SLURM_JOB_PREFIX}" | grep -oE '[0-9]+$') || { log WARN "Found no running job for job ${jobid} with names that match the prefix ${HYAKVNC_SLURM_JOB_PREFIX}" && return 1; }
 			PS3="Enter a number: "
 			select jobid in $running_jobids; do
-				echo "Selected job: $jobid" && break
+				echo "Selected job: $jobid" && echo && break
 			done
 		fi
 	fi
