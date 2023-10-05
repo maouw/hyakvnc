@@ -60,27 +60,6 @@ HYAKVNC_SLURM_MEM="${HYAKVNC_SLURM_MEM:-${SBATCH_MEM:-4G}}"                     
 HYAKVNC_SLURM_CPUS="${HYAKVNC_SLURM_CPUS:-4}"                                       # %% Number of CPUs to request (passed by --cpus-per-task to sbatch)
 HYAKVNC_SLURM_TIMELIMIT="${HYAKVNC_SLURM_TIMELIMIT:-${SBATCH_TIMELIMIT:-12:00:00}}" # %% Time limit for SLURM job
 
-# Set default SLURM cluster, accont, and partition if empty:
-if [ -z "${HYAKVNC_SLURM_CLUSTER}" ]; then
-	HYAKVNC_SLURM_CLUSTER="$(sacctmgr show cluster -nPs format=Cluster)" || { log ERROR "Failed to get default SLURM account" && exit 1; }
-fi
-export SBATCH_CLUSTERS="${HYAKVNC_SLURM_CLUSTER}" && log TRACE "Set SBATCH_CLUSTERS to ${SBATCH_CLUSTERS}"
-
-if [ -z "${HYAKVNC_SLURM_ACCOUNT}" ]; then
-	HYAKVNC_SLURM_ACCOUNT=$(sacctmgr show user -nPs "${USER}" format=defaultaccount where cluster="${HYAKVNC_SLURM_CLUSTER}" | grep -o -m 1 -E '\S+') || { log ERROR "Failed to get default account" && return 1; }
-fi
-export SBATCH_ACCOUNT="${HYAKVNC_SLURM_ACCOUNT}" && log TRACE "Set SBATCH_ACCOUNT to ${SBATCH_ACCOUNT}"
-
-if [ -z "${HYAKVNC_SLURM_PARTITION}" ]; then
-	HYAKVNC_SLURM_PARTITION=$(sacctmgr show -nPs user "${USER}" format=qos where account="${HYAKVNC_SLURM_ACCOUNT}" cluster="${HYAKVNC_SLURM_CLUSTER}" | grep -o -m 1 -E '\S+' | tr ',' ' ') || { log ERROR "Failed to get SLURM partitions" && return 1; }
-	# Remove the account prefix from the partitions :
-	HYAKVNC_SLURM_PARTITION="${HYAKVNC_SLURM_PARTITION//${HYAKVNC_SLURM_ACCOUNT:-}-/}"
-	# Get the first partition:
-	HYAKVNC_SLURM_PARTITION="${HYAKVNC_SLURM_PARTITION% *}"
-	[ -z "${HYAKVNC_SLURM_PARTITION}" ] && log ERROR "Failed to get default SLURM partition" && return 1
-fi
-export SBATCH_PARTITION="${HYAKVNC_SLURM_PARTITION}" && log TRACE "Set SBATCH_PARTITION to ${SBATCH_PARTITION}"
-
 # = Global variables (using CamelCase):
 declare -a Launched_JobIDs # Declare array of launched jobs
 Launched_JobIDs=()         # Array of launched jobs
@@ -806,6 +785,27 @@ mkdir -p "${HYAKVNC_SLURM_OUTPUT_DIR}" || (log ERROR "Failed to create HYAKVNC j
 
 # Invoke main with args if not sourced
 if ! (return 0 2>/dev/null); then
+	# Set default SLURM cluster, accont, and partition if empty:
+	if [ -z "${HYAKVNC_SLURM_CLUSTER}" ]; then
+		HYAKVNC_SLURM_CLUSTER="$(sacctmgr show cluster -nPs format=Cluster)" || { log ERROR "Failed to get default SLURM account" && exit 1; }
+	fi
+	export SBATCH_CLUSTERS="${HYAKVNC_SLURM_CLUSTER}" && log TRACE "Set SBATCH_CLUSTERS to ${SBATCH_CLUSTERS}"
+
+	if [ -z "${HYAKVNC_SLURM_ACCOUNT}" ]; then
+		HYAKVNC_SLURM_ACCOUNT=$(sacctmgr show user -nPs "${USER}" format=defaultaccount where cluster="${HYAKVNC_SLURM_CLUSTER}" | grep -o -m 1 -E '\S+') || { log ERROR "Failed to get default account" && return 1; }
+	fi
+	export SBATCH_ACCOUNT="${HYAKVNC_SLURM_ACCOUNT}" && log TRACE "Set SBATCH_ACCOUNT to ${SBATCH_ACCOUNT}"
+
+	if [ -z "${HYAKVNC_SLURM_PARTITION}" ]; then
+		HYAKVNC_SLURM_PARTITION=$(sacctmgr show -nPs user "${USER}" format=qos where account="${HYAKVNC_SLURM_ACCOUNT}" cluster="${HYAKVNC_SLURM_CLUSTER}" | grep -o -m 1 -E '\S+' | tr ',' ' ') || { log ERROR "Failed to get SLURM partitions" && return 1; }
+		# Remove the account prefix from the partitions :
+		HYAKVNC_SLURM_PARTITION="${HYAKVNC_SLURM_PARTITION//${HYAKVNC_SLURM_ACCOUNT:-}-/}"
+		# Get the first partition:
+		HYAKVNC_SLURM_PARTITION="${HYAKVNC_SLURM_PARTITION% *}"
+		[ -z "${HYAKVNC_SLURM_PARTITION}" ] && log ERROR "Failed to get default SLURM partition" && return 1
+	fi
+	export SBATCH_PARTITION="${HYAKVNC_SLURM_PARTITION}" && log TRACE "Set SBATCH_PARTITION to ${SBATCH_PARTITION}"
+
 	# Parse first argument as action:
 	while true; do
 		case "${1:-}" in
