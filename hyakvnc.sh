@@ -260,7 +260,7 @@ function print_connection_info {
 	[ -n "$node" ] || node=$(squeue -h -j "${jobid}" -o '%N' | grep -o -m 1 -E '\S+') || log DEBUG "Failed to get node for job ${jobid} from squeue"
 
 	if [ -r "${HYAKVNC_DIR}/jobs/${jobid}/vnc/hostname" ] && read -r launch_hostname <"${HYAKVNC_DIR}/jobs/${jobid}/vnc/hostname" && [ -n "$launch_hostname" ]; then
-		[ node != "${launch_hostname}" ] && log WARN "Node for ${jobid} from hostname file (${HYAKVNC_DIR}/jobs/${jobid}/vnc/hostname) does not match node from squeue (${node}). Was the job restarted?"
+		[ node != "${launch_hostname}" ] && log WARN "Node for ${jobid} from hostname file (${HYAKVNC_DIR}/jobs/${jobid}/vnc/hostname) (${launch_hostname:-}) does not match node from squeue (${node}). Was the job restarted?"
 		[ -z "${node}" ] && log DEBUG "Node for ${jobid} from squeue is blank. Setting to ${launch_hostname}" && node="${launch_hostname}"
 	else
 		log WARN "Failed to get originally launched node for job ${jobid} from ${HYAKVNC_DIR}/jobs/${jobid}/hostname"
@@ -283,6 +283,7 @@ function print_connection_info {
 Copy and paste these instructions into a command line terminal on your local machine to connect to the VNC session.
 You may need to install a VNC client if you don't already have one.
 If you are using Windows or are having trouble, try using the manual connection information.
+
 EOF
 
 	echo "LINUX TERMINAL (bash/zsh):"
