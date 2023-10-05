@@ -8,7 +8,6 @@ HYAKVNC_VERSION="0.3.0"
 # Only enable these shell behaviours if we're not being sourced
 if ! (return 0 2>/dev/null); then
 	set -o errexit  # Exit on most errors
-	set -o nounset  # Disallow expansion of unset variables
 	set -o pipefail # Use last non-zero exit code in a pipeline
 fi
 
@@ -502,9 +501,9 @@ function cmd_create {
 	log DEBUG "Job directory: ${jobdir}"
 
 	# Wait for sbatch job to start running by monitoring the output of squeue:
-	start=${EPOCHSECONDS:-}
+	start=$EPOCHSECONDS
 	while true; do
-		if ((${EPOCHSECONDS:-} - start > HYAKVNC_SBATCH_POST_TIMEOUT)); then
+		if ((EPOCHSECONDS - start > HYAKVNC_SBATCH_POST_TIMEOUT)); then
 			log ERROR "Timed out waiting for job to start" && exit 1
 		fi
 		sleep 1
@@ -524,9 +523,9 @@ function cmd_create {
 	done
 
 	log DEBUG "Waiting for job ${launched_jobid} to create its socket file at ${jobdir}/vnc/socket.uds"
-	start=${EPOCHSECONDS:-}
+	start=$EPOCHSECONDS
 	while true; do
-		if ((${EPOCHSECONDS:-} - start > HYAKVNC_STANDARD_TIMEOUT)); then
+		if ((EPOCHSECONDS - start > HYAKVNC_STANDARD_TIMEOUT)); then
 			log ERROR "Timed out waiting for job to open its directories" && exit 1
 		fi
 		sleep 1
