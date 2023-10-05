@@ -729,7 +729,7 @@ function cmd_show {
 			running_jobids=$(squeue --noheader --format '%j %i' | grep -E "^${HYAKVNC_SLURM_JOB_PREFIX}" | grep -oE '[0-9]+$') || { log WARN "Found no running job for job ${jobid} with names that match the prefix ${HYAKVNC_SLURM_JOB_PREFIX}" && return 1; }
 			PS3="Enter a number: "
 			select jobid in $running_jobids; do
-				echo "Selected job: $jobid"
+				echo "Selected job: $jobid" && break
 			done
 		#fi
 	fi
