@@ -521,7 +521,7 @@ function cmd_create {
 		if ((EPOCHSECONDS - start > HYAKVNC_SBATCH_POST_TIMEOUT)); then
 			log ERROR "Timed out waiting for job to start" && exit 1
 		fi
-		sleep
+		sleep 1
 		squeue_result=$(squeue --job "${launched_jobid}" --format "%T" --noheader)
 		case "${squeue_result:-}" in
 		SIGNALING | PENDING | CONFIGURING | STAGE_OUT | SUSPENDED | REQUEUE_HOLD | REQUEUE_FED | RESV_DEL_HOLD | STOPPED | RESIZING | REQUEUED)
