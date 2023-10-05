@@ -610,7 +610,8 @@ function help_stop {
 Usage: hyakvnc stop [-a] [<jobids>...]
 	
 Description:
-  Stop a provided HyakVNC sesssion and clean up its job directory
+  Stop a provided HyakVNC sesssion and clean up its job directory.
+  If no job ID is provided, a menu will be shown to select from running jobs.
 
 Options:
   -h, --help	Show this help message and exit
@@ -670,6 +671,17 @@ function cmd_stop {
 		jobids=$(squeue --me --format '%j %i' --noheader | grep -E "^${HYAKVNC_SLURM_JOB_PREFIX}" | grep -oE '[0-9]+$') || log WARN "Found no running job IDs with names that match the prefix ${HYAKVNC_SLURM_JOB_PREFIX}"
 	fi
 
+	if [ -z "${jobids}" ]; then
+		if [ -t 0 ]; then
+			echo "Reading available job IDs to select from a menu"
+			running_jobids=$(squeue --noheader --format '%j %i' | grep -E "^${HYAKVNC_SLURM_JOB_PREFIX}" | grep -oE '[0-9]+$') || { log WARN "Found no running jobs  with names that match the prefix ${HYAKVNC_SLURM_JOB_PREFIX}" && return 1; }
+			PS3="Enter a number: "
+			select jobids in $running_jobids; do
+				echo "Selected job: $jobids" && echo && break
+			done
+		fi
+	fi
+
 	[ -z "${jobids}" ] && log ERROR "Must specify running job IDs" && exit 1
 
 	# Cancel any jobs that were launched:
@@ -723,7 +735,7 @@ function cmd_show {
 	if [ -z "${jobid}" ]; then
 		if [ -t 0 ]; then
 			echo "Reading available job IDs to select from a menu"
-			running_jobids=$(squeue --noheader --format '%j %i' | grep -E "^${HYAKVNC_SLURM_JOB_PREFIX}" | grep -oE '[0-9]+$') || { log WARN "Found no running job for job ${jobid} with names that match the prefix ${HYAKVNC_SLURM_JOB_PREFIX}" && return 1; }
+			running_jobids=$(squeue --noheader --format '%j %i' | grep -E "^${HYAKVNC_SLURM_JOB_PREFIX}" | grep -oE '[0-9]+$') || { log WARN "Found no running jobs with names that match the prefix ${HYAKVNC_SLURM_JOB_PREFIX}" && return 1; }
 			PS3="Enter a number: "
 			select jobid in $running_jobids; do
 				echo "Selected job: $jobid" && echo && break
