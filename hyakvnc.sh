@@ -617,7 +617,7 @@ function cmd_status {
 		[ ! -d "${jobdir}" ] && log WARN "Job directory ${jobdir} does not exist" && continue
 		[ ! -e "${jobdir}/vnc/socket.uds" ] && log WARN "Job socket not found at ${jobdir}/vnc/socket.uds" && continue
 		[ ! -S "${jobdir}/vnc/socket.uds" ] && log WARN "Job socket at ${jobdir}/vnc/socket.uds is not a socket" && continue
-		echo "Job ${running_jobid} is running on ${running_job_node} on node ${running_job_node}"
+		echo "HyakVNC job ${running_jobid} is running on node ${running_job_node}"
 	done
 }
 
