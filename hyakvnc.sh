@@ -9,10 +9,9 @@ fi
 
 # = Preferences and settings:
 # == App preferences:
-HYAKVNC_LOG_PATH="${HYAKVNC_LOG_PATH:-$HOME/.hyakvnc.log}"
 HYAKVNC_LOG_LEVEL="${HYAKVNC_LOG_LEVEL:-INFO}"
 HYAKVNC_DIR="${HYAKVNC_DIR:-$HOME/.hyakvnc}"
-HYAKVNC_CONFIG_DIR="${HYAKVNC_CONFIG_DIR:-$HOME/.config/hyakvnc}"
+HYAKVNC_LOG_PATH="${HYAKVNC_LOG_PATH:-${HYAKVNC_DIR}/hyakvnc.log}"
 HYAKVNC_SSH_HOST="${HYAKVNC_SSH_HOST:-klone.hyak.uw.edu}"
 HYAKVNC_VNC_PASSWORD="${HYAKVNC_VNC_PASSWORD:-password}"
 HYAKVNC_VNC_DISPLAY="${HYAKVNC_VNC_DISPLAY:-:1}"
@@ -25,8 +24,6 @@ HYAKVNC_MACOS_VNC_VIEWER_BUNDLEIDS="${HYAKVNC_MACOS_VNC_VIEWER_BUNDLEIDS:-com.tu
 # == Apptainer preferences:
 HYAKVNC_CONTAINER="${HYAKVNC_CONTAINER:-}"                                       # Path to container image
 HYAKVNC_APPTAINER_BIN="${HYAKVNC_APPTAINER_BIN:-apptainer}"                      # Name of apptainer binary
-HYAKVNC_APPTAINER_CONFIG_DIR="${HYAKVNC_APPTAINER_CONFIG_DIR:-$HOME/.apptainer}" # Path to apptainer config directory
-
 HYAKVNC_APPTAINER_WRITABLE_TMPFS="${HYAKVNC_APPTAINER_WRITABLE_TMPFS:-${APPTAINER_WRITABLE_TMPFS:-1}}" # Whether to use a writable tmpfs for the container
 HYAKVNC_APPTAINER_CLEANENV="${HYAKVNC_APPTAINER_CLEANENV:-${APPTAINER_CLEANENV:-1}}"                   # Whether to use a clean environment for the container
 HYAKVNC_SET_APPTAINER_BIND_PATHS="${HYAKVNC_SET_APPTAINER_BIND_PATHS:-}"                               # Bind paths to set for the container
@@ -793,7 +790,6 @@ EOF
 # = Main script:
 # Initalize directories:
 mkdir -p "${HYAKVNC_DIR}/jobs" || (log ERROR "Failed to create HYAKVNC jobs directory ${HYAKVNC_DIR}/jobs" && exit 1)
-mkdir -p "${HYAKVNC_DIR}/pids" || (log ERROR "Failed to create HYAKVNC PIDs directory ${HYAKVNC_DIR}/pids" && exit 1)
 
 # Parse first argument as action:
 
