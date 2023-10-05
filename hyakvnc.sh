@@ -306,7 +306,6 @@ EOF
 	echo "Enable local port forwarding from port ${viewer_port} on your machine ('localhost' or 127.0.0.1) to the socket ${socket_path} on the remote host."
 	echo "In your VNC client, connect to 'localhost' or 127.0.0.1 on port ${viewer_port}"
 	echo
-	echo "----------"
 	echo "=========="
 }
 
