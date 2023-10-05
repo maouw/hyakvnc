@@ -708,27 +708,30 @@ function cmd_show {
 			shift
 			export HYAKVNC_LOG_LEVEL=DEBUG
 			;;
+		-j | --jobid)
+			shift
+			jobid="${1:-}"
+			shift
+			;;
 		-*)
 			log ERROR "Unknown option for show: ${1:-}\n"
 			return 1
 			;;
 		*)
-			jobid="${*-}"
-			shift
 			break
 			;;
 		esac
 	done
 
 	if [ -z "${jobid}" ]; then
-		if [[ $- == *i* ]]; then
+		#if [[ $- == *i* ]]; then
+			echo "Reading available job IDs to select from a menu"
 			running_jobids=$(squeue --job "${jobid}" --noheader --format '%j %i' | grep -E "^${HYAKVNC_SLURM_JOB_PREFIX}" | grep -oE '[0-9]+$') || { log WARN "Found no running job for job ${jobid} with names that match the prefix ${HYAKVNC_SLURM_JOB_PREFIX}" && return 1; }
 			PS3="Enter a number: "
-
 			select jobid in $running_jobids; do
 				echo "Selected job: $jobid"
 			done
-		fi
+		#fi
 	fi
 	[ -z "${jobid}" ] && log ERROR "Must specify running job IDs" && exit 1
 	running_jobids=$(squeue --job "${jobid}" --noheader --format '%j %i' | grep -E "^${HYAKVNC_SLURM_JOB_PREFIX}" | grep -oE '[0-9]+$') || { log WARN "Found no running job for job ${jobid} with names that match the prefix ${HYAKVNC_SLURM_JOB_PREFIX}" && return 1; }
