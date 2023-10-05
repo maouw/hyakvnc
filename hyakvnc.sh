@@ -726,7 +726,7 @@ function cmd_show {
 	if [ -z "${jobid}" ]; then
 		#if [[ $- == *i* ]]; then
 			echo "Reading available job IDs to select from a menu"
-			running_jobids=$(squeue --job "${jobid}" --noheader --format '%j %i' | grep -E "^${HYAKVNC_SLURM_JOB_PREFIX}" | grep -oE '[0-9]+$') || { log WARN "Found no running job for job ${jobid} with names that match the prefix ${HYAKVNC_SLURM_JOB_PREFIX}" && return 1; }
+			running_jobids=$(squeue --noheader --format '%j %i' | grep -E "^${HYAKVNC_SLURM_JOB_PREFIX}" | grep -oE '[0-9]+$') || { log WARN "Found no running job for job ${jobid} with names that match the prefix ${HYAKVNC_SLURM_JOB_PREFIX}" && return 1; }
 			PS3="Enter a number: "
 			select jobid in $running_jobids; do
 				echo "Selected job: $jobid"
