@@ -494,7 +494,7 @@ function cmd_create {
 	# <TODO> If a job ID was specified, check that the job exists and is running
 
 	sbatch_args+=(--wrap)
-	sbatch_args+=("mkdir -vp \"${alljobsdir}/\${SLURM_JOB_ID}/{tmp,vnc}\" && \"${HYAKVNC_APPTAINER_BIN}\" run ${apptainer_start_args[*]}")
+	sbatch_args+=("mkdir -vp \"${alljobsdir}/\${SLURM_JOB_ID}/{tmp,vnc}\" && \"${HYAKVNC_APPTAINER_BIN}\" ${apptainer_start_args[*]}")
 
 	# Trap signals to clean up the job if the user exits the script:
 	if [ -z "${XNOTRAP:-}" ]; then
