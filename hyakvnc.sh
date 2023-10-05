@@ -478,7 +478,7 @@ function cmd_create {
 	apptainer_start_args+=("\"${HYAKVNC_APPTAINER_CONTAINER}\"")
 
 	sbatch_args+=(--wrap)
-	sbatch_args+=("mkdir -p \"${alljobsdir}/\${SLURM_JOB_ID}/vnc\" && jobtmp=\$(mktemp -d --suffix _hyakvnc_tmp_\${SLURM_JOB_ID}) && echo \"\$jobtmp\" > \"${alljobsdir}/\${SLURM_JOB_ID}/tmpdirname\"  \"${HYAKVNC_APPTAINER_BIN}\" ${apptainer_start_args[*]}")
+	sbatch_args+=("mkdir -p \"${alljobsdir}/\${SLURM_JOB_ID}/vnc\" && jobtmp=\$(mktemp -d --suffix _hyakvnc_tmp_\${SLURM_JOB_ID}) && echo \"\$jobtmp\" > \"${alljobsdir}/\${SLURM_JOB_ID}/tmpdirname\" && \"${HYAKVNC_APPTAINER_BIN}\" ${apptainer_start_args[*]}")
 
 	# Trap signals to clean up the job if the user exits the script:
 	[ -z "${XNOTRAP:-}" ] && trap cleanup_launched_jobs_and_exit SIGINT SIGTSTP SIGTERM SIGHUP SIGABRT SIGQUIT
