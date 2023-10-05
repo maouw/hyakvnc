@@ -719,8 +719,18 @@ function cmd_show {
 			;;
 		esac
 	done
-	[ -z "${jobid}" ] && log ERROR "Must specify running job IDs" && exit 1
 
+	if [ -z "${jobid}" ]; then
+		if [[ $- == *i* ]]; then
+			running_jobids=$(squeue --job "${jobid}" --noheader --format '%j %i' | grep -E "^${HYAKVNC_SLURM_JOB_PREFIX}" | grep -oE '[0-9]+$') || { log WARN "Found no running job for job ${jobid} with names that match the prefix ${HYAKVNC_SLURM_JOB_PREFIX}" && return 1; }
+			PS3="Enter a number: "
+
+			select jobid in $running_jobids; do
+				echo "Selected job: $jobid"
+			done
+		fi
+	fi
+	[ -z "${jobid}" ] && log ERROR "Must specify running job IDs" && exit 1
 	running_jobids=$(squeue --job "${jobid}" --noheader --format '%j %i' | grep -E "^${HYAKVNC_SLURM_JOB_PREFIX}" | grep -oE '[0-9]+$') || { log WARN "Found no running job for job ${jobid} with names that match the prefix ${HYAKVNC_SLURM_JOB_PREFIX}" && return 1; }
 
 	print_connection_info -j "$jobid" || { log ERROR "Failed to print connection info for job ${jobid}" && return 1; }
