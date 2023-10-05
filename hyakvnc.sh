@@ -253,7 +253,7 @@ function print_connection_info {
 	jobdir="${HYAKVNC_DIR}/jobs/${jobid}"
 	[ -d "${jobdir}" ] || { log ERROR "Job directory ${jobdir} does not exist" && return 1; }
 
-	socket_path="${HYAKVNC_DIR}/jobs/${jobid}/socket.uds"
+	socket_path="${HYAKVNC_DIR}/jobs/${jobid}/vnc/socket.uds"
 	[ -e "${socket_path}" ] || { log ERROR "Socket file ${socket_path} does not exist" && return 1; }
 	[ -S "${socket_path}" ] || { log ERROR "Socket file ${socket_path} is not a socket" && return 1; }
 
