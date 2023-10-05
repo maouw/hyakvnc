@@ -629,23 +629,24 @@ Description:
 
 Options:
   -h, --help	Show this help message and exit
-  -c, --cancel	Also cancel the SLURM job
+  -n, --no-cancel	Don't cancel the SLURM job
   -a, --all	Stop all jobs
 
 Examples:
   # Stop a VNC session running on job 123456:
   hyakvnc stop 123456
-  # Stop a VNC session running on job 123456 and also cancel the job:
-  hyakvnc stop -c 123456
+  # Stop a VNC session running on job 123456 and do not cancel the job:
+  hyakvnc stop --no-cancel 123456
   # Stop all VNC sessions:
   hyakvnc stop -a
-  # Stop all VNC sessions and also cancel the jobs:
-  hyakvnc stop -a -c
+  # Stop all VNC sessions but do not cancel the jobs:
+  hyakvnc stop -a -n
 EOF
 }
 
 function cmd_stop {
-	local jobids all jobid should_cancel stop_hyakvnc_session_args
+	local jobids all jobid nocancel stop_hyakvnc_session_args
+	should_cancel=1
 	stop_hyakvnc_session_args=()
 	# Parse arguments:
 	while true; do
@@ -662,9 +663,9 @@ function cmd_stop {
 			shift
 			all=1
 			;;
-		-c | --cancel)
+		-n | --no-cancel)
 			shift
-			stop_hyakvnc_session_args+=(--cancel)
+			nocancel=1
 			;;
 		-*)
 			log ERROR "Unknown option for stop: ${1:-}\n"
@@ -676,7 +677,10 @@ function cmd_stop {
 			;;
 		esac
 	done
-
+	if [ -z "${nocancel:-}" ]; then
+		stop_hyakvnc_session_args+=("--cancel")
+	fi
+	
 	if [ -n "$all" ]; then
 		jobids=$(squeue --me --format '%j %i' --noheader | grep -E "^${HYAKVNC_SLURM_JOB_PREFIX}" | grep -oE '[0-9]+$') || log WARN "Found no running job IDs with names that match the prefix ${HYAKVNC_SLURM_JOB_PREFIX}"
 	fi
