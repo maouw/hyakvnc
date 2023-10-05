@@ -70,7 +70,7 @@ function log {
 	colorno="${log_level_colors[${level}]}"
 	[ -z "${colorno}" ] && colorno=0
 	funcname=""
-	[ "${levelno}" -ge "${log_level_colors[DEBUG]}" ] && funcname="${FUNCNAME[1]}() - "
+	# [ "${levelno}" -ge "${log_level_colors[DEBUG]}" ] && funcname="${FUNCNAME[1]}() - "
 
 	# If we're in a terminal, use colors:
 	tput setaf "$colorno" 2>/dev/null
