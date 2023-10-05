@@ -276,10 +276,11 @@ function print_connection_info {
 	ssh_args+=("${USER}@${node}")
 
 	cat <<EOF
+==========
 Copy and paste these instructions into a command line terminal on your local machine to connect to the VNC session.
 You may need to install a VNC client if you don't already have one.
 If you are using Windows or are having trouble, try using the manual connection information.
-
+---------
 EOF
 
 	echo "LINUX TERMINAL (bash/zsh):"
@@ -305,6 +306,8 @@ EOF
 	echo "Enable local port forwarding from port ${viewer_port} on your machine ('localhost' or 127.0.0.1) to the socket ${socket_path} on the remote host."
 	echo "In your VNC client, connect to 'localhost' or 127.0.0.1 on port ${viewer_port}"
 	echo
+	echo "----------"
+	echo "=========="
 }
 
 # cleanup_launched_jobs_and_exit()
