@@ -48,23 +48,24 @@ where you downloaded it, and you must run it with the prefix `./`, like so:
 #### General usage
 
 ```text
-hyakvnc -- A tool for launching VNC sessions on Hyak
-Usage: hyakvnc [options] [create|status|stop|show|help] [options] [args]
+hyakvnc -- A tool for launching VNC sessions on Hyak.
+Usage: hyakvnc [options] [create|status|stop|show|install|help] [options] [args]
 
 Description:
-  Stop a provided HyakVNC sesssion and clean up its job directory
+	Stop a provided HyakVNC sesssion and clean up its job directory
 
 Options:
-  -h, --help     Show this help message and exit
-  -d, --debug     Also cancel the SLURM job
-  -V, --version     Print version information and exit
+	-h, --help	Show this help message and exit
+	-d, --debug	Also cancel the SLURM job
+	-V, --version	Print version information and exit
 
 Available commands:
-  create     Create a new VNC session
-  status     Check status of VNC session(s)
-  stop     Stop a VNC session
-  show     Show connection information for a VNC session
-  help     Show help for a command
+	create	Create a new VNC session
+	status	Check status of VNC session(s)
+	stop	Stop a VNC session
+	show	Show connection information for a VNC session
+	install	Install hyakvnc so the "hyakvnc" command can be run from anywhere
+	help	Show help for a command
 ```
 
 #### Create a HyakVNC session
