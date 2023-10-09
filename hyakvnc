@@ -54,7 +54,7 @@ HYAKVNC_SLURM_JOB_NAME="${HYAKVNC_SLURM_JOB_NAME:-${SBATCH_JOB_NAME:-}}"        
 HYAKVNC_SLURM_ACCOUNT="${HYAKVNC_SLURM_ACCOUNT:-${SBATCH_ACCOUNT:-}}"               # %% Slurm account to use
 HYAKVNC_SLURM_PARTITION="${HYAKVNC_SLURM_PARTITION:-${SBATCH_PARTITION:-}}"         # %% Slurm partition to use
 HYAKVNC_SLURM_CLUSTER="${HYAKVNC_SLURM_CLUSTER:-${SBATCH_CLUSTERS:-}}"              # %% Slurm cluster to use
-HYAKVNC_SLURM_GRES="${HYAKVNC_SLURM_GRES:-${SBATCH_GRES:-}}"                        # %% Number of GPUs to request
+HYAKVNC_SLURM_GPUS="${HYAKVNC_SLURM_GPUS:-${SBATCH_GPUS:-}}"                        # %% Number of GPUs to request
 HYAKVNC_SLURM_MEM="${HYAKVNC_SLURM_MEM:-${SBATCH_MEM:-4G}}"                         # %% Amount of memory to request
 HYAKVNC_SLURM_CPUS="${HYAKVNC_SLURM_CPUS:-4}"                                       # %% Number of CPUs to request (passed by --cpus-per-task to sbatch)
 HYAKVNC_SLURM_TIMELIMIT="${HYAKVNC_SLURM_TIMELIMIT:-${SBATCH_TIMELIMIT:-12:00:00}}" # %% Time limit for SLURM job
@@ -336,7 +336,7 @@ Options:
   -C, --cpus	Number of CPUs to request (default: ${HYAKVNC_SLURM_CPUS})
   -m, --mem	Amount of memory to request (default: ${HYAKVNC_SLURM_MEM})
   -t, --timelimit	Slurm timelimit to use (default: ${HYAKVNC_SLURM_TIMELIMIT})
-  -g, --gpus	Number of GPUs to request (default: ${HYAKVNC_SLURM_GRES})
+  -g, --gpus	Number of GPUs to request (default: ${HYAKVNC_SLURM_GPUS})
 
 Extra arguments:
   Any extra arguments will be passed to apptainer run.
@@ -405,7 +405,7 @@ function cmd_create {
 		-g | --gpus)
 			shift
 			[ -z "${1:-}" ] && log ERROR "--mem requires a non-empty option argument" && exit 1
-			export HYAKVNC_SBATCH_GRES="${1:-}"
+			export HYAKVNC_SBATCH_GPUS="${1:-}"
 			shift
 			;;
 		--) # Args to pass to Apptainer
@@ -450,7 +450,7 @@ function cmd_create {
 
 	[ -n "${HYAKVNC_SLURM_TIMELIMIT}" ] && export SBATCH_TIMELIMIT="${HYAKVNC_SLURM_TIMELIMIT}" && log TRACE "Set SBATCH_TIMELIMIT to ${SBATCH_TIMELIMIT}"
 	[ -n "${HYAKVNC_SLURM_JOB_NAME}" ] && export SBATCH_JOB_NAME="${HYAKVNC_SLURM_JOB_NAME}" && log TRACE "Set SBATCH_JOB_NAME to ${SBATCH_JOB_NAME}"
-	[ -n "${HYAKVNC_SLURM_GRES}" ] && export SBATCH_GRES="${HYAKVNC_SLURM_GRES}" && log TRACE "Set SBATCH_GRES to ${SBATCH_GRES}"
+	[ -n "${HYAKVNC_SLURM_GPUS}" ] && export SBATCH_GPUS="${HYAKVNC_SLURM_GPUS}" && log TRACE "Set SBATCH_GPUS to ${SBATCH_GPUS}"
 	[ -n "${HYAKVNC_SLURM_MEM}" ] && export SBATCH_MEM="${HYAKVNC_SLURM_MEM}" && log TRACE "Set SBATCH_MEM to ${SBATCH_MEM}"
 	[ -n "${HYAKVNC_SLURM_OUTPUT}" ] && export SBATCH_OUTPUT="${HYAKVNC_SLURM_OUTPUT}" && log TRACE "Set SBATCH_OUTPUT to ${SBATCH_OUTPUT}"
 
@@ -547,6 +547,9 @@ function cmd_create {
 	return 0
 }
 
+
+# == COMMAND: status
+# help for status command:
 function help_status {
 	cat <<EOF
 Usage: hyakvnc status [status options...]
@@ -566,7 +569,7 @@ Examples:
   hyakvnc status
 EOF
 }
-
+# status command:
 function cmd_status {
 	local running_jobid running_jobids
 	while true; do
