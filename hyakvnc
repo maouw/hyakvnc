@@ -166,7 +166,7 @@ function stop_hyakvnc_session {
 
 	[ -z "${jobid}" ] && log ERROR "Job ID must be specified" && return 1
 	log DEBUG "Stopping VNC session for job ${jobid}"
-	local jobdir pid
+	local jobdir pid tmpdirname
 	jobdir="${HYAKVNC_DIR}/jobs/${jobid}"
 	if [ -d "${jobdir}" ]; then
 		local pidfile
@@ -178,6 +178,11 @@ function stop_hyakvnc_session {
 				break
 			fi
 		done
+		if [ -r "${jobdir}/tmpdirname" ]; then
+			read -r tmpdirname <"${pidfile}"
+			[ -z "${tmpdirname}" ] && log WARN "Failed to get tmpdirname from ${jobdir}/tmpdirname"
+			srun --quiet --jobid "${jobid}" rm -rf "${tmpdirname}" || log WARN "Failed to remove container /tmp directory at ${tmpdirname} job ${jobid}"
+		fi
 		[ -n "${no_rm}" ] || rm -rf "${jobdir}/vnc" && log DEBUG "Removed VNC directory ${jobdir}/vnc"
 	else
 		log WARN "Job directory ${jobdir} does not exist"
@@ -892,12 +897,18 @@ Available commands:
 EOF
 }
 
+
 # Initalize directories:
 mkdir -p "${HYAKVNC_DIR}/jobs" || (log ERROR "Failed to create HYAKVNC jobs directory ${HYAKVNC_DIR}/jobs" && exit 1)
 mkdir -p "${HYAKVNC_SLURM_OUTPUT_DIR}" || (log ERROR "Failed to create HYAKVNC jobs directory ${HYAKVNC_DIR}/jobs" && exit 1)
 
 # Invoke main with args if not sourced
 if ! (return 0 2>/dev/null); then
+	if [ $# -eq 0 ]; then
+		cmd_help
+		exit 0
+	fi
+
 	while true; do
 		case "${1:-}" in
 		-h | --help | help)
@@ -912,6 +923,11 @@ if ! (return 0 2>/dev/null); then
 		-V | --version)
 			shift
 			echo "HyakVNC version ${HYAKVNC_VERSION}"
+			exit 0
+			;;
+		install)
+			shift
+			cmd_install "$@"
 			exit 0
 			;;
 		*)
@@ -964,6 +980,7 @@ if ! (return 0 2>/dev/null); then
 			cmd_show "$@"
 			exit 0
 			;;
+
 		*)
 			log ERROR "Unknown command: ${1:-}"
 			echo
