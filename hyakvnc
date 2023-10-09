@@ -749,13 +749,104 @@ function cmd_show {
 	return 0
 }
 
+function help_install {
+	cat <<EOF
+Usage: hyakvnc install [install options...]
+ 
+Description:
+  Install hyakvnc so the "hyakvnc" command can be run from anywhere.
+
+Options:
+  -h, --help			Show this help message and exit
+  -i, --install-dir		Directory to install hyakvnc to (default: ~/.local/bin)
+  -s, --shell {bash|zsh}	Shell to install hyakvnc for (default: \$SHELL or bash)
+
+Examples:
+  # Install
+  hyakvnc install
+  # Install to ~/bin:
+  hyakvnc install -i ~/bin
+EOF
+}
+
+function cmd_install {
+	local install_dir thisfile myshell shellrcpath
+	thisfile="${BASH_SOURCE[0]:-$0}"
+	install_dir="${HOME}/.local/bin"
+	[ -z "${thisfile}" ] && log ERROR "Failed to get path to hyakvnc script" && exit 1
+
+	# Parse arguments:
+	while true; do
+		case "${1:-}" in
+		-h | --help)
+			help_install
+			return 0
+			;;
+		-i | --install-dir)
+			shift
+			[ -z "${1:-}" ] && log ERROR "-i | --install-dir requires a non-empty option argument" && exit 1
+			install_dir="${1:-}"
+			shift
+			;;
+		-s | --shell)
+			shift
+			[ -z "${1:-}" ] && log ERROR "-s | --shell requires a non-empty option argument" && exit 1
+			myshell="${1:-}"
+			shift
+			;;
+
+		-*)
+			log ERROR "Unknown option for install: ${1:-}\n"
+			return 1
+			;;
+		*)
+			break
+			;;
+		esac
+	done
+	install_dir="${install_dir:-${HOME}/.local/bin}"
+	mkdir -p "${install_dir}" || { log ERROR "Failed to create install directory ${install_dir}" && exit 1; }
+	[ ! -d "${install_dir}" ] && log ERROR "Install directory ${install_dir} does not exist" && exit 1
+	[ ! -w "${install_dir}" ] && log ERROR "Install directory ${install_dir} is not writable" && exit 1
+
+	cp "${thisfile}" "${install_dir}/hyakvnc" || { log ERROR "Failed to copy ${thisfile} to ${install_dir}/hyakvnc" && exit 1; }
+	chmod +x "${install_dir}/hyakvnc" || { log ERROR "Failed to make ${install_dir}/hyakvnc executable" && exit 1; }
+
+	[ -z "${myshell:-}" ] && [ -n "${SHELL:-}" ] && myshell="${SHELL##*/}"
+	myshell=${myshell:-bash}
+
+	case "${myshell}" in
+	bash)
+		shellrcpath="${HOME}/.bashrc"
+		;;
+	zsh)
+		shellrcpath="${ZDOTDIR:-$HOME}/.zshrc"
+		;;
+	*)
+		log ERROR "Unsupported shell ${myshell}" && exit 1
+		;;
+	esac
+
+	# Add install directory to PATH if it's not already there
+	if [[ ":${PATH}:" != *":${install_dir}:"* ]]; then
+		if [[ $install_dir == "$HOME/.local/bin" ]]; then
+			echo "export PATH=\"\$HOME/.local/bin:\$PATH\"" >>"${shellrcpath}" && echo "Added \$HOME/.local/bin to PATH in ${shellrcpath}"
+		else
+			echo "export PATH=\"${install_dir}:\$PATH\"" >>"${shellrcpath}" && echo "Added ${install_dir} to PATH in ${shellrcpath}"
+		fi
+		echo "Run 'source ${shellrcpath}' to update your PATH"
+	fi
+
+	echo "Installed hyakvnc to ${install_dir}/hyakvnc"
+	[ "$myshell" == "zsh" ] && echo "Run 'rehash' to update your PATH"
+}
+
 function cmd_help {
 	while true; do
 		case "${1:-}" in
 		create)
 			shift
 			help_create "$@"
-
 			return 0
 			;;
 		status)

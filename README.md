@@ -157,6 +157,26 @@ Examples:
   hyakvnc show 123456
 ```
 
+#### Install HyakVNC
+
+```text
+Usage: hyakvnc install [install options...]
+ 
+Description:
+  Install hyakvnc so the "hyakvnc" command can be run from anywhere.
+
+Options:
+  -h, --help			Show this help message and exit
+  -i, --install-dir		Directory to install hyakvnc to (default: ~/.local/bin)
+  -s, --shell {bash|zsh}	Shell to install hyakvnc for (default: \$SHELL or bash)
+
+Examples:
+  # Install
+  hyakvnc install
+  # Install to ~/bin:
+  hyakvnc install -i ~/bin
+```
+
 ## Quickstart
 
 ### Creating a VNC session
