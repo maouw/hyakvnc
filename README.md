@@ -16,8 +16,7 @@ time.
 Before running `hyakvnc`, you'll need the following:
 
 - SSH client
-- VNC client/viewer
-  - TurboVNC viewer is recommended for all platforms
+- VNC client/viewer (TurboVNC viewer is recommended for all platforms)
 - HYAK Klone access with compute resources
 - VNC Apptainer with TurboVNC server installed and a SCIF app named "vncserver"
 
@@ -38,11 +37,24 @@ wget https://raw.githubusercontent.com/maouw/hyakvnc/main/hyakvnc && chmod +x hy
 ### Usage
 
 `hyakvnc` is command-line tool that only works while on the login node.
-Unless you install it to your "$PATH", you'll need to run it from the directory
-where you downloaded it, and you must run it with the prefix `./`, like so:
+
+You can run it from the directory where you downloaded it like so:
 
 ```bash
 ./hyakvnc
+```
+
+#### Installation
+You can also install it to your `$PATH` so you can run it from anywhere without prefixing with `./`:
+
+```bash
+./hyakvnc install
+```
+
+Once you do this, you should be able to run it like this:
+
+```bash 
+hyakvnc
 ```
 
 #### General usage
@@ -185,8 +197,8 @@ Examples:
 1. Start a VNC session with the `hyakvnc create` command followed by arguments to specify the container.
 
 ```bash
-# Create a VNC container with default settings from a container located at ~/ubuntu22.04_turbovnc.sif:
-hyakvnc -d create --container ~/ubuntu22.04_turbovnc.sif
+# Create a VNC container with default settings from a container downloaded from the HyakVNC GitHub Container Registry:
+hyakvnc -d create --container oras://ghcr.io/maouw/ubuntu22.04_turbovnc:latest
 ```
 
 2. If successful, `hyakvnc` should print commands and instructions to connect:
@@ -224,10 +236,10 @@ HYAKVNC_DIR - Local directory to store application data (default: ~/.hyakvnc)
 HYAKVNC_LOG_LEVEL - Log level to use for interactive output (default: INFO)
 HYAKVNC_LOG_FILE_LEVEL - Log level to use for log file output (default: DEBUG)
 HYAKVNC_SSH_HOST - Default SSH host to use for connection strings (default: klone.hyak.uw.edu)
-HYAKVNC_STANDARD_TIMEOUT - How long to wait for most commands to complete before timing out (default: 30)
-HYAKVNC_VNC_PASSWORD - Password to use for new VNC sessions (default: ppassword)
+HYAKVNC_DEFAULT_TIMEOUT - How long to wait for most commands to complete before timing out (default: 30)
+HYAKVNC_VNC_PASSWORD - Password to use for new VNC sessions (default: password)
 HYAKVNC_VNC_DISPLAY - VNC display to use (default: :1)
-HYAKVNC_MACOS_VNC_VIEWER_BUNDLEIDS - macOS bundle identifiers for VNC viewer executables (default: com.turbovnc.vncviewer.VncViewer,com.realvnc.vncviewer,com.tigervnc.vncviewer)
+HYAKVNC_MACOS_VNC_VIEWER_BUNDLEIDS - macOS bundle identifiers for VNC viewer executables (default: com.turbovnc.vncviewer, com.realvnc.vncviewer,com.tigervnc.vncviewer)
 HYAKVNC_APPTAINER_BIN - Name of apptainer binary (default: apptainer)
 HYAKVNC_APPTAINER_CONTAINER - Path to container image
 HYAKVNC_APPTAINER_APP_VNCSERVER - Name of app in the container that starts the VNC session (default: vncserver)
@@ -236,14 +248,14 @@ HYAKVNC_APPTAINER_WRITABLE_TMPFS - Whether to use a writable tmpfs for the conta
 HYAKVNC_APPTAINER_CLEANENV - Whether to use a clean environment for the container (default: 1)
 HYAKVNC_APPTAINER_ADD_BINDPATHS - Bind paths to add to the container
 HYAKVNC_APPTAINER_ADD_ENVVARS - Environment variables to add to before invoking apptainer
-HYAKVNC_APPTAINER_ADD_ARGS - Additional arguments to give apptainer
+HYAKVNC_APPTAINER_ADD_ARGS - A_dditional arguments to give apptainer
 HYAKVNC_SLURM_JOB_PREFIX - Prefix to use for hyakvnc SLURM job names (default: hyakvnc-)
-HYAKVNC_SBATCH_POST_TIMEOUT - How long after submitting via sbatch to wait for the job to start before timing out (default: 120)
+HYAKVNC_SLURM_SUBMIT_TIMEOUT - How long after submitting via sbatch to wait for the job to start before timing out (default: 120)
 HYAKVNC_SLURM_OUTPUT_DIR - Directory to store SLURM output files (default: ~/.hyakvnc/slurm-output)
 HYAKVNC_SLURM_ACCOUNT - Slurm account to use (default: (autodetected))
 HYAKVNC_SLURM_PARTITION - Slurm partition to use (default: (autodetected))
 HYAKVNC_SLURM_CLUSTER - Slurm cluster to use (default: (autodetected))
-HYAKVNC_SLURM_GRES - Number of GPUs to request
+HYAKVNC_SLURM_GPUS - Number of GPUs to request (default: not set)
 HYAKVNC_SLURM_MEM - Amount of memory to request (default: 4G)
 HYAKVNC_SLURM_CPUS - Number of CPUs to request (default: 4)
 HYAKVNC_SLURM_TIMELIMIT - Time limit for SLURM job (default: 12:00:00)
