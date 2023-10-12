@@ -466,8 +466,9 @@ function cmd_create {
 		[ ! -e "${HYAKVNC_APPTAINER_CONTAINER:-}" ] && log ERROR "Container image at ${HYAKVNC_APPTAINER_CONTAINER} does not exist	" && exit 1
 		# Check that the container is readable:
 		[ ! -r "${HYAKVNC_APPTAINER_CONTAINER:-}" ] && log ERROR "Container image ${HYAKVNC_APPTAINER_CONTAINER} is not readable" && exit 1
-		container_basename="$(basename "${HYAKVNC_APPTAINER_CONTAINER}")"
 	fi
+
+	container_basename="$(basename "${HYAKVNC_APPTAINER_CONTAINER}")"
 
 	[ -z "$container_basename" ] && log ERROR "Failed to get container basename from ${HYAKVNC_APPTAINER_CONTAINER}" && exit 1
 	container_name="${container_basename%.*}"
