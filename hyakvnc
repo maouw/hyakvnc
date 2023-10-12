@@ -961,6 +961,7 @@ function main {
 			action=$(compgen -A function cmd_ | grep --max-count=1 "^cmd_${1:-}\$" || true)
 			[ -z "${action:-}" ] && log ERROR "Unknown command: ${1:-}" && cmd_help && exit 1
 			shift
+			break
 			;;
 		esac
 	done
