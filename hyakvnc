@@ -922,6 +922,7 @@ function cmd_install {
 		else
 			echo "export PATH=\"${install_dir}:\$PATH\"" >>"${shellrcpath}" && echo "Added ${install_dir} to PATH in ${shellrcpath}"
 		fi
+		export PATH="${install_dir}:${PATH}"
 		echo "Run 'source ${shellrcpath}' to update your PATH"
 	fi
 
