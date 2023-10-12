@@ -459,7 +459,7 @@ function cmd_create {
 	done
 	[ -z "${HYAKVNC_APPTAINER_CONTAINER}" ] && log ERROR "Container image must be specified" && exit 1
 
-	if case "${HYAKVNC_APPTAINER_CONTAINER}" in library:// | docker:// | shub:// | oras:// | http://) true ;; *) false ;; esac then
+	if case "${HYAKVNC_APPTAINER_CONTAINER}" in library://* | docker://* | shub://* | oras://* | http://* | https://* ) true ;; *) false ;; esac then
 		log DEBUG "Container image ${HYAKVNC_APPTAINER_CONTAINER} is a URL"
 	else
 		# Check that container is specified
