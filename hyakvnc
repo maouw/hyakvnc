@@ -561,6 +561,24 @@ function cmd_create {
 		esac
 	done
 
+
+
+
+	log TRACE "Waiting for job ${launched_jobid} to create its directory at ${jobdir}"
+	start=$EPOCHSECONDS
+	while true; do
+		if ((EPOCHSECONDS - start > HYAKVNC_DEFAULT_TIMEOUT)); then
+			log ERROR "Timed out waiting for job to create its directory at ${jobdir}" && exit 1
+		fi
+		sleep 1
+		[ ! -d "${jobdir}" ] && log TRACE "Job directory does not exist yet" && continue
+		break
+	done
+
+	ln -s "${HYAKVNC_SLURM_OUTPUT_DIR}/job-${launched_jobid}.out" "${jobdir}/slurm.log" || log WARN "${HYAKVNC_SLURM_OUTPUT_DIR}/job-${launched_jobid}.out" to "${jobdir}/slurm.log"
+
+	tail -f "${jobdir}/slurm.log" 2>/dev/null & # Follow the SLURM log file in the background
+
 	log DEBUG "Waiting for job ${launched_jobid} to create its socket file at ${jobdir}/vnc/socket.uds"
 	start=$EPOCHSECONDS
 	while true; do
@@ -574,6 +592,8 @@ function cmd_create {
 		break
 	done
 
+	kill %tail 2>/dev/null # Stop following the SLURM log file
+	
 	# Get details about the Xvnc process:
 	print_connection_info -j "${launched_jobid}" || { log ERROR "Failed to print connection info for job ${launched_jobid}" && return 1; }
 	# Stop trapping the signals:
