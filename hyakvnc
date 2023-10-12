@@ -73,11 +73,12 @@ Log_Level_Colors=(["FATAL"]=5 ["ERROR"]=1 ["WARN"]=3 ["INFO"]=4 ["DEBUG"]=6 ["TR
 # Check if the current log level is high enough to log a message
 # Arguments: <level>
 function check_log_level {
-	local level levelno curlevelno
+	local level levelno refloglevel refloglevelno
+	level="${1:-INFO}"
+	refloglevel="${2:-${HYAKVNC_LOG_LEVEL:-INFO}}"
 	[ -z "${levelno:=${Log_Levels[${level}]}}" ] && echo >&2 "log(): Unknown log level: ${level}" && return 1
-	curloglevel="${HYAKVNC_LOG_LEVEL:-INFO}"
-	[ -z "${curlevelno:=${Log_Levels[${curloglevel}]}}" ] && echo >&2 "log() Unknown interactive log level: ${curloglevel}" && return 1
-	[ "${curlevelno}" -lt "${levelno}" ] && return 1 || return 0
+	[ -z "${refloglevelno:=${Log_Levels[${refloglevel}]}}" ] && echo >&2 "log() Unknown log level: ${refloglevel}" && return 1
+	[ "${levelno}" -lt "${refloglevelno}" ] && return 1 || return 0
 }
 
 # log()
@@ -93,7 +94,7 @@ function check_log_level {
 function log {
 	local level levelno colorno curlevelno curlogfilelevelno funcname logfilefuncname curloglevel curlogfilelevel
 	[ $# -lt 1 ] && return 1
-	local level=${1:-}
+	level=${1:-}
 	shift
 	[ -z "${level}" ] && echo >&2 "log(): No log level set" && return 1
 
