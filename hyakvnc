@@ -940,30 +940,32 @@ EOF
 # main()
 function main {
 	local action
-
-	case "${1:-}" in
-	-d | --debug) # Debug mode
-		export HYAKVNC_LOG_LEVEL=DEBUG
-		shift
-		;;
-	-h | --help)
-		shift
-		cmd_help "${@:-}"
-		exit 0
-		;;
-	-V | --version)
-		echo "HyakVNC version ${HYAKVNC_VERSION}"
-		exit 0
-		;;
-	*)
-		hyakvnc_config_init # Initialize config for SLURM
-		action=$(compgen -A function cmd_ | grep --max-count=1 "^cmd_${1:-}\$" || true)
-		[ -z "${action:-}" ] && log ERROR "Unknown command: ${1:-}" && cmd_help && exit 1
-		action="${action:-cmd_help}" && shift
-		${action} "$@"
-		exit 0
-		;;
-	esac
+	action="cmd_help"
+	while true; do
+		case "${1:-}" in
+		-d | --debug) # Debug mode
+			export HYAKVNC_LOG_LEVEL=DEBUG
+			shift
+			;;
+		-h | --help)
+			shift
+			cmd_help "${@:-}"
+			exit 0
+			;;
+		-V | --version)
+			echo "HyakVNC version ${HYAKVNC_VERSION}"
+			exit 0
+			;;
+		*)
+			hyakvnc_config_init # Initialize config for SLURM
+			action=$(compgen -A function cmd_ | grep --max-count=1 "^cmd_${1:-}\$" || true)
+			[ -z "${action:-}" ] && log ERROR "Unknown command: ${1:-}" && cmd_help && exit 1
+			shift
+			;;
+		esac
+	done
+	${action} "$@"
+	exit 0
 }
 
 # Invoke main with args if not sourced:
