@@ -227,9 +227,10 @@ function stop_hyakvnc_session {
 	else
 		log WARN "Job directory ${jobdir} does not exist"
 	fi
-
+	
 	if [ -n "${should_cancel}" ]; then
 		log INFO "Cancelling job ${jobid}"
+		sleep 5 # Wait for VNC process to exit
 		scancel "${jobid}" || log ERROR "Failed to cancel job ${jobid}"
 	fi
 	return 0
