@@ -356,6 +356,7 @@ function cleanup_launched_jobs_and_exit {
 		scancel "${jobid}" || log ERROR "Failed to cancel job ${jobid}"
 		[ -d "${jobdir}" ] && rm -rf "${jobdir}" && log DEBUG "Removed job directory ${jobdir}"
 	done
+	kill %tail 2>/dev/null # Stop following the SLURM log file
 	trap - SIGINT SIGTSTP SIGTERM SIGHUP SIGABRT SIGQUIT
 	exit 1
 }
