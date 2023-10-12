@@ -67,6 +67,8 @@ declare -A Log_Levels Log_Level_Colors # Declare Log_Levels and Log_Level_Colors
 Log_Levels=(["OFF"]=0 ["FATAL"]=1 ["ERROR"]=2 ["WARN"]=3 ["INFO"]=4 ["DEBUG"]=5 ["TRACE"]=6 ["ALL"]=100)
 Log_Level_Colors=(["FATAL"]=5 ["ERROR"]=1 ["WARN"]=3 ["INFO"]=4 ["DEBUG"]=6 ["TRACE"]=2)
 
+tail_pid="" # PID of tail process
+
 # # Utility functions
 
 # check_log_level()
@@ -227,7 +229,7 @@ function stop_hyakvnc_session {
 	else
 		log WARN "Job directory ${jobdir} does not exist"
 	fi
-	
+
 	if [ -n "${should_cancel}" ]; then
 		log INFO "Cancelling job ${jobid}"
 		sleep 5 # Wait for VNC process to exit
@@ -357,7 +359,7 @@ function cleanup_launched_jobs_and_exit {
 		scancel "${jobid}" || log ERROR "Failed to cancel job ${jobid}"
 		[ -d "${jobdir}" ] && rm -rf "${jobdir}" && log DEBUG "Removed job directory ${jobdir}"
 	done
-	kill %tail 2>/dev/null # Stop following the SLURM log file
+	kill -TERM "$tail_pid" 2>/dev/null # Stop following the SLURM log file
 	trap - SIGINT SIGTSTP SIGTERM SIGHUP SIGABRT SIGQUIT
 	exit 1
 }
@@ -590,6 +592,7 @@ function cmd_create {
 
 	check_log_level "${HYAKVNC_LOG_LEVEL}" DEBUG && echo "Streaming log from ${jobdir}/slurm.log" &&
 	tail -f "${jobdir}/slurm.log" --pid=$$ 2>/dev/null & # Follow the SLURM log file in the background
+	tail_pid=$!
 
 	log DEBUG "Waiting for job ${launched_jobid} to create its socket file at ${jobdir}/vnc/socket.uds"
 	start=$EPOCHSECONDS
@@ -604,7 +607,7 @@ function cmd_create {
 		break
 	done
 
-	kill -9 %tail 2>/dev/null # Stop following the SLURM log file
+	kill -TERM "$tail_pid" 2>/dev/null # Stop following the SLURM log file
 
 	# Get details about the Xvnc process:
 	print_connection_info -j "${launched_jobid}" || { log ERROR "Failed to print connection info for job ${launched_jobid}" && return 1; }
