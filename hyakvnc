@@ -939,17 +939,13 @@ EOF
 
 # main()
 function main {
-	local action the_arg
-	for the_arg in "$@"; do
-		case "${the_arg:-}" in
-		-d | --debug) # Debug mode
-			export HYAKVNC_LOG_LEVEL=DEBUG
-			;;
-		*) ;;
-		esac
-	done
+	local action
 
 	case "${1:-}" in
+	-d | --debug) # Debug mode
+		export HYAKVNC_LOG_LEVEL=DEBUG
+		shift
+		;;
 	-h | --help)
 		shift
 		cmd_help "${@:-}"
@@ -960,7 +956,7 @@ function main {
 		exit 0
 		;;
 	*)
-		hyakvnc_config_init
+		hyakvnc_config_init # Initialize config for SLURM
 		action=$(compgen -A function cmd_ | grep --max-count=1 "^cmd_${1:-}\$" || true)
 		[ -z "${action:-}" ] && log ERROR "Unknown command: ${1:-}" && cmd_help && exit 1
 		action="${action:-cmd_help}" && shift
