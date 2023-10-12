@@ -588,7 +588,7 @@ function cmd_create {
 	ln -s "${HYAKVNC_SLURM_OUTPUT_DIR}/job-${launched_jobid}.out" "${jobdir}/slurm.log" || log WARN "${HYAKVNC_SLURM_OUTPUT_DIR}/job-${launched_jobid}.out" to "${jobdir}/slurm.log"
 
 	check_log_level "${HYAKVNC_LOG_LEVEL}" DEBUG && echo "Streaming log from ${jobdir}/slurm.log" &&
-	tail -f "${jobdir}/slurm.log" 2>/dev/null & # Follow the SLURM log file in the background
+	tail -f "${jobdir}/slurm.log" --pid=$$ 2>/dev/null & # Follow the SLURM log file in the background
 
 	log DEBUG "Waiting for job ${launched_jobid} to create its socket file at ${jobdir}/vnc/socket.uds"
 	start=$EPOCHSECONDS
@@ -603,7 +603,7 @@ function cmd_create {
 		break
 	done
 
-	kill %tail 2>/dev/null # Stop following the SLURM log file
+	kill -9 %tail 2>/dev/null # Stop following the SLURM log file
 
 	# Get details about the Xvnc process:
 	print_connection_info -j "${launched_jobid}" || { log ERROR "Failed to print connection info for job ${launched_jobid}" && return 1; }
