@@ -458,9 +458,11 @@ function cmd_create {
 		esac
 	done
 	[ -z "${HYAKVNC_APPTAINER_CONTAINER}" ] && log ERROR "Container image must be specified" && exit 1
-
-	if case "${HYAKVNC_APPTAINER_CONTAINER}" in library://* | docker://* | shub://* | oras://* | http://* | https://* ) true ;; *) false ;; esac then
+	container_basename="$(basename "${HYAKVNC_APPTAINER_CONTAINER}")"
+	if case "${HYAKVNC_APPTAINER_CONTAINER}" in library://* | docker://* | shub://* | oras://* | http://* | https://*) true ;; *) false ;; esac then
 		log DEBUG "Container image ${HYAKVNC_APPTAINER_CONTAINER} is a URL"
+		# Add a tag if none is specified:
+		[[ "$container_basename" =~ .*:.* ]] || HYAKVNC_APPTAINER_CONTAINER="${HYAKVNC_APPTAINER_CONTAINER}:latest"
 	else
 		# Check that container is specified
 		[ ! -e "${HYAKVNC_APPTAINER_CONTAINER:-}" ] && log ERROR "Container image at ${HYAKVNC_APPTAINER_CONTAINER} does not exist	" && exit 1
@@ -468,10 +470,8 @@ function cmd_create {
 		[ ! -r "${HYAKVNC_APPTAINER_CONTAINER:-}" ] && log ERROR "Container image ${HYAKVNC_APPTAINER_CONTAINER} is not readable" && exit 1
 	fi
 
-	container_basename="$(basename "${HYAKVNC_APPTAINER_CONTAINER}")"
-
 	[ -z "$container_basename" ] && log ERROR "Failed to get container basename from ${HYAKVNC_APPTAINER_CONTAINER}" && exit 1
-	container_name="${container_basename%.*}"
+	container_name="${container_basename//\.@(sif|simg|img|sqsh)/}"
 	[ -z "$container_name" ] && log ERROR "Failed to get container name from ${container_basename}" && exit 1
 
 	log INFO "Creating HyakVNC job for container ${container_basename}"
