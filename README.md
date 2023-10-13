@@ -19,7 +19,7 @@ You will also need a VNC Apptainer with TurboVNC server installed. See var_hyakv
 
 ### Download and install
 
-**`hyakvnc` should be installed on the login node of the HYAK Klone cluster.** 
+**`hyakvnc` should be installed on the login node of the HYAK Klone cluster.**
 
 To connect to the login node, you'll need to enter the following command into a terminal window (replacing `your-uw-netid` with your UW NetID) and provide your password when prompted:
 
@@ -256,7 +256,6 @@ The following variables are available:
 - HYAKVNC_SLURM_MEM: Amount of memory to request, in [M]egabytes or [G]igabytes (default: `4G`)
 - HYAKVNC_SLURM_CPUS: Number of CPUs to request (default: `4`)
 - HYAKVNC_SLURM_TIMELIMIT: Time limit for SLURM job (default: `12:00:00`)
-
 
 ## License
 

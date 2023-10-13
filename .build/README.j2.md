@@ -19,7 +19,7 @@ You will also need a VNC Apptainer with TurboVNC server installed. See {{ hyakvn
 
 ### Download and install
 
-**`hyakvnc` should be installed on the login node of the HYAK Klone cluster.** 
+**`hyakvnc` should be installed on the login node of the HYAK Klone cluster.**
 
 To connect to the login node, you'll need to enter the following command into a terminal window (replacing `your-uw-netid` with your UW NetID) and provide your password when prompted:
 
@@ -100,7 +100,6 @@ You can modify the values of these variables by:
 The following variables are available:
 
 {% include 'config.inc.md' %}
-
 ## License
 
 `hyakvnc` is licensed under [MIT License](LICENSE).
