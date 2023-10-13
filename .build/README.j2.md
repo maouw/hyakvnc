@@ -97,9 +97,9 @@ You can modify the values of these variables by:
 - Setting them by prefixing the `hyakvnc` command with the variable assignment, e.g. `HYAKVNC_SLURM_MEM=8G hyakvnc create ...` (which will only affect the current command)
 - Setting them in the file `~/.hyakvnc/hyakvnc-config.env` (which will affect all `hyakvnc` commands)
 
-```text
+The following variables are available:
+
 {% include 'config.inc.md' %}
-```
 
 ## License
 

@@ -16,7 +16,7 @@ var_raw_script_url := $(shell echo $(var_repo_url) | sed -E 's/github\.com/raw.g
 var_container_registry := "oras://ghcr.io/maouw"
 var_hyakvnc_apptainer_repo := "https://github.com/maouw/hyakvnc_apptainer"
 config.inc.md: ../hyakvnc
-	$(shell sed -E '/HYAKVNC_.*#\s*%%/!d; s/=.*(#\s*%%)/:/g' $< > $@ )
+	$(shell sed -E '/^HYAKVNC_.*#\s*%%/!d; s/=.*(#\s*%%)/:/g; s/(^.)/- \1/g' $< > $@)
 
 usage.inc.md: ../hyakvnc
 	$(shell for x in create status show stop config install; do ../hyakvnc help "$$x" | sed -E '1 s/(.*)/\n### \1\n/; 2 s/^$$/```text/' | pr -e -t && echo '```'; done > $@)
