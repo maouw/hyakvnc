@@ -102,7 +102,7 @@ Options:
         -C, --cpus      Number of CPUs to request (default: 4)
         -m, --mem       Amount of memory to request (default: 4G)
         -t, --timelimit Slurm timelimit to use (default: 12:00:00)
-        -g, --gpus      Number of GPUs to request (default: 1)
+        -g, --gpus      Number of GPUs to request (default: )
 
 Extra arguments:
         Any extra arguments will be passed to apptainer run.
