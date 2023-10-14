@@ -884,7 +884,6 @@ Description:
 	
 Options:
 	-h, --help	Show this help message and exit
-	-s, --os	Show connection information for the specified operating system (default: ${HYAKVNC_DEFAULT_OS})
 
 Examples:
 	# Show connection information for session running on job 123456:

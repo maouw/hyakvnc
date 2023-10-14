@@ -118,7 +118,9 @@ It may take a few minutes to download the container if you're running it the fir
 Copy and paste these instructions into a command line terminal on your local machine to connect to the VNC session.
 You may need to install a VNC client if you don't already have one.
 
-NOTE: If you receive an error that looks like "Permission denied (publickey,gssapi-keyex,gssapi-with-mic)", you don't have an SSH key set up. See https://hyak.uw.edu/docs/setup/intracluster-keys for more information. To set this up quickly on Linux, macOS, or Windows (WSL2/Cygwin), open a new terminal window on your machine and enter the following 2 commands before you try again:
+NOTE: If you receive an error that looks like "Permission denied (publickey,gssapi-keyex,gssapi-with-mic)", you don't have an SSH key set up.
+See https://hyak.uw.edu/docs/setup/intracluster-keys for more information.
+To set this up quickly on Linux, macOS, or Windows (WSL2/Cygwin), open a new terminal window on your machine and enter the following 2 commands before you try again:
 
 [ ! -r ~/.ssh/id_rsa ] && ssh-keygen -t rsa -b 4096 -N '' -C "your-uw-netid@uw.edu" -f ~/.ssh/id_rsa
 ssh-copy-id -o StrictHostKeyChecking=no your-uw-netid@klone.hyak.uw.edu
@@ -145,26 +147,26 @@ ssh -f -o StrictHostKeyChecking=no -L 5901:/mmfs1/home/your-uw-netid/.hyakvnc/jo
 Usage: hyakvnc create [create options...] -c <container> [extra args to pass to apptainer...]
 
 Description:
-        Create a VNC session on Hyak.
+    Create a VNC session on Hyak.
 
 Options:
-        -h, --help      Show this help message and exit
-        -c, --container Path to container image (required)
-        -A, --account   Slurm account to use (default: )
-        -p, --partition Slurm partition to use (default: )
-        -C, --cpus      Number of CPUs to request (default: 4)
-        -m, --mem       Amount of memory to request (default: 4G)
-        -t, --timelimit Slurm timelimit to use (default: 12:00:00)
-        -g, --gpus      Number of GPUs to request (default: )
+    -h, --help  Show this help message and exit
+    -c, --container Path to container image (required)
+    -A, --account   Slurm account to use (default: )
+    -p, --partition Slurm partition to use (default: )
+    -C, --cpus  Number of CPUs to request (default: 4)
+    -m, --mem   Amount of memory to request (default: 4G)
+    -t, --timelimit Slurm timelimit to use (default: 12:00:00)
+    -g, --gpus  Number of GPUs to request (default: )
 
 Extra arguments:
-        Any extra arguments will be passed to apptainer run.
-        See 'apptainer run --help' for more information.
+    Any extra arguments will be passed to apptainer run.
+    See 'apptainer run --help' for more information.
 
 Examples:
-        # Create a VNC session using the container ~/containers/mycontainer.sif
-        # Use the SLURM account escience, the partition gpu-a40, 4 CPUs, 1GB of memory, 1 GPU, and 1 hour of time
-        hyakvnc create -c ~/containers/mycontainer.sif -A escience -p gpu-a40 -C 4 -m 1G -t 1:00:00 -g 1
+    # Create a VNC session using the container ~/containers/mycontainer.sif
+    # Use the SLURM account escience, the partition gpu-a40, 4 CPUs, 1GB of memory, 1 GPU, and 1 hour of time
+    hyakvnc create -c ~/containers/mycontainer.sif -A escience -p gpu-a40 -C 4 -m 1G -t 1:00:00 -g 1
 ```
 
 ### Show the status of running HyakVNC sessions
@@ -173,102 +175,101 @@ Examples:
 Usage: hyakvnc status [status options...]
 
 Description:
-        Check status of VNC session(s) on Hyak.
+    Check status of VNC session(s) on Hyak.
 
 Options:
-        -h, --help      Show this help message and exit
-        -d, --debug     Print debug info
-        -j, --jobid     Only check status of provided SLURM job ID (optional)
+    -h, --help  Show this help message and exit
+    -d, --debug Print debug info
+    -j, --jobid Only check status of provided SLURM job ID (optional)
 
 Examples:
-        # Check the status of job no. 12345:
-        hyakvnc status -j 12345
-        # Check the status of all VNC jobs:
-        hyakvnc status
+    # Check the status of job no. 12345:
+    hyakvnc status -j 12345
+    # Check the status of all VNC jobs:
+    hyakvnc status
 ```
 
 ### Show connection information for a HyakVNC sesssion
 
 ```text
 Usage: hyakvnc show <jobid>
-        
+    
 Description:
-        Show connection information for a HyakVNC sesssion. 
-        If no job ID is provided, a menu will be shown to select from running jobs.
-        
+    Show connection information for a HyakVNC sesssion. 
+    If no job ID is provided, a menu will be shown to select from running jobs.
+    
 Options:
-        -h, --help      Show this help message and exit
-        -s, --os        Show connection information for the specified operating system (default: )
+    -h, --help  Show this help message and exit
 
 Examples:
-        # Show connection information for session running on job 123456:
-        hyakvnc show 123456
-        # Interactively select a job to show connection information for:
-        hyakvnc show
+    # Show connection information for session running on job 123456:
+    hyakvnc show 123456
+    # Interactively select a job to show connection information for:
+    hyakvnc show
 
-        # Show connection information for session running on job 123456 for macOS:
-        hyakvnc show -s mac 123456
+    # Show connection information for session running on job 123456 for macOS:
+    hyakvnc show -s mac 123456
 ```
 
 ### Stop a HyakVNC session
 
 ```text
 Usage: hyakvnc stop [-a] [<jobids>...]
-        
+    
 Description:
-        Stop a provided HyakVNC sesssion and clean up its job directory.
-        If no job ID is provided, a menu will be shown to select from running jobs.
+    Stop a provided HyakVNC sesssion and clean up its job directory.
+    If no job ID is provided, a menu will be shown to select from running jobs.
 
 Options:
-        -h, --help      Show this help message and exit
-        -n, --no-cancel Don't cancel the SLURM job
-        -a, --all       Stop all jobs
+    -h, --help  Show this help message and exit
+    -n, --no-cancel Don't cancel the SLURM job
+    -a, --all   Stop all jobs
 
 Examples:
-        # Stop a VNC session running on job 123456:
-        hyakvnc stop 123456
-        # Stop a VNC session running on job 123456 and do not cancel the job:
-        hyakvnc stop --no-cancel 123456
-        # Stop all VNC sessions:
-        hyakvnc stop -a
-        # Stop all VNC sessions but do not cancel the jobs:
-        hyakvnc stop -a -n
+    # Stop a VNC session running on job 123456:
+    hyakvnc stop 123456
+    # Stop a VNC session running on job 123456 and do not cancel the job:
+    hyakvnc stop --no-cancel 123456
+    # Stop all VNC sessions:
+    hyakvnc stop -a
+    # Stop all VNC sessions but do not cancel the jobs:
+    hyakvnc stop -a -n
 ```
 
 ### Show the current configuration for hyakvnc
 
 ```text
 Usage: hyakvnc config [config options...]
-        
+    
 Description:
-        Show the current configuration for hyakvnc, as set in the user configuration file at /home/altan/.hyakvnc/hyakvnc-config.env, in the current environment, or the default values set by hyakvnc.
+    Show the current configuration for hyakvnc, as set in the user configuration file at /home/altan/.hyakvnc/hyakvnc-config.env, in the current environment, or the default values set by hyakvnc.
 
 Options:
-        -h, --help              Show this help message and exit
+    -h, --help      Show this help message and exit
 
 Examples:
-        # Show configuration
-        hyakvnc config
+    # Show configuration
+    hyakvnc config
 ```
 
 ### Install the hyakvnc command
 
 ```text
 Usage: hyakvnc install [install options...]
-        
+    
 Description:
-        Install hyakvnc so the "hyakvnc" command can be run from anywhere.
+    Install hyakvnc so the "hyakvnc" command can be run from anywhere.
 
 Options:
-        -h, --help                      Show this help message and exit
-        -i, --install-dir               Directory to install hyakvnc to (default: ~/.local/bin)
-        -s, --shell [bash|zsh]  Shell to install hyakvnc for (default: $SHELL or bash)
+    -h, --help          Show this help message and exit
+    -i, --install-dir       Directory to install hyakvnc to (default: ~/.local/bin)
+    -s, --shell [bash|zsh]  Shell to install hyakvnc for (default: $SHELL or bash)
 
 Examples:
-        # Install
-        hyakvnc install
-        # Install to ~/bin:
-        hyakvnc install -i ~/bin
+    # Install
+    hyakvnc install
+    # Install to ~/bin:
+    hyakvnc install -i ~/bin
 ```
 
 ## Configuration

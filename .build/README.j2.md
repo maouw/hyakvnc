@@ -118,7 +118,9 @@ It may take a few minutes to download the container if you're running it the fir
 Copy and paste these instructions into a command line terminal on your local machine to connect to the VNC session.
 You may need to install a VNC client if you don't already have one.
 
-NOTE: If you receive an error that looks like "Permission denied (publickey,gssapi-keyex,gssapi-with-mic)", you don't have an SSH key set up. See https://hyak.uw.edu/docs/setup/intracluster-keys for more information. To set this up quickly on Linux, macOS, or Windows (WSL2/Cygwin), open a new terminal window on your machine and enter the following 2 commands before you try again:
+NOTE: If you receive an error that looks like "Permission denied (publickey,gssapi-keyex,gssapi-with-mic)", you don't have an SSH key set up.
+See https://hyak.uw.edu/docs/setup/intracluster-keys for more information.
+To set this up quickly on Linux, macOS, or Windows (WSL2/Cygwin), open a new terminal window on your machine and enter the following 2 commands before you try again:
 
 [ ! -r ~/.ssh/id_rsa ] && ssh-keygen -t rsa -b 4096 -N '' -C "your-uw-netid@uw.edu" -f ~/.ssh/id_rsa
 ssh-copy-id -o StrictHostKeyChecking=no your-uw-netid@klone.hyak.uw.edu

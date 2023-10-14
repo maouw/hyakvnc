@@ -22,7 +22,7 @@ config.inc.md: ../hyakvnc
 
 
 usage.inc.md: ../hyakvnc ## Generate usage documentatoin from `hyakvnc help` output
-	$(shell for x in create status show stop config install; do ../hyakvnc help "$$x" | sed -E '1 s/(.*)/\n### \1\n/; 2 s/^$$/```text/' | pr -e -t && echo '```'; done > $@)
+	$(shell for x in create status show stop config install; do ../hyakvnc help "$$x" | sed -E '1 s/(.*)/\n### \1\n/; 2 s/^$$/```text/' | pr -e4 -t && echo '```'; done > $@)
 	
 ../README.md: README.j2.md usage.inc.md config.inc.md
 ifndef has_jinja
