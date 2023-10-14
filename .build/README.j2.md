@@ -143,14 +143,16 @@ ssh -f -o StrictHostKeyChecking=no -L 5901:/mmfs1/home/your-uw-netid/.hyakvnc/jo
 {% include 'usage.inc.md' %}
 ## Configuration
 
-The following environment variables can be used to override the default settings. Any arguments passed to `hyakvnc create` will override the environment variables.
+The following [environment variables](https://wiki.archlinux.org/title/environment_variables) can be used to override the default settings. Any arguments passed to `hyakvnc create` will override the environment variables.
 
 You can modify the values of these variables by:
 
-- Setting and exporting them in your shell session, e.g. `export HYAKVNC_SLURM_MEM=8G` (which will only affect the current shell session)
+- Setting and exporting them in your shell session, e.g. `export HYAKVNC_SLURM_MEM='8G'` (which will only affect the current shell session)
 - Setting them in your shell's configuration file, e.g. `~/.bashrc` or `~/.zshrc` (which will affect all shell sessions)
-- Setting them by prefixing the `hyakvnc` command with the variable assignment, e.g. `HYAKVNC_SLURM_MEM=8G hyakvnc create ...` (which will only affect the current command)
+- Setting them by prefixing the `hyakvnc` command with the variable assignment, e.g. `HYAKVNC_SLURM_MEM='8G' hyakvnc create ...` (which will only affect the current command)
 - Setting them in the file `~/.hyakvnc/hyakvnc-config.env` (which will affect all `hyakvnc` commands)
+
+When you set an environment variable, it is advisable to surround the value with single quotes (`'`) to prevent your shell from interpreting special characters. There should be no spaces between the variable name, the equals sign, and the value.
 
 The following variables are available:
 
