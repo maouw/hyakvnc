@@ -79,7 +79,7 @@ ssh your-uw-netid@klone.hyak.uw.edu
 After you've connected to the login node, you can download and install `hyakvnc` by running the following command. Copy and paste it into the terminal window where you are connected to the login node and press enter:
 
 ```bash
-tf=$(mktemp) && curl -o "$tf" -fsSL https://raw.githubusercontent.com/maouw/hyakvnc/shell-turbovnc/hyakvnc && bash "$tf" install && rm -f "$tf" && unset tf && [[ ":${PATH}:" != *":$HOME/.local/bin:"* ]] && export PATH="$HOME/.local/bin:$PATH" && [-n "${ZSH_VERSION:-}" ] && rehash
+tf=$(mktemp) && curl -o "$tf" -fsSL https://raw.githubusercontent.com/maouw/hyakvnc/main/hyakvnc && bash "$tf" install && rm -f "$tf" && unset tf && [[ ":${PATH}:" != *":$HOME/.local/bin:"* ]] && export PATH="$HOME/.local/bin:$PATH" && [-n "${ZSH_VERSION:-}" ] && rehash
 ```
 
 This will download and install `hyakvnc` to your `~/.local/bin` directory and add it to your `$PATH` so you can run it by typing `hyakvnc` into the terminal window.
