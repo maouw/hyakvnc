@@ -114,19 +114,23 @@ hyakvnc create --container {{ container_registry }}/ubuntu22.04_turbovnc:latest
 It may take a few minutes to download the container if you're running it the first time. If successful, `hyakvnc` should print commands and instructions to connect:
 
 ```text
+==========
+Copy and paste these instructions into a command line terminal on your local machine to connect to the VNC session.
+You may need to install a VNC client if you don't already have one.
+
+NOTE: If you receive an error that looks like "Permission denied (publickey,gssapi-keyex,gssapi-with-mic)", you don't have an SSH key set up. See https://hyak.uw.edu/docs/setup/intracluster-keys for more information. To set this up quickly on Linux, macOS, or Windows (WSL2/Cygwin), open a new terminal window on your machine and enter the following 2 commands before you try again:
+
+[ ! -r ~/.ssh/id_rsa ] && ssh-keygen -t rsa -b 4096 -N '' -C "your-uw-netid@uw.edu" -f ~/.ssh/id_rsa
+ssh-copy-id -o StrictHostKeyChecking=no your-uw-netid@klone.hyak.uw.edu
+---------
 LINUX TERMINAL (bash/zsh):
-ssh -f -o StrictHostKeyChecking=no -L 5901:/mmfs1/home/altan/.hyakvnc/jobs/15037283/vnc/socket.uds -J altan@klone.hyak.uw.edu altan@g3050 sleep 10 && vncviewer localhost:5901
+ssh -f -o StrictHostKeyChecking=no -L 5901:/mmfs1/home/your-uw-netid/.hyakvnc/jobs/15042104/vnc/socket.uds -J your-uw-netid@klone.hyak.uw.edu your-uw-netid@g3053 sleep 10 && vncviewer localhost:5901
 
 MACOS TERMINAL
-ssh -f -o StrictHostKeyChecking=no -L 5901:/mmfs1/home/altan/.hyakvnc/jobs/15037283/vnc/socket.uds -J altan@klone.hyak.uw.edu altan@g3050 sleep 10 && open -b com.turbovnc.vncviewer --args localhost:5901 2>/dev/null || open -b com.realvnc.vncviewer --args localhost:5901 2>/dev/null || open -b com.tigervnc.vncviewer --args localhost:5901 2>/dev/null || echo 'No VNC viewer found. Please install one or try entering the connection information manually.'
+ssh -f -o StrictHostKeyChecking=no -L 5901:/mmfs1/home/your-uw-netid/.hyakvnc/jobs/15042104/vnc/socket.uds -J your-uw-netid@klone.hyak.uw.edu your-uw-netid@g3053 sleep 10 && open -b com.turbovnc.vncviewer --args localhost:5901 2>/dev/null || open -b com.realvnc.vncviewer --args localhost:5901 2>/dev/null || open -b com.tigervnc.vncviewer --args localhost:5901 2>/dev/null || echo 'No VNC viewer found. Please install one or try entering the connection information manually.'
 
 WINDOWS
-(See below)
-
-MANUAL CONNECTION INFORMATION
-Configure your SSH client to connect to the address g3050 with username altan through the "jump host" (possibly labeled a via, proxy, or gateway host) at the address "klone.hyak.uw.edu".
-Enable local port forwarding from port 5901 on your machine ('localhost' or 127.0.0.1) to the socket /mmfs1/home/altan/.hyakvnc/jobs/15037283/vnc/socket.uds on the remote host.
-In your VNC client, connect to 'localhost' or 127.0.0.1 on port 5901
+ssh -f -o StrictHostKeyChecking=no -L 5901:/mmfs1/home/your-uw-netid/.hyakvnc/jobs/15042104/vnc/socket.uds -J your-uw-netid@klone.hyak.uw.edu your-uw-netid@g3053 sleep 20 && cmd.exe /c cmd /c "$(cmd.exe /c where "C:\Program Files\TurboVNC;C:\Program Files(x86)\TurboVNC:vncviewerw.bat")" localhost:5901
 
 ==========
 ```
