@@ -366,14 +366,10 @@ function print_connection_info {
 Copy and paste these instructions into a command line terminal on your local machine to connect to the VNC session.
 You may need to install a VNC client if you don't already have one.
 
-**********
-NOTE: If you receive an error that looks like "Permission denied (publickey,gssapi-keyex,gssapi-with-mic)", you don't have an SSH key set up. To set this up quickly on Linux, macOS, or Windows (WSL2/Cygwin), open a new terminal window on your machine and enter the following 2 commands before you try again:
+NOTE: If you receive an error that looks like "Permission denied (publickey,gssapi-keyex,gssapi-with-mic)", you don't have an SSH key set up. See https://hyak.uw.edu/docs/setup/intracluster-keys for more information. To set this up quickly on Linux, macOS, or Windows (WSL2/Cygwin), open a new terminal window on your machine and enter the following 2 commands before you try again:
 
 [ ! -r ~/.ssh/id_rsa ] && ssh-keygen -t rsa -b 4096 -N '' -C "$USER@uw.edu" -f ~/.ssh/id_rsa
 ssh-copy-id -o StrictHostKeyChecking=no $USER@klone.hyak.uw.edu
-
-Se https://hyak.uw.edu/docs/setup/intracluster-keys for more information.
-**********
 ---------
 EOF
 	# Print connection instructions for each operating system:
@@ -392,14 +388,7 @@ EOF
 	echo
 
 	echo "WINDOWS"
-	echo "-- TurboVNC via WSL2 (recommended) or Cygwin:"
 	echo "ssh -f ${ssh_args[*]} sleep 20 && cmd.exe /c cmd /c \"\$(cmd.exe /c where \"C:\Program Files\TurboVNC;C:\Program Files(x86)\TurboVNC:vncviewerw.bat\")\" localhost:${viewer_port}"
-
-
-	echo "MANUAL CONNECTION INFORMATION"
-	echo "Configure your SSH client to connect to the address ${node} with username ${USER} through the \"jump host\" (possibly labeled a via, proxy, or gateway host) at the address \"${HYAKVNC_SSH_HOST}\"."
-	echo "Enable local port forwarding from port ${viewer_port} on your machine ('localhost' or 127.0.0.1) to the socket ${socket_path} on the remote host."
-	echo "In your VNC client, connect to 'localhost' or 127.0.0.1 on port ${viewer_port}"
 	echo
 	echo "=========="
 }
