@@ -969,7 +969,6 @@ EOF
 function cmd_install {
 	local install_dir thisfile myshell shellrcpath
 	thisfile="${BASH_SOURCE[0]:-$0}"
-	[ "$thisfile" != "hyakvnc" ] && log WARN "Script name is not 'hyakvnc' but '$thisfile'. This may cause issues with installation."
 	[ -z "${thisfile:-}" ] && {
 		log ERROR "Failed to get script name"
 		return 1
