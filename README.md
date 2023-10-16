@@ -109,8 +109,6 @@ Start a VNC session with the `hyakvnc create` command followed by arguments to s
 hyakvnc create --container oras://ghcr.io/maouw/ubuntu22.04_turbovnc:latest
 ```
 
-
-
 It may take a few minutes to download the container if you're running it the first time. If successful, `hyakvnc` should print commands and instructions to connect:
 
 ```text
