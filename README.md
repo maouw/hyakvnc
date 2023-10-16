@@ -2,11 +2,9 @@
 <!-- markdownlint-disable-file -->
 hyakvnc -- A tool for launching VNC sessions on Hyak.
 
-`hyakvnc` allocates resources then starts a VNC session within an Apptainer
-environment.
+`hyakvnc` is a command-line tool that makes it easy to start a graphical [VNC](https://en.wikipedia.org/wiki/Virtual_Network_Computing) session on the University of Washington [Hyak](https://hyak.uw.edu/) cluster, allowing you to interact with the system in a point-and-click environment, with support for graphical applications such as [Freesurfer](https://surfer.nmr.mgh.harvard.edu/). `hyakvnc` sessions run in [Apptainer](https://apptainer.org) containers, which provide reproducible environments that can run anywhere and be shared with other researchers.
 
-## Prerequisites
-
+## Prerequisite
 Before running `hyakvnc`, you'll need the following:
 
 - A Linux, macOS, or Windows machine
