@@ -53,7 +53,7 @@ To set this up quickly on Linux, macOS, or Windows (WSL2/Cygwin), open a new ter
 ssh-copy-id -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa "your-uw-netid"@klone.hyak.uw.edu
 ```
 
-Sew https://hyak.uw.edu/docs/setup/intracluster-keys for more information.
+See https://hyak.uw.edu/docs/setup/intracluster-keys for more information.
 
 ### Finding a HyakVNC-compatible container image
 
@@ -108,6 +108,8 @@ Start a VNC session with the `hyakvnc create` command followed by arguments to s
 ```bash
 hyakvnc create --container oras://ghcr.io/maouw/ubuntu22.04_turbovnc:latest
 ```
+
+
 
 It may take a few minutes to download the container if you're running it the first time. If successful, `hyakvnc` should print commands and instructions to connect:
 

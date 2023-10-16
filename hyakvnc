@@ -87,8 +87,6 @@ declare -A Log_Levels Log_Level_Colors # Declare Log_Levels and Log_Level_Colors
 Log_Levels=(["OFF"]=0 ["FATAL"]=1 ["ERROR"]=2 ["WARN"]=3 ["INFO"]=4 ["DEBUG"]=5 ["TRACE"]=6 ["ALL"]=100)
 Log_Level_Colors=(["FATAL"]=5 ["ERROR"]=1 ["WARN"]=3 ["INFO"]=4 ["DEBUG"]=6 ["TRACE"]=2)
 
-tail_pid="" # PID of tail process
-
 # # Utility functions
 
 # check_log_level()
@@ -144,7 +142,6 @@ function log {
 # Initialize the hyakvnc configuration
 # Arguments: None
 function hyakvnc_config_init {
-
 	if ! check_slurm_installed; then
 		log ERROR "SLURM is not installed! Can't initialize configuration."
 		return 1
@@ -404,7 +401,7 @@ function cleanup_launched_jobs_and_exit {
 		scancel "${jobid}" || log ERROR "Failed to cancel job ${jobid}"
 		[ -d "${jobdir}" ] && rm -rf "${jobdir}" && log DEBUG "Removed job directory ${jobdir}"
 	done
-	kill -TERM "$tail_pid" 2>/dev/null # Stop following the SLURM log file
+	kill -TERM %tail 2>/dev/null # Stop following the SLURM log file
 	trap - SIGINT SIGTSTP SIGTERM SIGHUP SIGABRT SIGQUIT
 	exit 1
 }
@@ -451,6 +448,8 @@ function cmd_create {
 	local container_basename container_name start
 	# <TODO> If a job ID was specified, don't launch a new job
 	# <TODO> If a job ID was specified, check that the job exists and is running
+
+	# Parse arguments:
 	while true; do
 		case ${1:-} in
 		-h | --help)
@@ -541,6 +540,8 @@ function cmd_create {
 			;;
 		esac
 	done
+
+	# Check that container is specified:
 	[ -z "${HYAKVNC_APPTAINER_CONTAINER}" ] && {
 		log ERROR "Container image must be specified"
 		exit 1
@@ -573,12 +574,66 @@ function cmd_create {
 		exit 1
 	}
 
-	log INFO "Creating HyakVNC job for container ${container_basename}"
+	# Check if APPTAINER_CACHE_DIR is set:
+	if [ -d "/gscratch/scrubbed" ]; then
+		local newcachedir
+		if [[ "${APPTAINER_CACHE_DIR:-}" != /gscratch/* ]] || [[ "${APPTAINER_CACHE_DIR:-}" != /tmp/* ]]; then
+			log WARN "APPTAINER_CACHE_DIR is not set to a directory under /gscratch or /tmp. This may cause problems with storage space."
+
+			# Check if running interactively:
+			if [ -t 0 ] && [ -n "${PS1:-}" ]; then
+				local choice1 choice2 newcachedir
+				newcachedir="/gscratch/scrubbed/${HYAKVNC_SLURM_ACCOUNT}/${USER}/.cache/apptainer"
+
+				# Check if should set and create APPTAINER_CACHE_DIR:
+				echo "Would you like to set APPTAINER_CACHE_DIR to ${newcachedir}? (Recommended)"
+				read -rp "Continue (y/n)?" choice1
+				case "$choice1" in
+				y | Y)
+					echo "Creating ${newcachedir}"
+					mkdir -p "${newcachedir}" || { log WARN "Failed to create directory ${newcachedir}" && return 1; }
+					export APPTAINER_CACHE_DIR="${newcachedir}"
+
+					# Check if the user wants to add APPTAINER_CACHE_DIR to their shell's startup file:
+					echo "Would you like to add APPTAINER_CACHE_DIR to your shell's startup file to persist this setting? (Recommended)"
+					read -rp "Continue (y/n)?" choice1
+					case "$choice2" in
+					y | Y)
+						# Check if using ZSH:
+						if [ -n "${ZSH_VERSION:-}" ]; then
+							if [ -r "${HOME}/.zshenv}" ]; then
+								echo "export APPTAINER_CACHE_DIR=\"${newcachedir}\"" >>"$HOME/.zshenv" && echo "Added APPTAINER_CACHE_DIR to ~/.zshenv"
+							else
+								echo "export APPTAINER_CACHE_DIR=\"${newcachedir}\"" >>"$HOME/.zshrc" && echo "Added APPTAINER_CACHE_DIR to ~/.zshrc"
+							fi
+						# Check if using Bash:
+						elif [ -n "${BASH_VERSION:-}" ]; then
+							echo "export APPTAINER_CACHE_DIR=\"${newcachedir}\"" >>"$HOME/.bashrc" && echo "Added APPTAINER_CACHE_DIR to ~/.bashrc"
+						# Write to ~/.profile if we can't determine shell type:
+						else
+							echo "Could not determine shell type. Adding APPTAINER_CACHE_DIR to ~/.profile."
+							echo "export APPTAINER_CACHE_DIR=\"${newcachedir}\"" >>"$HOME/.profile" && echo "Added APPTAINER_CACHE_DIR to ~/.profile"
+						fi
+						;;
+
+					n | N) echo "Not adding APPTAINER_CACHE_DIR to your shell's startup file. You may need to do this again in the future." ;;
+					*) echo "Invalid choice ${choice2:-}." ;;
+					esac
+					;;
+
+				n | N) echo "Not setting APPTAINER_CACHE_DIR. You may encounter problems with storage space." ;;
+				*) echo "Invalid choice ${choice1:-}." ;;
+				esac
+			fi
+		fi
+	fi
 
 	export HYAKVNC_SLURM_JOB_NAME="${HYAKVNC_SLURM_JOB_PREFIX}${container_name}"
 	export SBATCH_JOB_NAME="${HYAKVNC_SLURM_JOB_NAME}" && log TRACE "Set SBATCH_JOB_NAME to ${SBATCH_JOB_NAME}"
 
-	# Set sbatch arugments or environment variables:
+	log INFO "Creating HyakVNC job named \"${HYAKVNC_SLURM_JOB_NAME}\" for container ${container_basename}"
+
+	# Set sbatch argu,ents or environment variables:
 	#   CPUs has to be specified as a sbatch argument because it's not settable by environment variable:
 	[ -n "${HYAKVNC_SLURM_CPUS}" ] && sbatch_args+=(--cpus-per-task "${HYAKVNC_SLURM_CPUS}") && log TRACE "Set --cpus-per-task to ${HYAKVNC_SLURM_CPUS}"
 	[ -n "${HYAKVNC_SLURM_TIMELIMIT}" ] && export SBATCH_TIMELIMIT="${HYAKVNC_SLURM_TIMELIMIT}" && log TRACE "Set SBATCH_TIMELIMIT to ${SBATCH_TIMELIMIT}"
@@ -679,10 +734,12 @@ function cmd_create {
 
 	ln -s "${HYAKVNC_SLURM_OUTPUT_DIR}/job-${launched_jobid}.out" "${jobdir}/slurm.log" || log WARN "${HYAKVNC_SLURM_OUTPUT_DIR}/job-${launched_jobid}.out" to "${jobdir}/slurm.log"
 
-	check_log_level "${HYAKVNC_LOG_LEVEL}" DEBUG && echo "Streaming log from ${jobdir}/slurm.log" &&
-		tail -n 1 -f "${jobdir}/slurm.log" --pid=$$ 2>/dev/null & # Follow the SLURM log file in the background
-	tail_pid=$!
+	if check_log_level "${HYAKVNC_LOG_LEVEL}" DEBUG; then
+		echo "Streaming log from ${jobdir}/slurm.log"
+		tail -n 1 -f "${jobdir}/slurm.log" --pid=$$ 2>/dev/null | sed 's/^/slurm.log: /' & # Follow the SLURM log file in the background
+	fi
 
+	# Wait for socket to become available:
 	log DEBUG "Waiting for job ${launched_jobid} to create its socket file at ${jobdir}/vnc/socket.uds"
 	start=$EPOCHSECONDS
 	while true; do
@@ -696,7 +753,8 @@ function cmd_create {
 		break
 	done
 
-	kill -TERM "$tail_pid" 2>/dev/null # Stop following the SLURM log file
+	# Kill the tail process if it's still running:
+	kill -TERM %tail 2>/dev/null # Stop following the SLURM log file
 
 	# Get details about the Xvnc process:
 	print_connection_info -j "${launched_jobid}" || { log ERROR "Failed to print connection info for job ${launched_jobid}" && return 1; }
