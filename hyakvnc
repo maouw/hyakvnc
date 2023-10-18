@@ -577,7 +577,7 @@ function cmd_create {
 	# Check if APPTAINER_CACHEDIR is set:
 	if [ -d "/gscratch/scrubbed" ]; then
 		local newcachedir
-		if [[ "${APPTAINER_CACHEDIR:-}" != /gscratch/* ]] || [[ "${APPTAINER_CACHEDIR:-}" != /tmp/* ]]; then
+		if [[ "${APPTAINER_CACHEDIR:-}" != /gscratch/* ]] && [[ "${APPTAINER_CACHEDIR:-}" != /tmp/* ]]; then
 			log WARN "APPTAINER_CACHEDIR is not set to a directory under /gscratch or /tmp. This may cause problems with storage space."
 
 			# Check if running interactively:
