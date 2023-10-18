@@ -15,7 +15,7 @@ has_jinja := $(shell command -v jinja 2> /dev/null)
 var_branch := main
 var_repo_url := $(shell git config --get remote.origin.url | sed -E 's/\.git$$//')
 var_raw_script_url := $(shell echo $(var_repo_url) | sed -E 's/github\.com/raw.githubusercontent.com/; s/\/tree\/.*//')/$(var_branch)/hyakvnc
-var_container_registry := "oras://ghcr.io/maouw"
+var_container_registry := "oras://ghcr.io/maouw/hyakvnc_apptainer"
 var_hyakvnc_apptainer_repo := "https://github.com/maouw/hyakvnc_apptainer"
 config.inc.md: ../hyakvnc
 	$(shell sed -E '/^HYAKVNC_.*#\s*%%/!d; s/=.*(#\s*%%)/:/g; s/(^.)/- \1/g' $< > $@)
