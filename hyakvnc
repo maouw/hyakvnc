@@ -574,54 +574,54 @@ function cmd_create {
 		exit 1
 	}
 
-	# Check if APPTAINER_CACHE_DIR is set:
+	# Check if APPTAINER_CACHEDIR is set:
 	if [ -d "/gscratch/scrubbed" ]; then
 		local newcachedir
-		if [[ "${APPTAINER_CACHE_DIR:-}" != /gscratch/* ]] || [[ "${APPTAINER_CACHE_DIR:-}" != /tmp/* ]]; then
-			log WARN "APPTAINER_CACHE_DIR is not set to a directory under /gscratch or /tmp. This may cause problems with storage space."
+		if [[ "${APPTAINER_CACHEDIR:-}" != /gscratch/* ]] || [[ "${APPTAINER_CACHEDIR:-}" != /tmp/* ]]; then
+			log WARN "APPTAINER_CACHEDIR is not set to a directory under /gscratch or /tmp. This may cause problems with storage space."
 
 			# Check if running interactively:
 			if [ -t 0 ] && [ -n "${PS1:-}" ]; then
 				local choice1 choice2 newcachedir
 				newcachedir="/gscratch/scrubbed/${HYAKVNC_SLURM_ACCOUNT}/${USER}/.cache/apptainer"
 
-				# Check if should set and create APPTAINER_CACHE_DIR:
-				echo "Would you like to set APPTAINER_CACHE_DIR to ${newcachedir}? (Recommended)"
+				# Check if should set and create APPTAINER_CACHEDIR:
+				echo "Would you like to set APPTAINER_CACHEDIR to ${newcachedir}? (Recommended)"
 				read -rp "Continue (y/n)?" choice1
 				case "$choice1" in
 				y | Y)
 					echo "Creating ${newcachedir}"
 					mkdir -p "${newcachedir}" || { log WARN "Failed to create directory ${newcachedir}" && return 1; }
-					export APPTAINER_CACHE_DIR="${newcachedir}"
+					export APPTAINER_CACHEDIR="${newcachedir}"
 
-					# Check if the user wants to add APPTAINER_CACHE_DIR to their shell's startup file:
-					echo "Would you like to add APPTAINER_CACHE_DIR to your shell's startup file to persist this setting? (Recommended)"
+					# Check if the user wants to add APPTAINER_CACHEDIR to their shell's startup file:
+					echo "Would you like to add APPTAINER_CACHEDIR to your shell's startup file to persist this setting? (Recommended)"
 					read -rp "Continue (y/n)?" choice1
 					case "$choice2" in
 					y | Y)
 						# Check if using ZSH:
 						if [ -n "${ZSH_VERSION:-}" ]; then
 							if [ -r "${HOME}/.zshenv}" ]; then
-								echo "export APPTAINER_CACHE_DIR=\"${newcachedir}\"" >>"$HOME/.zshenv" && echo "Added APPTAINER_CACHE_DIR to ~/.zshenv"
+								echo "export APPTAINER_CACHEDIR=\"${newcachedir}\"" >>"$HOME/.zshenv" && echo "Added APPTAINER_CACHEDIR to ~/.zshenv"
 							else
-								echo "export APPTAINER_CACHE_DIR=\"${newcachedir}\"" >>"$HOME/.zshrc" && echo "Added APPTAINER_CACHE_DIR to ~/.zshrc"
+								echo "export APPTAINER_CACHEDIR=\"${newcachedir}\"" >>"$HOME/.zshrc" && echo "Added APPTAINER_CACHEDIR to ~/.zshrc"
 							fi
 						# Check if using Bash:
 						elif [ -n "${BASH_VERSION:-}" ]; then
-							echo "export APPTAINER_CACHE_DIR=\"${newcachedir}\"" >>"$HOME/.bashrc" && echo "Added APPTAINER_CACHE_DIR to ~/.bashrc"
+							echo "export APPTAINER_CACHEDIR=\"${newcachedir}\"" >>"$HOME/.bashrc" && echo "Added APPTAINER_CACHEDIR to ~/.bashrc"
 						# Write to ~/.profile if we can't determine shell type:
 						else
-							echo "Could not determine shell type. Adding APPTAINER_CACHE_DIR to ~/.profile."
-							echo "export APPTAINER_CACHE_DIR=\"${newcachedir}\"" >>"$HOME/.profile" && echo "Added APPTAINER_CACHE_DIR to ~/.profile"
+							echo "Could not determine shell type. Adding APPTAINER_CACHEDIR to ~/.profile."
+							echo "export APPTAINER_CACHEDIR=\"${newcachedir}\"" >>"$HOME/.profile" && echo "Added APPTAINER_CACHEDIR to ~/.profile"
 						fi
 						;;
 
-					n | N) echo "Not adding APPTAINER_CACHE_DIR to your shell's startup file. You may need to do this again in the future." ;;
+					n | N) echo "Not adding APPTAINER_CACHEDIR to your shell's startup file. You may need to do this again in the future." ;;
 					*) echo "Invalid choice ${choice2:-}." ;;
 					esac
 					;;
 
-				n | N) echo "Not setting APPTAINER_CACHE_DIR. You may encounter problems with storage space." ;;
+				n | N) echo "Not setting APPTAINER_CACHEDIR. You may encounter problems with storage space." ;;
 				*) echo "Invalid choice ${choice1:-}." ;;
 				esac
 			fi
