@@ -11,10 +11,11 @@ DATETIME_FORMAT := %(%Y-%m-%d %H:%M:%S)T
 
 has_jinja := $(shell command -v jinja 2> /dev/null)
 
+REMOTE_NAME ?= origin
 #var_branch := $(shell git rev-parse --abbrev-ref HEAD)
 var_branch := main
-var_repo_url := $(shell git config --get remote.origin.url | sed -E 's/\.git$$//')
-var_repo_name :=   $(shell git config --get remote.origin.url | sed -E 's/\.git$$//; s/^.*github\.com\///')
+var_repo_url := $(shell git config --get remote.$(REMOTE_NAME).url | sed -E 's/\.git$$//')
+var_repo_name :=   $(shell git config --get remote.$(REMOTE_NAME).url | sed -E 's/\.git$$//; s/^.*github\.com\///')
 var_raw_script_url := $(shell echo $(var_repo_url) | sed -E 's/github\.com/raw.githubusercontent.com/; s/\/tree\/.*//')/$(var_branch)/hyakvnc
 var_container_registry := "oras://ghcr.io/maouw/hyakvnc_apptainer"
 var_hyakvnc_apptainer_repo := "https://github.com/maouw/hyakvnc_apptainer"
