@@ -495,6 +495,7 @@ EOF
 # Cancel any jobs that were launched and exit
 function cleanup_launched_jobs_and_exit {
 	local jobdir jobid
+	log WARN "Interrupted. Cleaning up and exiting!"
 	# Cancel any jobs that were launched:
 	for jobid in "${Launched_JobIDs[@]}"; do
 		jobdir="${HYAKVNC_DIR}/jobs/${jobid}"
@@ -704,7 +705,7 @@ function cmd_create {
 
 					# Check if the user wants to add APPTAINER_CACHEDIR to their shell's startup file:
 					echo "Would you like to add APPTAINER_CACHEDIR to your shell's startup file to persist this setting? (Recommended)"
-					read -rp "Continue (y/n)?" choice1
+					read -rp "Continue (y/n)?" choice2
 					case "$choice2" in
 					y | Y)
 						# Check if using ZSH:
