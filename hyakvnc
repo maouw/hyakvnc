@@ -688,7 +688,7 @@ function cmd_create {
 			# Check if running interactively:
 			if [ -t 0 ]; then
 				local choice1 choice2 newcachedir
-				newcachedir="/gscratch/scrubbed/${HYAKVNC_SLURM_ACCOUNT}/${USER}/.cache/apptainer"
+				newcachedir="/gscratch/scrubbed/${USER}/.cache/apptainer"
 
 				# Check if should set and create APPTAINER_CACHEDIR:
 				echo "Would you like to set APPTAINER_CACHEDIR to ${newcachedir}? (Recommended)"
@@ -724,13 +724,13 @@ function cmd_create {
 						fi
 						;;
 
-					n | N) echo "Not adding APPTAINER_CACHEDIR to your shell's startup file. You may need to do this again in the future." ;;
-					*) echo "Invalid choice ${choice2:-}." ;;
+					n | N) log WARN "Not adding APPTAINER_CACHEDIR to your shell's startup file. You may need to do this again in the future." ;;
+					*) log ERROR "Invalid choice ${choice2:-}." ;;
 					esac
 					;;
 
-				n | N) echo "Not setting APPTAINER_CACHEDIR. You may encounter problems with storage space." ;;
-				*) echo "Invalid choice ${choice1:-}." ;;
+				n | N) log WARN "Not setting APPTAINER_CACHEDIR. You may encounter problems with storage space." ;;
+				*) log ERROR "Invalid choice ${choice1:-}." ;;
 				esac
 			fi
 		fi
