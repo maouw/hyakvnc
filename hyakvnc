@@ -347,7 +347,7 @@ function stop_hyakvnc_session {
 			[ -z "${tmpdirname}" ] && log WARN "Failed to get tmpdirname from ${jobdir}/tmpdirname"
 			srun --quiet --jobid "${jobid}" rm -rf "${tmpdirname}" || log WARN "Failed to remove container /tmp directory at ${tmpdirname} job ${jobid}"
 		fi
-		[ -n "${no_rm}" ] || rm -rf "${jobdir}/vnc" && log DEBUG "Removed VNC directory ${jobdir}/vnc"
+		[ -n "${no_rm}" ] || rm -rf "${jobdir}" && log DEBUG "Removed VNC directory ${jobdir}"
 	else
 		log WARN "Job directory ${jobdir} does not exist"
 	fi
