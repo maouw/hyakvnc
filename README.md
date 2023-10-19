@@ -13,7 +13,7 @@ Before running `hyakvnc`, you'll need the following:
 - A VNC client/viewer ([TurboVNC viewer](https://www.turbovnc.org) is recommended for all platforms)
 - HYAK Klone access with compute resources
 - A private SSH key on your local machine which has been added to the authorized keys on the login node of the HYAK Klone cluster (see below)
-- A HyakVNC-compatible Apptainer container image in a directory on Hyak or the URL to one (e.g,., `oras://ghcr.io/maouw/hyakvnc_apptainer/ubuntu22.04_turbovnc:latest`)
+- A HyakVNC-compatible Apptainer container image in a directory on Hyak (usually with the file extension `.sif`) or the URL to one (e.g,., `oras://ghcr.io/maouw/ubuntu22.04_turbovnc:latest`)
 
 Follow the instructions below to set up your machine correctly:
 
@@ -61,7 +61,7 @@ See https://hyak.uw.edu/docs/setup/intracluster-keys for more information.
 You'll need to find a HyakVNC-compatible container image to run your VNC session in. The following images are provided by us and can be used with `hyakvnc` by copying and pasting the URL into the `hyakvnc create` command:
 
 - `oras://ghcr.io/maouw/hyakvnc_apptainer/ubuntu22.04_turbovnc:latest` -- Ubuntu 22.04 with TurboVNC
-- `oras://ghcr.io/maouw/hyakvnc_apptainer/ubuntu22.04_freesurfer:latest` -- Ubuntu 22.04 with TurboVNC and Freesurfer
+- `oras://ghcr.io/maouw/ubuntu22.04_freesurfer:latest` -- Ubuntu 22.04 with TurboVNC and Freesurfer
 
 ## Installing `hyakvnc`
 
@@ -78,7 +78,7 @@ ssh your-uw-netid@klone.hyak.uw.edu
 After you've connected to the login node, you can download and install `hyakvnc` by running the following command. Copy and paste it into the terminal window where you are connected to the login node and press enter:
 
 ```bash
-tf=$(curl -w "%{filename_effective}" -fsSLO https://raw.githubusercontent.com/maouw/hyakvnc/main/hyakvnc) && bash "$tf" install && rm -f "$tf" && unset tf && [[ ":${PATH}:" != *":$HOME/.local/bin:"* ]] && export PATH="$HOME/.local/bin:$PATH" && [-n "${ZSH_VERSION:-}" ] && rehash
+tf=$(curl -w "%{filename_effective}" -fsSLO https://raw.githubusercontent.com/maouw/hyakvnc/main/hyakvnc) && chmod +x "$tf" && ./"$tf" install && rm -f "$tf" && unset tf && [[ ":${PATH}:" != *":$HOME/.local/bin:"* ]] && export PATH="$HOME/.local/bin:$PATH" && [-n "${ZSH_VERSION:-}" ] && rehash
 ```
 
 This will download and install `hyakvnc` to your `~/.local/bin` directory and add it to your `$PATH` so you can run it by typing `hyakvnc` into the terminal window.
@@ -107,7 +107,7 @@ started
 Start a VNC session with the `hyakvnc create` command followed by arguments to specify the container. In this example, we'll use a basic container for a graphical environment from the HyakVNC GitHub Container Registry:
 
 ```bash
-hyakvnc create --container oras://ghcr.io/maouw/hyakvnc_apptainer/ubuntu22.04_turbovnc:latest
+hyakvnc create --container oras://maouw/hyakvnc_apptainer/ubuntu22.04_turbovnc:latest
 ```
 
 It may take a few minutes to download the container if you're running it the first time. If successful, `hyakvnc` should print commands and instructions to connect:
@@ -140,135 +140,28 @@ ssh -f -o StrictHostKeyChecking=no -L 5901:/mmfs1/home/your-uw-netid/.hyakvnc/jo
 
 `hyakvnc` is command-line tool that only works on the login node of the Hyak cluster.
 
-### Create a VNC session on Hyak
+### inherit_errexit off
 
-```text
-Usage: hyakvnc create [create options...] -c <container> [extra args to pass to apptainer...]
-
-Description:
-    Create a VNC session on Hyak.
-
-Options:
-    -h, --help  Show this help message and exit
-    -c, --container Path to container image (required)
-    -A, --account   Slurm account to use (default: )
-    -p, --partition Slurm partition to use (default: )
-    -C, --cpus  Number of CPUs to request (default: 4)
-    -m, --mem   Amount of memory to request (default: 4G)
-    -t, --timelimit Slurm timelimit to use (default: 12:00:00)
-    -g, --gpus  Number of GPUs to request (default: )
-
-Extra arguments:
-    Any extra arguments will be passed to apptainer run.
-    See 'apptainer run --help' for more information.
-
-Examples:
-    # Create a VNC session using the container ~/containers/mycontainer.sif
-    # Use the SLURM account escience, the partition gpu-a40, 4 CPUs, 1GB of memory, 1 GPU, and 1 hour of time
-    hyakvnc create -c ~/containers/mycontainer.sif -A escience -p gpu-a40 -C 4 -m 1G -t 1:00:00 -g 1
 ```
 
-### Show the status of running HyakVNC sessions
+### inherit_errexit off
 
-```text
-Usage: hyakvnc status [status options...]
-
-Description:
-    Check status of VNC session(s) on Hyak.
-
-Options:
-    -h, --help  Show this help message and exit
-    -d, --debug Print debug info
-    -j, --jobid Only check status of provided SLURM job ID (optional)
-
-Examples:
-    # Check the status of job no. 12345:
-    hyakvnc status -j 12345
-    # Check the status of all VNC jobs:
-    hyakvnc status
 ```
 
-### Show connection information for a HyakVNC sesssion
+### inherit_errexit off
 
-```text
-Usage: hyakvnc show <jobid>
-    
-Description:
-    Show connection information for a HyakVNC sesssion. 
-    If no job ID is provided, a menu will be shown to select from running jobs.
-    
-Options:
-    -h, --help  Show this help message and exit
-
-Examples:
-    # Show connection information for session running on job 123456:
-    hyakvnc show 123456
-    # Interactively select a job to show connection information for:
-    hyakvnc show
-
-    # Show connection information for session running on job 123456 for macOS:
-    hyakvnc show -s mac 123456
 ```
 
-### Stop a HyakVNC session
+### inherit_errexit off
 
-```text
-Usage: hyakvnc stop [-a] [<jobids>...]
-    
-Description:
-    Stop a provided HyakVNC sesssion and clean up its job directory.
-    If no job ID is provided, a menu will be shown to select from running jobs.
-
-Options:
-    -h, --help  Show this help message and exit
-    -n, --no-cancel Don't cancel the SLURM job
-    -a, --all   Stop all jobs
-
-Examples:
-    # Stop a VNC session running on job 123456:
-    hyakvnc stop 123456
-    # Stop a VNC session running on job 123456 and do not cancel the job:
-    hyakvnc stop --no-cancel 123456
-    # Stop all VNC sessions:
-    hyakvnc stop -a
-    # Stop all VNC sessions but do not cancel the jobs:
-    hyakvnc stop -a -n
 ```
 
-### Show the current configuration for hyakvnc
+### inherit_errexit off
 
-```text
-Usage: hyakvnc config [config options...]
-    
-Description:
-    Show the current configuration for hyakvnc, as set in the user configuration file at /home/altan/.hyakvnc/hyakvnc-config.env, in the current environment, or the default values set by hyakvnc.
-
-Options:
-    -h, --help      Show this help message and exit
-
-Examples:
-    # Show configuration
-    hyakvnc config
 ```
 
-### Install the hyakvnc command
+### inherit_errexit off
 
-```text
-Usage: hyakvnc install [install options...]
-    
-Description:
-    Install hyakvnc so the "hyakvnc" command can be run from anywhere.
-
-Options:
-    -h, --help          Show this help message and exit
-    -i, --install-dir       Directory to install hyakvnc to (default: ~/.local/bin)
-    -s, --shell [bash|zsh]  Shell to install hyakvnc for (default: $SHELL or bash)
-
-Examples:
-    # Install
-    hyakvnc install
-    # Install to ~/bin:
-    hyakvnc install -i ~/bin
 ```
 
 ## Configuration

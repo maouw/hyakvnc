@@ -13,7 +13,7 @@ Before running `hyakvnc`, you'll need the following:
 - A VNC client/viewer ([TurboVNC viewer](https://www.turbovnc.org) is recommended for all platforms)
 - HYAK Klone access with compute resources
 - A private SSH key on your local machine which has been added to the authorized keys on the login node of the HYAK Klone cluster (see below)
-- A HyakVNC-compatible Apptainer container image in a directory on Hyak or the URL to one (e.g,., `{{ container_registry }}/ubuntu22.04_turbovnc:latest`)
+- A HyakVNC-compatible Apptainer container image in a directory on Hyak (usually with the file extension `.sif`) or the URL to one (e.g,., `oras://ghcr.io/maouw/ubuntu22.04_turbovnc:latest`)
 
 Follow the instructions below to set up your machine correctly:
 
@@ -60,8 +60,8 @@ See https://hyak.uw.edu/docs/setup/intracluster-keys for more information.
 
 You'll need to find a HyakVNC-compatible container image to run your VNC session in. The following images are provided by us and can be used with `hyakvnc` by copying and pasting the URL into the `hyakvnc create` command:
 
-- `{{ container_registry }}/ubuntu22.04_turbovnc:latest` -- Ubuntu 22.04 with TurboVNC
-- `{{ container_registry }}/ubuntu22.04_freesurfer:latest` -- Ubuntu 22.04 with TurboVNC and Freesurfer
+- `oras://ghcr.io/maouw/hyakvnc_apptainer/ubuntu22.04_turbovnc:latest` -- Ubuntu 22.04 with TurboVNC
+- `oras://ghcr.io/maouw/ubuntu22.04_freesurfer:latest` -- Ubuntu 22.04 with TurboVNC and Freesurfer
 
 ## Installing `hyakvnc`
 
@@ -78,7 +78,7 @@ ssh your-uw-netid@klone.hyak.uw.edu
 After you've connected to the login node, you can download and install `hyakvnc` by running the following command. Copy and paste it into the terminal window where you are connected to the login node and press enter:
 
 ```bash
-tf=$(curl -w "%{filename_effective}" -fsSLO https://raw.githubusercontent.com/maouw/hyakvnc/main/hyakvnc) && bash "$tf" install && rm -f "$tf" && unset tf && [[ ":${PATH}:" != *":$HOME/.local/bin:"* ]] && export PATH="$HOME/.local/bin:$PATH" && [-n "${ZSH_VERSION:-}" ] && rehash
+tf=$(curl -w "%{filename_effective}" -fsSLO https://raw.githubusercontent.com/maouw/hyakvnc/main/hyakvnc) && chmod +x "$tf" && ./"$tf" install && rm -f "$tf" && unset tf && [[ ":${PATH}:" != *":$HOME/.local/bin:"* ]] && export PATH="$HOME/.local/bin:$PATH" && [-n "${ZSH_VERSION:-}" ] && rehash
 ```
 
 This will download and install `hyakvnc` to your `~/.local/bin` directory and add it to your `$PATH` so you can run it by typing `hyakvnc` into the terminal window.
@@ -107,7 +107,7 @@ started
 Start a VNC session with the `hyakvnc create` command followed by arguments to specify the container. In this example, we'll use a basic container for a graphical environment from the HyakVNC GitHub Container Registry:
 
 ```bash
-hyakvnc create --container {{ container_registry }}/ubuntu22.04_turbovnc:latest
+hyakvnc create --container oras://maouw/hyakvnc_apptainer/ubuntu22.04_turbovnc:latest
 ```
 
 It may take a few minutes to download the container if you're running it the first time. If successful, `hyakvnc` should print commands and instructions to connect:
