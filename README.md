@@ -128,7 +128,7 @@ LINUX TERMINAL (bash/zsh):
 ssh -f -o StrictHostKeyChecking=no -L 5901:/mmfs1/home/your-uw-netid/.hyakvnc/jobs/15042104/vnc/socket.uds -J your-uw-netid@klone.hyak.uw.edu your-uw-netid@g3053 sleep 10 && vncviewer localhost:5901
 
 MACOS TERMINAL
-ssh -f -o StrictHostKeyChecking=no -L 5901:/mmfs1/home/your-uw-netid/.hyakvnc/jobs/15042104/vnc/socket.uds -J your-uw-netid@klone.hyak.uw.edu your-uw-netid@g3053 sleep 10 && open -b com.turbovnc.vncviewer --args localhost:5901 2>/dev/null || open -b com.realvnc.vncviewer --args localhost:5901 2>/dev/null || open -b com.tigervnc.vncviewer --args localhost:5901 2>/dev/null || echo 'No VNC viewer found. Please install one or try entering the connection information manually.'
+ssh -f -o StrictHostKeyChecking=no -L 5901:/mmfs1/home/your-uw-netid/.hyakvnc/jobs/15042104/vnc/socket.uds -J your-uw-netid@klone.hyak.uw.edu your-uw-netid@g3053 sleep 10 && open -b com.turbovnc.vncviewer --args localhost:5901 2>/dev/null || open -b com.realvnc.vncviewer --args localhost:5901 2>/dev/null || open -b com.tigervnc.vncviewer --args localhost:5901 2>/dev/null || open vnc://localhost:5901 2>/dev/null || echo 'No VNC viewer found. Please install one or try entering the connection information manually.'
 
 WINDOWS
 ssh -f -o StrictHostKeyChecking=no -L 5901:/mmfs1/home/your-uw-netid/.hyakvnc/jobs/15042104/vnc/socket.uds -J your-uw-netid@klone.hyak.uw.edu your-uw-netid@g3053 sleep 20 && cmd.exe /c cmd /c "$(cmd.exe /c where "C:\Program Files\TurboVNC;C:\Program Files(x86)\TurboVNC:vncviewerw.bat")" localhost:5901
