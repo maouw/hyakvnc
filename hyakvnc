@@ -16,7 +16,7 @@ if ! (return 0 2>/dev/null); then
 	set -o pipefail                # Use last non-zero exit code in a pipeline
 	set -o errtrace                # Ensure the error trap handler is inherited
 	set -o errexit                 # Exit on error
-	shopt inherit_errexit          # Ensure subshells exit on error
+	shopt -qs inherit_errexit      # Ensure subshells exit on error
 fi
 
 # # Preferences and settings:
@@ -267,7 +267,7 @@ function hyakvnc_config_init {
 			return 1
 		}
 	fi
-	export SBATCH_CLUSTERS="${HYAKVNC_SLURM_CLUSTER}" && log TRACE "Set SBATCH_CLUSTERS to ${SBATCH_CLUSTERS}"
+	export SBATCH_CLUSTERS="${HYAKVNC_SLURM_CLUSTER:-}" && log TRACE "Set SBATCH_CLUSTERS to ${SBATCH_CLUSTERS}"
 
 	if [ -z "${HYAKVNC_SLURM_ACCOUNT}" ]; then
 		# Get the default account for the cluster. Uses grep to get first non-whitespace line:
@@ -276,7 +276,7 @@ function hyakvnc_config_init {
 			return 1
 		}
 	fi
-	export SBATCH_ACCOUNT="${HYAKVNC_SLURM_ACCOUNT}" && log TRACE "Set SBATCH_ACCOUNT to ${SBATCH_ACCOUNT}"
+	export SBATCH_ACCOUNT="${HYAKVNC_SLURM_ACCOUNT:-}" && log TRACE "Set SBATCH_ACCOUNT to ${SBATCH_ACCOUNT}"
 	N
 	if [ -z "${HYAKVNC_SLURM_PARTITION:-}" ]; then
 		HYAKVNC_SLURM_PARTITION=$(sacctmgr show -nPs user "${USER}" format=qos where account="${HYAKVNC_SLURM_ACCOUNT}" cluster="${HYAKVNC_SLURM_CLUSTER}" | grep -o -m 1 -E '\S+') || {
@@ -294,7 +294,7 @@ function hyakvnc_config_init {
 			return 1
 		}
 	fi
-	export SBATCH_PARTITION="${HYAKVNC_SLURM_PARTITION}" && log TRACE "Set SBATCH_PARTITION to ${SBATCH_PARTITION}"
+	export SBATCH_PARTITION="${HYAKVNC_SLURM_PARTITION:-}" && log TRACE "Set SBATCH_PARTITION to ${SBATCH_PARTITION}"
 
 	# shellcheck disable=SC2046
 	export $(compgen -v HYAKVNC_) # Export all HYAKVNC_ variables
