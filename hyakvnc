@@ -34,7 +34,8 @@ function hyakvnc_load_config {
 	while IFS=$'\n' read -r line; do
 		declare -n varref="${line%%=*}"
 		if [ -z "${varref:-}" ]; then
-			varref=$(bash --restricted -c "echo ${line#*=}")
+			varref=$(bash --restricted -c "echo ${line#*=}" || true)
+			[ -z "${varref:-}" ] && continue
 			export "${!varref}"
 		fi
 	done < <(sed -E 's/^\s*//; /^[^=]+=.*/!d' "$HYAKVNC_CONFIG_FILE")
@@ -277,7 +278,7 @@ function hyakvnc_config_init {
 		}
 	fi
 	export SBATCH_ACCOUNT="${HYAKVNC_SLURM_ACCOUNT:-}" && log TRACE "Set SBATCH_ACCOUNT to ${SBATCH_ACCOUNT}"
-	
+
 	if [ -z "${HYAKVNC_SLURM_PARTITION:-}" ]; then
 		HYAKVNC_SLURM_PARTITION=$(sacctmgr show -nPs user "${USER}" format=qos where account="${HYAKVNC_SLURM_ACCOUNT}" cluster="${HYAKVNC_SLURM_CLUSTER}" | grep -o -m 1 -E '\S+') || {
 			log ERROR "Failed to get SLURM partitions for user ${USER} on account ${HYAKVNC_SLURM_ACCOUNT} on cluster ${HYAKVNC_SLURM_CLUSTER}"
@@ -501,8 +502,8 @@ function cleanup_launched_jobs_and_exit {
 		scancel "${jobid}" || log ERROR "scancel failed to cancel job ${jobid}"
 		[ -d "${jobdir}" ] && rm -rf "${jobdir}" && log DEBUG "Removed job directory ${jobdir}"
 	done
-	kill -TERM %tail 2>/dev/null # Stop following the SLURM log file
-	trap - SIGINT SIGTSTP SIGTERM SIGHUP SIGABRT SIGQUIT
+	kill -TERM %tail 2>/dev/null                          # Stop following the SLURM log file
+	trap - SIGINT SIGTERM SIGHUP SIGABRT SIGQUIT ERR EXIT # Remove traps
 	exit 1
 }
 
@@ -786,7 +787,7 @@ function cmd_create {
 	sbatch_args+=("mkdir -p \"${alljobsdir}/\${SLURM_JOB_ID}/vnc\" && jobtmp=\$(mktemp -d --suffix _hyakvnc_tmp_\${SLURM_JOB_ID}) && echo \"\$jobtmp\" > \"${alljobsdir}/\${SLURM_JOB_ID}/tmpdirname\" && \"${HYAKVNC_APPTAINER_BIN}\" ${apptainer_start_args[*]}")
 
 	# Trap signals to clean up the job if the user exits the script:
-	[ -z "${XNOTRAP:-}" ] && trap cleanup_launched_jobs_and_exit SIGINT SIGTSTP SIGTERM SIGHUP SIGABRT SIGQUIT
+	[ -z "${XNOTRAP:-}" ] && trap cleanup_launched_jobs_and_exit SIGINT SIGTERM SIGHUP SIGABRT SIGQUIT ERR EXIT
 
 	log INFO "Launching job with command: sbatch ${sbatch_args[*]}"
 
@@ -848,8 +849,19 @@ function cmd_create {
 
 	if check_log_level "${HYAKVNC_LOG_LEVEL}" DEBUG; then
 		echo "Streaming log from ${jobdir}/slurm.log"
-		tail -n 1 -f "${jobdir}/slurm.log" --pid=$$ 2>/dev/null | sed 's/^/slurm.log: /' & # Follow the SLURM log file in the background
+		tail -n 1 -f "${jobdir}/slurm.log" --pid=$$ 2>/dev/null | sed --unbuffered 's/^/slurm.log: /' & # Follow the SLURM log file in the background
 	fi
+
+	case "$HYAKVNC_APPTAINER_CONTAINER" in
+	library://* | docker://* | shub://* | oras://* | http://* | https://*)
+		local protocol="${HYAKVNC_APPTAINER_CONTAINER#*://}"
+		if [ -n "${protocol:-}" ]; then
+			# shellcheck disable=SC2016
+			srun --jobid "${launched_jobid}" --output /dev/null sh -c 'while pgrep -u $USER -fia '"'"'^.*apptainer.*jobs/'"${launched_jobid}"'.*'"${protocol}"'.+$'"'"' | grep -v "^$$"; do sleep 1; done' || log WARN "Couldn't poll for container download process for ${HYAKVNC_APPTAINER_CONTAINER}"
+		fi
+		;;
+	*) ;;
+	esac
 
 	# Wait for socket to become available:
 	log DEBUG "Waiting for job ${launched_jobid} to create its socket file at ${jobdir}/vnc/socket.uds"
@@ -874,7 +886,7 @@ function cmd_create {
 		return 1
 	}
 	# Stop trapping the signals:
-	[ -z "${XNOTRAP:-}" ] && trap - SIGINT SIGTSTP SIGTERM SIGHUP SIGABRT SIGQUIT
+	[ -z "${XNOTRAP:-}" ] && trap - SIGINT SIGTERM SIGHUP SIGABRT SIGQUIT ERR EXIT
 	return 0
 }
 
@@ -943,12 +955,27 @@ function cmd_status {
 
 	for running_jobid in ${running_jobids:-}; do
 		local running_job_node jobdir
-		running_job_node=$(squeue --job "${running_jobid}" --format "%N" --noheader) || { log WARN "Failed to get node for job ${running_jobid}" && continue; }
-		[ -z "${running_job_node}" ] && log WARN "Failed to get node for job ${running_jobid}" && continue
+		running_job_node=$(squeue --job "${running_jobid}" --format "%N" --noheader --states=RUNNING) || {
+			log WARN "Failed to get node for job ${running_jobid}"
+			continue
+		}
+		[ -z "${running_job_node}" ] && {
+			log WARN "Failed to get node for job ${running_jobid}"
+			continue
+		}
 		jobdir="${HYAKVNC_DIR}/jobs/${running_jobid}"
-		[ ! -d "${jobdir}" ] && log WARN "Job directory ${jobdir} does not exist" && continue
-		[ ! -e "${jobdir}/vnc/socket.uds" ] && log WARN "Job socket not found at ${jobdir}/vnc/socket.uds" && continue
-		[ ! -S "${jobdir}/vnc/socket.uds" ] && log WARN "Job socket at ${jobdir}/vnc/socket.uds is not a socket" && continue
+		[ ! -d "${jobdir}" ] && {
+			log WARN "Job directory ${jobdir} does not exist"
+			continue
+		}
+		[ ! -e "${jobdir}/vnc/socket.uds" ] && {
+			log WARN "Job socket not found at ${jobdir}/vnc/socket.uds"
+			continue
+		}
+		[ ! -S "${jobdir}/vnc/socket.uds" ] && {
+			log WARN "Job socket at ${jobdir}/vnc/socket.uds is not a socket"
+			continue
+		}
 		echo "HyakVNC job ${running_jobid} is running on node ${running_job_node}"
 	done
 }
@@ -1200,7 +1227,10 @@ function cmd_install {
 			;;
 		esac
 	done
-	mkdir -p "${install_dir}" || { log ERROR "Failed to create install directory ${install_dir}" && exit 1; }
+	mkdir -p "${install_dir}" || {
+		log ERROR "Failed to create install directory ${install_dir}"
+		exit 1
+	}
 	[ ! -d "${install_dir}" ] && {
 		log ERROR "Install directory ${install_dir} does not exist"
 		return 1
@@ -1330,7 +1360,9 @@ EOF
 
 	action_to_help=$(compgen -A function help_ | grep --max-count=1 "^help_${1:-}\$" || true)
 	[ -z "${action_to_help:-}" ] && {
-		log ERROR "help: Unknown command: ${1:-}" && echo && cmd_help
+		log ERROR "help: Unknown command: ${1:-}"
+		echo
+		cmd_help
 		exit 1
 	}
 	shift
