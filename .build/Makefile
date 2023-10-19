@@ -14,6 +14,7 @@ has_jinja := $(shell command -v jinja 2> /dev/null)
 #var_branch := $(shell git rev-parse --abbrev-ref HEAD)
 var_branch := main
 var_repo_url := $(shell git config --get remote.origin.url | sed -E 's/\.git$$//')
+var_repo_name :=   $(shell git config --get remote.origin.url | sed -E 's/\.git$$//; s/^.*github\.com\///')
 var_raw_script_url := $(shell echo $(var_repo_url) | sed -E 's/github\.com/raw.githubusercontent.com/; s/\/tree\/.*//')/$(var_branch)/hyakvnc
 var_container_registry := "oras://ghcr.io/maouw/hyakvnc_apptainer"
 var_hyakvnc_apptainer_repo := "https://github.com/maouw/hyakvnc_apptainer"
@@ -28,7 +29,7 @@ usage.inc.md: ../hyakvnc ## Generate usage documentatoin from `hyakvnc help` out
 ifndef has_jinja
 	$(error "jinja is not available. Please install jinja-cli with `pip install jinja-cli`")
 endif
-	jinja -D repo_url $(var_repo_url) -D container_registry $(var_container_registry) -D raw_script_url $(var_raw_script_url) -D hyakvnc_apptainer_repo $(var_hyakvnc_apptainer_repo) $< > $@
+	jinja -D repo_url $(var_repo_url) -D repo_name $(var_repo_name) -D container_registry $(var_container_registry) -D raw_script_url $(var_raw_script_url) -D hyakvnc_apptainer_repo $(var_hyakvnc_apptainer_repo) $< > $@
 
 .PHONY: README
 README: ../README.md
