@@ -725,12 +725,12 @@ function cmd_create {
 						;;
 
 					n | N) log WARN "Not adding APPTAINER_CACHEDIR to your shell's startup file. You may need to do this again in the future." ;;
-					*) log ERROR "Invalid choice ${choice2:-}." ;;
+					*) log ERROR "Invalid choice ${choice2:-}."; exit 1;;
 					esac
 					;;
 
 				n | N) log WARN "Not setting APPTAINER_CACHEDIR. You may encounter problems with storage space." ;;
-				*) log ERROR "Invalid choice ${choice1:-}." ;;
+				*) log ERROR "Invalid choice ${choice1:-}."; exit 1;;
 				esac
 			fi
 		fi
