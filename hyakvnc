@@ -277,7 +277,7 @@ function hyakvnc_config_init {
 		}
 	fi
 	export SBATCH_ACCOUNT="${HYAKVNC_SLURM_ACCOUNT:-}" && log TRACE "Set SBATCH_ACCOUNT to ${SBATCH_ACCOUNT}"
-	N
+	
 	if [ -z "${HYAKVNC_SLURM_PARTITION:-}" ]; then
 		HYAKVNC_SLURM_PARTITION=$(sacctmgr show -nPs user "${USER}" format=qos where account="${HYAKVNC_SLURM_ACCOUNT}" cluster="${HYAKVNC_SLURM_CLUSTER}" | grep -o -m 1 -E '\S+') || {
 			log ERROR "Failed to get SLURM partitions for user ${USER} on account ${HYAKVNC_SLURM_ACCOUNT} on cluster ${HYAKVNC_SLURM_CLUSTER}"
