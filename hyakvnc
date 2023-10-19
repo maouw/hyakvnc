@@ -858,7 +858,7 @@ function cmd_create {
 		if [ -n "${protocol:-}" ]; then
 			log INFO "Downloading ${HYAKVNC_APPTAINER_CONTAINER}..."
 			# Wait for the container to start downloading:
-			tail -f -n0 "${jobdir}/slurm.log" | grep --line-buffered -q 'Daw.*image'
+			tail -f -n0 "${jobdir}/slurm.log" | grep --line-buffered -q 'Downloading.*image'
 			# Wait for the container to stop downloading:
 			# shellcheck disable=SC2016
 			srun --jobid "${launched_jobid}" --output /dev/null sh -c 'while pgrep -u $USER -fia '"'"'^.*apptainer.*jobs/'"${launched_jobid}"'.*'"${protocol}"'.+$'"'"' | grep -v "^$$"; do sleep 1; done' || log WARN "Couldn't poll for container download process for ${HYAKVNC_APPTAINER_CONTAINER}"
