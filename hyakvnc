@@ -864,6 +864,7 @@ function cmd_create {
 			# Wait for the container to stop downloading:
 			# shellcheck disable=SC2016
 			srun --jobid "${launched_jobid}" --output /dev/null sh -c 'while pgrep -u $USER -fia '"'"'^.*apptainer.*jobs/'"${launched_jobid}"'.*'"${protocol}"'.+$'"'"' | grep -v "^$$"; do sleep 1; done' || log WARN "Couldn't poll for container download process for ${HYAKVNC_APPTAINER_CONTAINER}"
+			log INFO "Downloaded ${HYAKVNC_APPTAINER_CONTAINER}"
 		fi
 		;;
 	*) ;;
