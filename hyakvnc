@@ -849,7 +849,7 @@ function cmd_create {
 
 	if check_log_level "${HYAKVNC_LOG_LEVEL}" DEBUG; then
 		echo "Streaming log from ${jobdir}/slurm.log"
-		tail -n 1 -f "${jobdir}/slurm.log" --pid=$$ 2>/dev/null | sed --unbuffered 's/^/slurm.log: /' & # Follow the SLURM log file in the background
+		tail -n 1 -f "${jobdir}/slurm.log" --pid=$$ 2>/dev/null | sed --unbuffered 's/^/DEBUG: slurm.log: /' & # Follow the SLURM log file in the background
 	fi
 
 	case "$HYAKVNC_APPTAINER_CONTAINER" in
@@ -864,12 +864,12 @@ function cmd_create {
 			# Wait for the container to stop downloading:
 			# shellcheck disable=SC2016
 			srun --jobid "${launched_jobid}" --output /dev/null sh -c 'while pgrep -u $USER -fia '"'"'^.*apptainer.*jobs/'"${launched_jobid}"'.*'"${protocol}""'"' | grep -v "^$$"; do sleep 1; done' || log WARN "Couldn't poll for container download process for ${HYAKVNC_APPTAINER_CONTAINER}"
-			log INFO "Downloaded ${HYAKVNC_APPTAINER_CONTAINER}"
 		fi
 		;;
 	*) ;;
 	esac
 
+	log INFO "Waiting for VNC server to start..."
 	# Wait for socket to become available:
 	log DEBUG "Waiting for job ${launched_jobid} to create its socket file at ${jobdir}/vnc/socket.uds"
 	start=$EPOCHSECONDS
@@ -884,9 +884,7 @@ function cmd_create {
 		break
 	done
 
-	# Kill the tail process if it's still running:
-	# kill -TERM %tail 2>/dev/null # Stop following the SLURM log file
-
+	log INFO "VNC server started"
 	# Get details about the Xvnc process:
 	print_connection_info -j "${launched_jobid}" || {
 		log ERROR "Failed to print connection info for job ${launched_jobid}"
