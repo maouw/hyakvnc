@@ -467,11 +467,11 @@ ssh-copy-id -o StrictHostKeyChecking=no $USER@klone.hyak.uw.edu
 EOF
 	# Print connection instructions for each operating system:
 	echo "LINUX TERMINAL (bash/zsh):"
-	echo "ssh -f ${ssh_args[*]} sleep 10 && vncviewer localhost:${viewer_port} || xdg-open vnc://localhost:${viewer_port} || echo 'No VNC viewer found. Please install one or try entering the connection information manually.'"
+	echo "ssh -f ${ssh_args[*]} sleep 20 && vncviewer localhost:${viewer_port} || xdg-open vnc://localhost:${viewer_port} || echo 'No VNC viewer found. Please install one or try entering the connection information manually.'"
 	echo
 
 	echo "MACOS TERMINAL"
-	printf "ssh -f %s sleep 10 && " "${ssh_args[*]}"
+	printf "ssh -f %s sleep 20 && " "${ssh_args[*]}"
 	# Print a command to open a VNC viewer for each bundle ID:
 	for bundleid in ${HYAKVNC_MACOS_VNC_VIEWER_BUNDLEIDS}; do
 		printf "open -b %s --args localhost:%s 2>/dev/null || " "${bundleid}" "${viewer_port}"
@@ -485,7 +485,7 @@ EOF
 	echo
 
 	echo "WINDOWS"
-	echo "ssh -f ${ssh_args[*]} sleep 10 && cmd.exe /c cmd /c \"\$(cmd.exe /c where \"C:\Program Files\TurboVNC;C:\Program Files (x86)\TurboVNC:vncviewerw.bat\")\" localhost:${viewer_port} || echo 'No VNC viewer found. Please install one or try entering the connection information manually.'"
+	echo "ssh -f ${ssh_args[*]} sleep 20 && cmd.exe /c cmd /c \"\$(cmd.exe /c where \"C:\Program Files\TurboVNC;C:\Program Files (x86)\TurboVNC:vncviewerw.bat\")\" localhost:${viewer_port} || echo 'No VNC viewer found. Please install one or try entering the connection information manually.'"
 	echo
 	echo "=========="
 
