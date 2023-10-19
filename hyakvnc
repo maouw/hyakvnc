@@ -467,7 +467,7 @@ ssh-copy-id -o StrictHostKeyChecking=no $USER@klone.hyak.uw.edu
 EOF
 	# Print connection instructions for each operating system:
 	echo "LINUX TERMINAL (bash/zsh):"
-	echo "ssh -f ${ssh_args[*]} sleep 10 && vncviewer localhost:${viewer_port} || xdg-open vnc://localhost:$viewer_port} || echo 'No VNC viewer found. Please install one or try entering the connection information manually.'"
+	echo "ssh -f ${ssh_args[*]} sleep 10 && vncviewer localhost:${viewer_port} || xdg-open vnc://localhost:${viewer_port} || echo 'No VNC viewer found. Please install one or try entering the connection information manually.'"
 	echo
 
 	echo "MACOS TERMINAL"
