@@ -2,21 +2,21 @@
 # hyakvnc - A script to launch VNC sessions on Hyak
 
 # Check Bash version greater than 4:
-[ "${BASH_VERSINFO:-0}" -lt 4 ] && echo "Requires Bash version > 4.x" && exit 1
+[ "${BASH_VERSINFO:-0}" -lt 4 ] && { echo "Requires Bash version > 4.x"; exit 1; }
 
 # Check Bash version 4.4 or greater:
 case "${BASH_VERSION:-0}" in
-4*) [ "${BASH_VERSINFO[1]:-0}" -lt 4 ] && echo "Requires Bash version > 4.x" && exit 1 ;;
+4*) [ "${BASH_VERSINFO[1]:-0}" -lt 4 ] && { echo "Requires Bash version > 4.x"; exit 1; } ;;
 *) ;;
 esac
 
 # Only enable these shell behaviours if we're not being sourced
 if ! (return 0 2>/dev/null); then
-	[ -n "${XDEBUG:-}" ] && set -x # %% Set XDEBUG to print commands as they are executed
+	[[ -n "${XDEBUG:-}" ]] && set -x # %% Set XDEBUG to print commands as they are executed
 	set -o pipefail                # Use last non-zero exit code in a pipeline
 	set -o errtrace                # Ensure the error trap handler is inherited
-	set -o errexit                 # Exit on error
-	shopt -qs inherit_errexit      # Ensure subshells exit on error
+	# set -o errexit                 # Exit on error
+	# shopt -qs inherit_errexit      # Ensure subshells exit on error
 fi
 
 # # Preferences and settings:
@@ -25,35 +25,40 @@ HYAKVNC_VERSION="0.3.0"
 # ## App preferences:
 HYAKVNC_DIR="${HYAKVNC_DIR:-${HOME}/.hyakvnc}"          # %% Local directory to store application data (default: `$HOME/.hyakvnc`)
 HYAKVNC_CONFIG_FILE="${HYAKVNC_DIR}/hyakvnc-config.env" # %% Configuration file to use (default: `$HYAKVNC_DIR/hyakvnc-config.env`)
-
-# hyakvnc_load_config()
-# Load the hyakvnc configuration from the config file
-# Arguments: None
-function hyakvnc_load_config {
-	[ -r "${HYAKVNC_CONFIG_FILE:-}" ] || return 0
-	while IFS=$'\n' read -r line; do
-		declare -n varref="${line%%=*}"
-		if [ -z "${varref:-}" ]; then
-			varref=$(bash --restricted -c "echo ${line#*=}" || true)
-			[ -z "${varref:-}" ] && continue
-			export "${!varref}"
-		fi
-	done < <(sed -E 's/^\s*//; /^[^=]+=.*/!d' "$HYAKVNC_CONFIG_FILE")
-}
-# Load config if not sourced:
-if ! (return 0 2>/dev/null); then
-	hyakvnc_load_config
-fi
-
 HYAKVNC_LOG_FILE="${HYAKVNC_LOG_FILE:-${HYAKVNC_DIR}/hyakvnc.log}" # %% Log file to use (default: `$HYAKVNC_DIR/hyakvnc.log`)
 HYAKVNC_LOG_LEVEL="${HYAKVNC_LOG_LEVEL:-INFO}"                     # %% Log level to use for interactive output (default: `INFO`)
 HYAKVNC_LOG_FILE_LEVEL="${HYAKVNC_LOG_FILE_LEVEL:-DEBUG}"          # %% Log level to use for log file output (default: `DEBUG`)
 HYAKVNC_SSH_HOST="${HYAKVNC_SSH_HOST:-klone.hyak.uw.edu}"          # %% Default SSH host to use for connection strings (default: `klone.hyak.uw.edu`)
 HYAKVNC_DEFAULT_TIMEOUT="${HYAKVNC_DEFAULT_TIMEOUT:-30}"           # %% Seconds to wait for most commands to complete before timing out (default: `30`)
 
+# hyakvnc_load_config()
+# Load the hyakvnc configuration from the config file
+# This is high up in the file so that settings can be overridden by the user's config
+# Arguments: None
+function hyakvnc_load_config {
+	[ -r "${HYAKVNC_CONFIG_FILE:-}" ] || return 0 # Return if config file doesn't exist
+
+	# Read each line of the parsed config file and export the variable:
+	while IFS=$'\n' read -r line; do
+		# Get the variable name by removing everything after the equals sign. Uses nameref to allow indirect assignment (see https://gnu.org/software/bash/manual/html_node/Shell-Parameters.html):
+		declare -n varref="${line%%=*}" 
+		# Evaluate the right-hand side of the equals sign:
+		varref="$(bash --restricted --posix -c "echo ${line#*=}" || true)"
+		# Export the variable:
+		export "${!varref}"
+		# If DEBUG is not 0, print the variable:
+		[ "${DEBUG:-0}" != 0 ] && echo "Loaded variable from \"CONFIG_FILE\": ${!varref}=(${varref})" >&2
+	done < <(sed -E 's/^\s*//;  /^[^#=]+=.*/!d;  s/^([^=\s]+)\s+=/\1=/;' "${HYAKVNC_CONFIG_FILE}" || true) # Parse config file, ignoring comments and blank lines, removing leading whitespace, and removing whitespace before (but not after) the equals sign
+}
+
+# Load config if not sourced:
+if ! (return 0 2>/dev/null); then
+	hyakvnc_load_config
+fi
+
 # ## VNC preferences:
 HYAKVNC_VNC_PASSWORD="${HYAKVNC_VNC_PASSWORD:-password}" # %% Password to use for new VNC sessions (default: `password`)
-HYAKVNC_VNC_DISPLAY="${HYAKVNC_VNC_DISPLAY:-:1}"         # %% VNC display to use (default: `:1`)
+HYAKVNC_VNC_DISPLAY="${HYAKVNC_VNC_DISPLAY:-:10}"         # %% VNC display to use (default: `:1`)
 
 HYAKVNC_MACOS_VNC_VIEWER_BUNDLEIDS="${HYAKVNC_MACOS_VNC_VIEWER_BUNDLEIDS:-com.turbovnc.vncviewer.VncViewer com.realvnc.vncviewer com.tigervnc.vncviewer}" # macOS bundle identifiers for VNC viewer executables (default: `com.turbovnc.vncviewer com.realvnc.vncviewer com.tigervnc.vncviewer`)
 
@@ -246,11 +251,6 @@ function get_slurm_hyak_qos {
 # Initialize the hyakvnc configuration
 # Arguments: None
 function hyakvnc_config_init {
-	if ! check_slurm_installed; then
-		log ERROR "SLURM is not installed! Can't initialize configuration."
-		return 1
-	fi
-
 	mkdir -p "${HYAKVNC_DIR}/jobs" "${HYAKVNC_SLURM_OUTPUT_DIR}" || {
 		log ERROR "Failed to create HYAKVNC jobs directory ${HYAKVNC_DIR}/jobs"
 		return 1
@@ -260,6 +260,11 @@ function hyakvnc_config_init {
 		log ERROR "Failed to create HYAKVNC jobs directory ${HYAKVNC_DIR}/jobs"
 		return 1
 	}
+
+	if ! check_slurm_installed; then
+		log ERROR "SLURM is not installed! Can't initialize configuration."
+		return 1
+	fi
 
 	# Set default SLURM cluster, accont, and partition if empty:
 	if [ -z "${HYAKVNC_SLURM_CLUSTER}" ]; then
@@ -435,7 +440,7 @@ function print_connection_info {
 	[ -n "$node" ] || node=$(squeue -h -j "${jobid}" -o '%N' | grep -o -m 1 -E '\S+') || log DEBUG "Failed to get node for job ${jobid} from squeue"
 	if [ -r "${HYAKVNC_DIR}/jobs/${jobid}/vnc/hostname" ] && launch_hostname=$(cat "${HYAKVNC_DIR}/jobs/${jobid}/vnc/hostname" 2>/dev/null || true) && [ -n "${launch_hostname:-}" ]; then
 		[ "$node" = "${launch_hostname}" ] || log WARN "Node for ${jobid} from hostname file (${HYAKVNC_DIR}/jobs/${jobid}/vnc/hostname) (${launch_hostname:-}) does not match node from squeue (${node}). Was the job restarted?"
-		[ -z "${node}" ] && log DEBUG "Node for ${jobid} from squeue is blank. Setting to ${launch_hostname}" && node="${launch_hostname}"
+		[ -z "${node}" ] && { log DEBUG "Node for ${jobid} from squeue is blank. Setting to ${launch_hostname}"; node="${launch_hostname}"; }
 	else
 		log WARN "Failed to get originally launched node for job ${jobid} from ${HYAKVNC_DIR}/jobs/${jobid}/hostname"
 	fi
@@ -639,7 +644,7 @@ function cmd_create {
 			break
 			;;
 		-*)
-			log ERROR "Unknown option: ${1:-}\n" && exit 1
+			log ERROR "Unknown option: ${1:-}\n"; exit 1
 			;;
 		*)
 			break
@@ -757,8 +762,8 @@ function cmd_create {
 	# Set up the jobs directory:
 	local alljobsdir jobdir
 	alljobsdir="${HYAKVNC_DIR}/jobs"
-	mkdir -p "${alljobsdir}" || { log ERROR "Failed to create directory ${alljobsdir}" && exit 1; }
-	mkdir -p "${HYAKVNC_SLURM_OUTPUT_DIR}" || { log ERROR "Failed to create directory ${HYAKVNC_SLURM_OUTPUT_DIR}" && exit 1; }
+	mkdir -p "${alljobsdir}" || { log ERROR "Failed to create directory ${alljobsdir}"; exit 1; }
+	mkdir -p "${HYAKVNC_SLURM_OUTPUT_DIR}" || { log ERROR "Failed to create directory ${HYAKVNC_SLURM_OUTPUT_DIR}"; exit 1; }
 
 	apptainer_start_args+=("run" "--app" "${HYAKVNC_APPTAINER_APP_VNCSERVER}")
 	apptainer_start_args+=("--writable-tmpfs")
@@ -768,6 +773,7 @@ function cmd_create {
 	1 | true | yes | y | Y | TRUE | YES)
 		apptainer_start_args+=("--cleanenv")
 		;;
+	*) ;;
 	esac
 
 	# Final command should look like:
@@ -792,7 +798,7 @@ function cmd_create {
 
 	log INFO "Launching job with command: sbatch ${sbatch_args[*]}"
 
-	sbatch_result=$(sbatch "${sbatch_args[@]}") || { log ERROR "Failed to launch job" && exit 1; }
+	sbatch_result=$(sbatch "${sbatch_args[@]}") || { log ERROR "Failed to launch job"; exit 1; }
 
 	# Quit if no job ID was returned:
 	[ -z "${sbatch_result:-}" ] && {
@@ -817,7 +823,8 @@ function cmd_create {
 	start=$EPOCHSECONDS
 	while true; do
 		if ((EPOCHSECONDS - start > HYAKVNC_SLURM_SUBMIT_TIMEOUT)); then
-			log ERROR "Timed out waiting for job to start" && exit 1
+			log ERROR "Timed out waiting for job to start"
+			exit 1
 		fi
 		sleep 1
 		squeue_result=$(squeue --job "${launched_jobid}" --format "%T" --noheader || true)
@@ -831,7 +838,7 @@ function cmd_create {
 			log DEBUG "Job ${launched_jobid} is ${squeue_result}"
 			break
 			;;
-		*) log ERROR "Job ${launched_jobid} is in unexpected state ${squeue_result}" && exit 1 ;;
+		*) log ERROR "Job ${launched_jobid} is in unexpected state ${squeue_result}"; exit 1 ;;
 		esac
 	done
 
@@ -839,10 +846,11 @@ function cmd_create {
 	start=$EPOCHSECONDS
 	while true; do
 		if ((EPOCHSECONDS - start > HYAKVNC_DEFAULT_TIMEOUT)); then
-			log ERROR "Timed out waiting for job to create its directory at ${jobdir}" && exit 1
+			log ERROR "Timed out waiting for job to create its directory at ${jobdir}";
+			exit 1
 		fi
 		sleep 1
-		[ ! -d "${jobdir}" ] && log TRACE "Job directory does not exist yet" && continue
+		[ ! -d "${jobdir}" ] && { log TRACE "Job directory does not exist yet"; continue; }
 		break
 	done
 
@@ -876,7 +884,7 @@ function cmd_create {
 	start=$EPOCHSECONDS
 	while true; do
 		if ((EPOCHSECONDS - start > HYAKVNC_DEFAULT_TIMEOUT)); then
-			log ERROR "Timed out waiting for job to open its directories" && exit 1
+			log ERROR "Timed out waiting for job to open its directories"; exit 1
 		fi
 		sleep 1
 		[ ! -d "${jobdir}" ] && log TRACE "Job directory does not exist yet" && continue
@@ -940,7 +948,7 @@ function cmd_status {
 			shift
 			;;
 		-*)
-			log ERROR "Unknown option: ${1:-}\n" && exit 1
+			log ERROR "Unknown option: ${1:-}\n"; exit 1
 			;;
 		*)
 			break
