@@ -1,0 +1,42 @@
+name: Singularity Build
+on:
+  push:
+
+jobs:
+  build-and-push-image:
+    runs-on: ubuntu-latest
+    name: Build Apptainer image
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Install jinja-cli
+        run: |
+          python3 -m pip install jinja-cli
+      - name: Check out code for the container build
+        uses: actions/checkout@v4
+      - name: Generate configuration descriptions
+        run: |
+          pushd .build/
+          sed -E '/^HYAKVNC_.*#\s*%%/!d; s/=.*(#\s*%%)/:/g; s/(^.)/- \1/g' hyakvnc > config.inc.md
+          popd
+      - name: Generate usage descriptions
+        run: |
+          pushd .build/
+          for x in create status show stop config install; do ../hyakvnc help "$x" | sed -E '1 s/(.*)/\n### \1\n/; 2 s/^$/```text/' | pr -e4 -t && echo '```'; done > usage.inc.md
+          popd
+      - name: Assemble README.md
+        run: |
+          pushd .build/
+          jinja -D github.repository "${{ github.repository }}" -D github.ref_name "${{ github.ref_name }}" README.j2.md | sed 's/^.*<!-- markdownlint-disable-file -->.*$//g' > ../README.md
+          popd
+      - name: Set up Git user
+        run: |
+          git config --local user.email "${{ github.event.sender.id }}+${{ github.event.sender.login }}@users.noreply.github.com"
+          git config --local user.name ${{ github.event.sender.login }}
+      - name: Add, commit, and push README.md
+        run: |
+          git add README.md
+          git commit -am "Update README.md"
+          git push
+
