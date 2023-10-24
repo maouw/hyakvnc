@@ -3,12 +3,11 @@ on:
   push:
 
 jobs:
-  build-and-push-image:
+  build-readme:
     runs-on: ubuntu-latest
-    name: Build Apptainer image
+    name: Build README.md
     permissions:
-      contents: read
-      packages: write
+      contents: write
     steps:
       - name: Install jinja-cli
         run: |
@@ -18,7 +17,7 @@ jobs:
       - name: Generate configuration descriptions
         run: |
           pushd .build/
-          sed -E '/^HYAKVNC_.*#\s*%%/!d; s/=.*(#\s*%%)/:/g; s/(^.)/- \1/g' hyakvnc > config.inc.md
+          sed -E '/^HYAKVNC_.*#\s*%%/!d; s/=.*(#\s*%%)/:/g; s/(^.)/- \1/g' ../hyakvnc > config.inc.md
           popd
       - name: Generate usage descriptions
         run: |
