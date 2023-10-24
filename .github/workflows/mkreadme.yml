@@ -14,6 +14,15 @@ jobs:
           python3 -m pip install jinja-cli
       - name: Check out code for the container build
         uses: actions/checkout@v4
+      - name: Check if README.md has changed
+        id: readme-changed
+        run: |
+          if ! git --no-pager diff --name-only --quiet --diff-filter=AM 'HEAD^ hyakvnc .build/README.j2.md .github/workflows/mkreadme.yml; then
+            gh run cancel ${{ github.run_id }}
+            gh run watch ${{ github.run_id }}
+          fi
+        env:
+            GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Generate configuration descriptions
         run: |
           pushd .build/
