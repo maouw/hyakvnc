@@ -202,7 +202,6 @@ function hyakvnc_pull_updates() {
 
 	[[ "${cur_branch}" != "main" ]] && {
 		log WARN "Current branch is ${cur_branch}, not main. Be warned that this branch may not be up to date."
-		return 1
 	}
 
 	log INFO "Updating hyakvnc..."
@@ -326,7 +325,7 @@ function hyakvnc_autoupdate {
 			y | Y | yes | Yes)
 				log INFO "Updating hyakvnc..."
 				hyakvnc_pull_updates || {
-					log INFO "Didn't update hyakvnc"
+					log WARN "Didn't update hyakvnc"
 					return 1
 				}
 				log INFO "Successfully updated hyakvnc. Restarting..."
