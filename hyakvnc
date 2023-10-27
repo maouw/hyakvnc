@@ -74,7 +74,7 @@ HYAKVNC_MACOS_VNC_VIEWER_BUNDLEIDS="${HYAKVNC_MACOS_VNC_VIEWER_BUNDLEIDS:-com.tu
 # ## Apptainer preferences:
 HYAKVNC_APPTAINER_BIN="${HYAKVNC_APPTAINER_BIN:-apptainer}" # %% Name of apptainer binary (default: `apptainer`)
 
-HYAKVNC_LOGIN_NODE_APPTAINER_BIN="${HYAKVNC_LOGIN_NODE_APPTAINER_BIN:-/sw/apptainer/default/bin/apptainer}" # Path to apptainer binary on login node(default: `/sw/apptainer/default/bin/apptainer`)
+HYAKVNC_LOGIN_NODE_APPTAINER_BIN="${HYAKVNC_LOGIN_NODE_APPTAINER_BIN:-/sw/apptainer/default/bin/apptainer}" # %% Path to apptainer binary on login node(default: `/sw/apptainer/default/bin/apptainer`)
 
 HYAKVNC_APPTAINER_CONTAINER="${HYAKVNC_APPTAINER_CONTAINER:-}" # %% Path to container image to use (default: (none; set by `--container` option))
 
@@ -717,6 +717,83 @@ function cleanup_launched_jobs_and_exit {
 	exit 1
 }
 
+
+# # Apptainer utility functions:
+
+# ghcr_get_token_for_repo()
+# Get a GitHub Container Registry token for a given repository
+# Arguments: <url> (required)
+# Returns: 0 if successful, 1 if not or if an error occurred
+# Prints: The token to stdout
+function ghcr_get_token_for_oras_image {
+	local url image_ref repo repo_token image_tag
+	command -v curl >/dev/null 2>&1 || {
+		log ERROR "curl is not installed!"
+		return 1
+	}
+	command -v python3 >/dev/null 2>&1 || {
+		log ERROR "python3 is not installed!"
+		return 1
+	}
+
+	url="${1:-}"
+	[[ -z "${url}" ]] && {
+		log ERROR "URL must be specified"
+		return 1
+	}
+
+	case "${url}" in
+	ghcr.io/*)
+		image_ref="${url#ghcr.io/}"
+		repo="${image_ref%%:*}"
+		image_tag="${image_ref##*:}"
+		;;
+	*) # Not a GitHub Container Registry URL
+		log ERROR "URL ${url} is not a GitHub Container Registry URL"
+		return 1
+		;;
+	esac
+
+	repo_token="$(curl -sSL "https://ghcr.io/token?scope=repository:${repo}:pull&service=ghcr.io" | python3 -I -c 'import sys,json; print(json.load(sys.stdin)["token"])' 2>/dev/null || true)"
+	[[ -z "${repo_token}" ]] && {
+		log ERROR "Failed to get token for repository ${repo}"
+		return 1
+	}
+	
+	manifest="$(curl -vsSL -H "Accept: application/vnd.oci.image.manifest.v1+json" -H "Authorization: Bearer ${repo_token}" "https://ghcr.io/v2/${repo}/manifests/${image_tag}")"
+	[[ -z "${manifest}" ]] && {
+		log ERROR "Failed to get manifest for repository ${repo}"
+		return 1
+	}
+	layer_size=$(echo "${manifest}" | /usr/bin/python3.6 -I -c 'import sys,json; v=json.load(sys.stdin); sys.exit(1) if len(v["layers"]) == 2 else print(v["layers"][0]["size"])' 2>/dev/null || true)
+	[[ -z "${layer_size}" ]] && {
+		log ERROR "Failed to get layer size for repository ${repo}"
+		return 1
+	}
+
+	echo "${layer_size}"
+	return 0
+}
+
+# precache_remote_apptainer_image()
+# Pull the remote apptainer image to the local cache
+# This is intended to run on the login node and primarily exists to better inform the user about download progress.
+# (The `apptainer pull` progress indicator is difficult to pipe in to the user interface from a remote node.)
+# This depends on the apptainer executable being available on the login node.
+# Arguments: <url> (required), <output_path> (optional)
+# Environment variables:
+# 	- $HYAKVNC_APPTAINER_CACHE_DIR : The directory to use for the apptainer cache
+#	- $HYAKVNC_LOGIN_APPTAINER_PATH : The path to the apptainer executable on the login node
+function precache_remote_apptainer_image {
+	local url output_path
+	url="${1:-}"
+	output_path="${2:-/dev/null}"
+	[[ -z "${HYAKVNC_LOGIN_NODE_APPTAINER_BIN:-}" ]] && { log ERROR "Couldn't find apptainer binary: HYAKVNC_LOGIN_NODE_APPTAINER_BIN is unset or empty."; return 1; }
+	[[ ! -e "${HYAKVNC_LOGIN_NODE_APPTAINER_BIN:-}" ]] && { log ERROR "Apptainer binary not found at HYAKVNC_LOGIN_NODE_APPTAINER_BIN=${HYAKVNC_APPTAINER_BIN:-}"; return 1; }
+	[[ ! -x "${HYAKVNC_LOGIN_NODE_APPTAINER_BIN:-}" ]] && { log ERROR "Apptainer binary not executable (HYAKVNC_LOGIN_NODE_APPTAINER_BIN=${HYAKVNC_APPTAINER_BIN:-})"; return 1; }
+	"${HYAKVNC_LOGIN_NODE_APPTAINER_BIN}" t
+
+}
 # # Commands
 
 # ## Command: create
