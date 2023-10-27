@@ -80,7 +80,7 @@ ssh your-uw-netid@klone.hyak.uw.edu
 After you've connected to the login node, you can download and install `hyakvnc` by running the following command. Copy and paste it into the terminal window where you are connected to the login node and press enter:
 
 ```bash
-eval "$(curl -fsSL https://raw.githubusercontent.com//maouw/hyakvnc/main/install.sh)"
+eval "$(curl -fsSL https://raw.githubusercontent.com//maouw/hyakvnc/apptainer-pull-cache/install.sh)"
 ```
 
 This will download and install `hyakvnc` to your `~/.local/bin` directory and add it to your `$PATH` so you can run it by typing `hyakvnc` into the terminal window.
@@ -318,6 +318,7 @@ The following variables are available:
 - HYAKVNC_VNC_PASSWORD: Password to use for new VNC sessions (default: `password`)
 - HYAKVNC_VNC_DISPLAY: VNC display to use (default: `:1`)
 - HYAKVNC_APPTAINER_BIN: Name of apptainer binary (default: `apptainer`)
+- HYAKVNC_LOGIN_NODE_APPTAINER_BIN: Path to apptainer binary on login node(default: `/sw/apptainer/default/bin/apptainer`)
 - HYAKVNC_APPTAINER_CONTAINER: Path to container image to use (default: (none; set by `--container` option))
 - HYAKVNC_APPTAINER_APP_VNCSERVER: Name of app in the container that starts the VNC session (default: `vncserver`)
 - HYAKVNC_APPTAINER_APP_VNCKILL: Name of app that cleanly stops the VNC session in the container (default: `vnckill`)
