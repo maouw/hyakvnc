@@ -1078,7 +1078,7 @@ function cmd_create {
 		oras_cache_dir="${APPTAINER_CACHEDIR:-${HOME}/.apptainer/cache}/cache/oras"
 		if mkdir -p "${oras_cache_dir}"; then
 			log INFO "Preloading ORAS image for \"${HYAKVNC_APPTAINER_CONTAINER}\""
-			oras_image_path="$(ghcr_get_oras_sif "${HYAKVNC_APPTAINER_CONTAINER}" "${APPTAINER_CACHEDIR}/cache/oras" 1>/dev/null || true)"
+			oras_image_path="$(ghcr_get_oras_sif "${HYAKVNC_APPTAINER_CONTAINER}" "${APPTAINER_CACHEDIR}/cache/oras" || true)"
 			[[ -z "${oras_image_path:-}" ]] && log ERROR "hyakvnc failed to preload ORAS image for \"${HYAKVNC_APPTAINER_CONTAINER:-}\" on its own. Apptainer will try to download the image by itself. If you don't want to preload ORAS images, use the --no-ghcr-oras-preload option."
 		else
 			log ERROR "Failed to create directory ${oras_cache_dir}."
