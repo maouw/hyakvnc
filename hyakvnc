@@ -563,8 +563,8 @@ function stop_hyakvnc_session {
 
 	if [[ -n "${should_cancel}" ]]; then
 		log INFO "Cancelling job ${jobid}"
-		sleep 5 # Wait for VNC process to exit
-		scancel "${jobid}" || log ERROR "scancel failed to cancel job ${jobid}"
+		sleep 1 # Wait for VNC process to exit
+		scancel --full "${jobid}" || log ERROR "scancel failed to cancel job ${jobid}"
 	fi
 	return 0
 }
