@@ -1090,8 +1090,6 @@ function cmd_create {
 	export HYAKVNC_SLURM_JOB_NAME="${HYAKVNC_SLURM_JOB_PREFIX}${container_name}"
 	export SBATCH_JOB_NAME="${HYAKVNC_SLURM_JOB_NAME}" && log TRACE "Set SBATCH_JOB_NAME to ${SBATCH_JOB_NAME}"
 
-	log INFO "Creating HyakVNC job named \"${HYAKVNC_SLURM_JOB_NAME}\" for container ${container_basename}"
-
 	# Set sbatch arguments or environment variables:
 	#   CPUs has to be specified as a sbatch argument because it's not settable by environment variable:
 	[[ -n "${HYAKVNC_SLURM_CPUS:-}" ]] && sbatch_args+=(--cpus-per-task "${HYAKVNC_SLURM_CPUS}") && log TRACE "Set --cpus-per-task to ${HYAKVNC_SLURM_CPUS}"
@@ -1147,7 +1145,7 @@ function cmd_create {
 	# Trap signals to clean up the job if the user exits the script:
 	[[ -z "${XNOTRAP:-}" ]] && trap cleanup_launched_jobs_and_exit SIGINT SIGTERM SIGHUP SIGABRT SIGQUIT ERR EXIT
 
-	log INFO "Launching job with command: sbatch ${sbatch_args[*]}"
+	log DEBUG "Launching job with command: sbatch ${sbatch_args[*]}"
 
 	sbatch_result=$(sbatch "${sbatch_args[@]}") || {
 		log ERROR "Failed to launch job"
@@ -1174,10 +1172,11 @@ function cmd_create {
 	log DEBUG "Job directory: ${jobdir}"
 
 	# Wait for sbatch job to start running by monitoring the output of squeue:
+	log INFO "Waiting for job ${launched_jobid} (\"${HYAKVNC_SLURM_JOB_NAME}\") to start"
 	start=${EPOCHSECONDS:-}
 	while true; do
 		if ((EPOCHSECONDS - start > HYAKVNC_SLURM_SUBMIT_TIMEOUT)); then
-			log ERROR "Timed out waiting for job to start"
+			log ERROR "Timed out waiting for job ${launched_jobid} to start"
 			exit 1
 		fi
 		sleep 1
