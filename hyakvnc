@@ -1245,8 +1245,12 @@ function cmd_create {
 		[[ ! -d "${jobdir}" ]] && log TRACE "Job directory does not exist yet" && continue
 		[[ ! -e "${jobdir}/vnc/socket.uds" ]] && log TRACE "Job socket does not exist yet" && continue
 		[[ ! -S "${jobdir}/vnc/socket.uds" ]] && log TRACE "Job socket is not a socket" && continue
+		[[ ! -r "${jobdir}/vnc/vnc.log" ]] && log TRACE "VNC log file not readable yet" && continue
+
 		break
 	done
+
+	grep -q '^xstartup.turbovnc: Executing' <(timeout "${HYAKVNC_DEFAULT_TIMEOUT}" tail -f "${jobdir}/vnc/vnc.log" || true)
 
 	log INFO "VNC server started"
 	# Get details about the Xvnc process:
@@ -1256,7 +1260,7 @@ function cmd_create {
 	}
 	# Stop trapping the signals:
 	[[ -z "${XNOTRAP:-}" ]] && trap - SIGINT SIGTERM SIGHUP SIGABRT SIGQUIT ERR EXIT
-	kill -TERM %tail 2>/dev/null # Stop following the SLURM log file
+	kill -9 %tail 2>/dev/null # Stop following the SLURM log file
 	return 0
 }
 
