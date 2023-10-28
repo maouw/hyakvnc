@@ -4,143 +4,157 @@ set -o pipefail
 shopt -s checkwinsize
 set -m
 
+[[ "${XDEBUG:-}" == "true" ]] && set -x
+
 function log {
 	echo "$*"
 }
+# ## General utility functions:
 
-# ghcr_get_token_for_repo()
-# Get a GitHub Container Registry token for a given repository
-# Arguments: <url> (required)
-# Returns: 0 if successful, 1 if not or if an error occurred
-# Prints: The token to stdout
-function ghcr_get_size_for_oras_image {
-	local url image_ref repo repo_token image_tag manifest layer_size
-	command -v curl >/dev/null 2>&1 || {
-		log ERROR "curl is not installed!"
-		return 1
-	}
-	command -v python3 >/dev/null 2>&1 || {
-		log ERROR "python3 is not installed!"
-		return 1
-	}
+# check_command()
+# Check if a command is available
+# Arguments:
+# - <command> - The command to check
+# - <loglevel> <message> - Passed to log if the command is not available (optional)
+function check_command {
+	local cmd
+	[[ -z "${cmd:=${1:-}}" ]] && return 1
 
-	url="${1:-}"
-	[[ -z "${url}" ]] && {
+	if ! command -v "${cmd}" >/dev/null 2>&1; then
+		if [[ $# -gt 1 ]]; then
+			local loglevel="${2}"
+			shift
+			log "${loglevel}" "${@:-"${cmd} is not installed!"}"
+		fi
+		return 1
+	fi
+	return 0
+}
+
+function ghcr_get_oras_sif {
+	local url output_path
+	[[ -z "${url:=${1:-}}" ]] && {
 		log ERROR "URL must be specified"
 		return 1
 	}
+	output_path="${2:-./}" # Optionally set the output file
+	[[ -d "${output_path}" ]] && [[ ! -w "${output_path}" ]] && {
+		log ERROR "Output directory \"${output_path}\" is not writable"
+		return 1
+	}
 
+	# Check that the URL is an ORAS GitHub Container Registry URL:
+	local address image_ref repo image_tag
 	case "${url}" in
-	ghcr.io/*)
-		image_ref="${url#ghcr.io/}"
+	oras://ghcr.io/*)
+		address="${url#oras://}"
+		image_ref="${address#ghcr.io/}"
 		repo="${image_ref%%:*}"
-		image_tag="${image_ref##*:}"
+		[[ -z "${repo}" ]] && {
+			log ERROR "Failed to parse repository from URL \"${url}\""
+			return 1
+		}
+		[[ ${image_ref} == *:* ]] && image_tag="${image_ref##*:}"
+		image_tag="${image_tag:-latest}"
+		[[ -d "${output_path}" ]] && output_path="${output_path}/${repo//\//--}--${image_tag}.sif"
 		;;
 	*) # Not a GitHub Container Registry URL
-		log ERROR "URL ${url} is not a GitHub Container Registry URL"
+		log ERROR "URL \"${url}\" is not a GitHub Container Registry URL for an ORAS image"
 		return 1
 		;;
 	esac
 
+	# Get a token for the repository (required to get the manifest, but freely available by this request):
+	# Uses curl to get the token, then python to parse the JSON response
+	local repo_token
 	repo_token="$(curl -sSL "https://ghcr.io/token?scope=repository:${repo}:pull&service=ghcr.io" | python3 -I -c 'import sys,json; print(json.load(sys.stdin)["token"])' 2>/dev/null || true)"
 	[[ -z "${repo_token}" ]] && {
 		log ERROR "Failed to get token for repository ${repo}"
 		return 1
 	}
-	
-	manifest="$(curl -sSL -H "Accept: application/vnd.oci.image.manifest.v1+json" -H "Authorization: Bearer ${repo_token}" "https://ghcr.io/v2/${repo}/manifests/${image_tag}")"
+
+	# Request the manifest for the image tag:
+	local manifest
+	manifest="$(curl -sSL \
+		-H "Accept: application/vnd.oci.image.manifest.v1+json" \
+		-H "Authorization: Bearer ${repo_token}" \
+		"https://ghcr.io/v2/${repo}/manifests/${image_tag}" \
+		2>/dev/null || true)"
 	[[ -z "${manifest}" ]] && {
 		log ERROR "Failed to get manifest for repository ${repo}"
 		return 1
 	}
-	layer_size=$(echo "${manifest}" | python3 -I -c 'import sys,json; v=json.load(sys.stdin); sys.exit(1) if len(v["layers"]) != 1 or not v["layers"][0]["mediaType"].startswith("application/vnd.sylabs.sif.layer") else print(v["layers"][0]["size"])' 2>/dev/null || true)
-	[[ -z "${layer_size}" ]] && {
-		log ERROR "Failed to get layer size for repository ${repo}"
+
+	local image_sha256
+	image_sha256="$(echo "${manifest}" | python3 -I -c \
+		'import sys, json; s=[ x for x in json.load(sys.stdin)["layers"] if x.get("mediaType", "") == "application/vnd.sylabs.sif.layer.v1.sif" and x.get("digest", "").startswith("sha256")]; sys.exit(1) if len(s) != 1 else print(s[0]["digest"])' \
+		2>/dev/null || true)"
+	[[ -z "${image_sha256:-}" ]] && {
+		log ERROR "Failed to get image info for repository ${repo}"
 		return 1
 	}
 
-	echo "${layer_size}"
+	# Download the image:
+
+	local image_url
+	image_url="https://ghcr.io/v2/${repo}/blobs/${image_sha256}"
+	curl -fSL -H "Authorization: Bearer ${repo_token}" -o "${output_path}" -C - "${image_url}" || {
+		log ERROR "Failed to download image from ${image_url} to ${output_path}"
+		return 1
+	}
+	log DEBUG "Downloaded image to ${output_path}"
+	echo "${output_path}"
 	return 0
 }
 
 function progress_bar {
-	local current total filled empty cols
-	local current="${1:-}"
-    local total="${2:-}"
-	cols="${3:-}"
-	[[ -z "${cols:-}" ]] && cols="$(tput cols)"
+	local current total filled empty cols i barwidth
+	# Check that the arguments are valid:
+	[[ -z "${current:=${1:-}}" ]] || [[ -z "${total:=${2:-}}" ]] || [[ "${current}" -gt "${total}" ]] && return 1
 
+	# Check or get the number of columns:
+	[[ -z "${cols:=${3:-$(tput cols || true)}}" ]] && return 1
 
-	filled=$((current*${cols}/total))
-    empty=$((${cols}-filled))
+	barwidth=$((cols - 2))
 
-    printf "["
-	printf -- '#%.0s' {1..${filled}}
-	printf -- ' %.0s' {1..${empty}}
-	printf "]"
+	# Calculate the number of filled and empty columns:
+	filled=$((current * barwidth / total))
+	empty=$((barwidth - filled))
 
+	# Open the progress bar:
+	printf "["
 
-	for ((i=0;i<${empty};i++)); do
-        printf " "
-    done
-    printf "]\n"
-}
-
-function bytes_to_human {
-    local bytes=$1
-    if [[ ${bytes} -lt 1024 ]]; then
-        echo "${bytes}B"
-    elif [[ ${bytes} -lt 1048576 ]]; then
-        echo $((bytes/1024))"KB"
-    elif [[ ${bytes} -lt 1073741824 ]]; then
-        echo $((bytes/1048576))"MB"
-    else
-        echo $((bytes/1073741824))"GB"
-    fi
-}
-
-function precache_interactive {
-	local pid oras_tmp_path total_size current_size
-	pid="${1:-}"
-	[[ -z "${pid}" ]] && {
-		log ERROR "PID must be specified"
-		return 1
-	}
-	total_size="${2:-}"
-	[[ -z "${total_size}" ]] && {
-		log ERROR "Total size must be specified"
-		return 1
-	}
-
-	command -v find >/dev/null 2>&1 || {
-		log ERROR "find is not installed!"
-		return 1
-	}
-
-    oras_tmp_path=$(find /proc/$pid/fd -type l -xtype f -lname '*apptainer*/oras/*tmp*' -printf '%l\n' -quit || true)
-	[[ -z "${oras_tmp_path}" ]] && {
-		log ERROR "Failed to find oras tmp path for PID ${pid}"
-		return 1
-	}
-
-	while current_size="$(du -sb "${oras_tmp_path}" 2>/dev/null | cut -f1)"; do
-		printf "Downloading image: %s / %s\n" "$(bytes_to_human "${current_size}" || true)" "$(bytes_to_human "${total_size}" || true)"
-		sleep 1
-		printf "\e[1A"
+	# Print the filled so:
+	for ((i = 0; i < filled; i++)); do
+		printf "#"
 	done
-	printf "\n"
+
+	# Print the empty spaces:
+	for ((i = 0; i < empty; i++)); do
+		printf " "
+	done
+
+	# Close the progress bar:
+	printf "]"
 }
 
-url="${1:-ghcr.io/maouw/ubuntu22.04_turbovnc:latest}"
-tmpfile="$(mktemp --suffix ".ghcr.oras.sif")"
-trap 'kill -9 ${pidno}; echo killed ${pidno}; rm -rf "${tmpfile:-}"' EXIT TERM SIGTERM SIGQUIT
+# bytes_to_human()
+# Convert bytes to a human readable format
+# Arguments: <bytes> (required)
+function bytes_to_human {
+	local bytes
+	[[ -z "${bytes:=${1:-}}" ]] && return 1
+	if [[ ${bytes} -lt 1024 ]]; then
+		echo "${bytes} B"
+	elif [[ ${bytes} -lt 1048576 ]]; then
+		echo $((bytes / 1024)) "KiB"
+	elif [[ ${bytes} -lt 1073741824 ]]; then
+		echo $((bytes / 1048576)) "MiB"
+	else
+		echo $((bytes / 1073741824)) "GiB"
+	fi
+	return 0
+}
 
-apptainer pull -F "${tmpfile}" "oras://${url}" 1>/dev/null 2>/dev/null &
-pidno="${!}"
-echo "PID: ${pidno}"
-sleep 5
-size="$(ghcr_get_size_for_oras_image "${url}")"
-precache_interactive "${pidno}" "${size}"
-
-wait  "${pidno}"
-rm -f "${tmpfile}"
+url="${1:-"oras://ghcr.io/maouw/ubuntu22.04_turbovnc:latest"}"
+ghcr_get_oras_sif "${url}"
