@@ -1072,11 +1072,12 @@ function cmd_create {
 
 	# Preload ORAS images if requested:
 	if [[ "${HYAKVNC_APPTAINER_GHCR_ORAS_PRELOAD:-1}" == 1 ]]; then
-		local oras_cache_dir
+		local oras_cache_dir oras_image_path
 		oras_cache_dir="${APPTAINER_CACHEDIR:-${HOME}/.apptainer/cache}/cache/oras"
 		if mkdir -p "${oras_cache_dir}"; then
 			log INFO "Preloading ORAS image for \"${HYAKVNC_APPTAINER_CONTAINER}\""
-			ghcr_get_oras_sif "${HYAKVNC_APPTAINER_CONTAINER}" "${APPTAINER_CACHEDIR}/cache/oras" || log ERROR "hyakvnc failed to preload ORAS image for \"${HYAKVNC_APPTAINER_CONTAINER:-}\" on its own. Apptainer will try to download the image by itself. If you don't want to preload ORAS images, use the --no-ghcr-oras-preload option."
+			oras_image_path="$(ghcr_get_oras_sif "${HYAKVNC_APPTAINER_CONTAINER}" "${APPTAINER_CACHEDIR}/cache/oras" 1>/dev/null || true)"
+			[[ -z "${oras_image_path:-}" ]] && log ERROR "hyakvnc failed to preload ORAS image for \"${HYAKVNC_APPTAINER_CONTAINER:-}\" on its own. Apptainer will try to download the image by itself. If you don't want to preload ORAS images, use the --no-ghcr-oras-preload option."
 		else
 			log ERROR "Failed to create directory ${oras_cache_dir}."
 		fi
@@ -1250,7 +1251,7 @@ function cmd_create {
 
 		break
 	done
-	
+
 	grep -q '^xstartup.turbovnc: Executing' <(timeout "${HYAKVNC_DEFAULT_TIMEOUT}" tail -f "${jobdir}/vnc/vnc.log" || true)
 
 	log INFO "VNC server started"
