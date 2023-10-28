@@ -724,7 +724,9 @@ function cleanup_launched_jobs_and_exit {
 
 # ghcr_get_oras_sif()
 # Get a GitHub Container Registry token for a given repository
-# Arguments: <url> (required)
+# Arguments:
+#  - url: URL to download from (required)
+#  - output_path: Directory or path to save the image to (optional)
 # Returns: 0 if successful, 1 if not or if an error occurred
 # Prints: The token to stdout
 function ghcr_get_oras_sif {
