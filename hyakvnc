@@ -865,7 +865,7 @@ EOF
 function cmd_create {
 	local apptainer_start_args=()
 	local sbatch_args=(--parsable)
-	local container_basename container_name start
+	local container_basename container_name start tailpid
 	# <TODO> If a job ID was specified, don't launch a new job
 	# <TODO> If a job ID was specified, check that the job exists and is running
 
@@ -1213,6 +1213,7 @@ function cmd_create {
 	if check_log_level "${HYAKVNC_LOG_LEVEL}" DEBUG; then
 		echo "Streaming log from ${jobdir}/slurm.log"
 		tail -n 1 -f "${jobdir}/slurm.log" --pid=$$ 2>/dev/null | sed --unbuffered 's/^/DEBUG: slurm.log: /' & # Follow the SLURM log file in the background
+		tailpid=$!
 	fi
 
 	case "${HYAKVNC_APPTAINER_CONTAINER}" in
@@ -1249,7 +1250,7 @@ function cmd_create {
 
 		break
 	done
-
+	
 	grep -q '^xstartup.turbovnc: Executing' <(timeout "${HYAKVNC_DEFAULT_TIMEOUT}" tail -f "${jobdir}/vnc/vnc.log" || true)
 
 	log INFO "VNC server started"
@@ -1260,7 +1261,7 @@ function cmd_create {
 	}
 	# Stop trapping the signals:
 	[[ -z "${XNOTRAP:-}" ]] && trap - SIGINT SIGTERM SIGHUP SIGABRT SIGQUIT ERR EXIT
-	kill -9 %tail 2>/dev/null # Stop following the SLURM log file
+	kill -9 "${tailpid}" 2>/dev/null # Stop following the SLURM log file
 	return 0
 }
 
