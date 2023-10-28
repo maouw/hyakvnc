@@ -159,6 +159,9 @@ Options:
     -t, --timelimit Slurm timelimit to use (default: 12:00:00)
     -g, --gpus  Number of GPUs to request (default: )
 
+Advanced options:
+    --no-ghcr-oras-preload  Don't preload ORAS GitHub Container Registry images
+
 Extra arguments:
     Any extra arguments will be passed to apptainer run.
     See 'apptainer run --help' for more information.
@@ -308,8 +311,8 @@ When you set an environment variable, it is advisable to surround the value with
 The following variables are available:
 
 - HYAKVNC_DIR: Local directory to store application data (default: `$HOME/.hyakvnc`)
-- HYAKVNC_CHECK_UPDATE_FREQUENCY: How often to check for updates in `[d]`ays or `[m]`inutes (default: `0` for every time. Use `1d` for daily, `10m` for every 10 minutes, etc. `-1` to disable.)
 - HYAKVNC_CONFIG_FILE: Configuration file to use (default: `$HYAKVNC_DIR/hyakvnc-config.env`)
+- HYAKVNC_CHECK_UPDATE_FREQUENCY: How often to check for updates in `[d]`ays or `[m]`inutes (default: `0` for every time. Use `1d` for daily, `10m` for every 10 minutes, etc. `-1` to disable.)
 - HYAKVNC_LOG_FILE: Log file to use (default: `$HYAKVNC_DIR/hyakvnc.log`)
 - HYAKVNC_LOG_LEVEL: Log level to use for interactive output (default: `INFO`)
 - HYAKVNC_LOG_FILE_LEVEL: Log level to use for log file output (default: `DEBUG`)
@@ -317,8 +320,9 @@ The following variables are available:
 - HYAKVNC_DEFAULT_TIMEOUT: Seconds to wait for most commands to complete before timing out (default: `30`)
 - HYAKVNC_VNC_PASSWORD: Password to use for new VNC sessions (default: `password`)
 - HYAKVNC_VNC_DISPLAY: VNC display to use (default: `:1`)
+- HYAKVNC_APPTAINER_CONTAINERS_DIR: Directory to look for apptainer containers (default: (none))
+- HYAKVNC_APPTAINER_GHCR_ORAS_PRELOAD: Whether to preload SIF files from the ORAS GitHub Container Registry (default: `0`)
 - HYAKVNC_APPTAINER_BIN: Name of apptainer binary (default: `apptainer`)
-- HYAKVNC_LOGIN_NODE_APPTAINER_BIN: Path to apptainer binary on login node(default: `/sw/apptainer/default/bin/apptainer`)
 - HYAKVNC_APPTAINER_CONTAINER: Path to container image to use (default: (none; set by `--container` option))
 - HYAKVNC_APPTAINER_APP_VNCSERVER: Name of app in the container that starts the VNC session (default: `vncserver`)
 - HYAKVNC_APPTAINER_APP_VNCKILL: Name of app that cleanly stops the VNC session in the container (default: `vnckill`)
