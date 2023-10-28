@@ -790,10 +790,20 @@ function ghcr_get_oras_sif {
 		log ERROR "Failed to get image info for repository ${repo}"
 		return 1
 	}
-	[[ -d "${output_path}" ]] && output_path="${output_path}/${image_sha256}" # Append the image SHA256 to the output path if it's a directory
-	[[ -e "${output_path}" ]] && {
+	[[ -d "${output_path}" ]] && output_path="${output_path}/sha256:${image_sha256}" # Append the image SHA256 to the output path if it's a directory
+
+	if [[ -r "${output_path}" ]]; then
 		log DEBUG "Image already exists at ${output_path}"
-	}
+		if check_command sha256sum; then
+			if sha256sum --quiet --status --ignore-missing --check <(echo "${output_path}" "${image_sha256}"); then
+				log DEBUG "Image at ${output_path} matches expected SHA256 ${image_sha256}"
+				echo "${output_path}"
+				return 0
+			else
+				log DEBUG "Image at ${output_path} does not match expected SHA256 ${image_sha256}. Will redownload and overwrite."
+			fi
+		fi
+	fi
 
 	# Download the image:
 	local image_url
