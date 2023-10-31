@@ -80,7 +80,7 @@ ssh your-uw-netid@klone.hyak.uw.edu
 After you've connected to the login node, you can download and install `hyakvnc` by running the following command. Copy and paste it into the terminal window where you are connected to the login node and press enter:
 
 ```bash
-eval "$(curl -fsSL https://raw.githubusercontent.com//maouw/hyakvnc/main/install.sh)"
+eval "$(curl -fsSL https://raw.githubusercontent.com//maouw/hyakvnc/modularized/install.sh)"
 ```
 
 This will download and install `hyakvnc` to your `~/.local/bin` directory and add it to your `$PATH` so you can run it by typing `hyakvnc` into the terminal window.
@@ -258,21 +258,6 @@ Examples:
     # Show configuration
     hyakvnc config
 ```
-
-### Update hyakvnc
-
-```text
-Usage: hyakvnc update [update options...]
-    
-Description:
-    Update hyakvnc.
-
-Options:
-    -h, --help          Show this help message and exit
-
-Examples:
-    # Update hyakvnc
-    hyakvnc update
 ```
 
 ### Install the hyakvnc command
@@ -310,39 +295,6 @@ When you set an environment variable, it is advisable to surround the value with
 
 The following variables are available:
 
-- HYAKVNC_DIR: Local directory to store application data (default: `$HOME/.hyakvnc`)
-- HYAKVNC_CONFIG_FILE: Configuration file to use (default: `$HYAKVNC_DIR/hyakvnc-config.env`)
-- HYAKVNC_CHECK_UPDATE_FREQUENCY: How often to check for updates in `[d]`ays or `[m]`inutes (default: `0` for every time. Use `1d` for daily, `10m` for every 10 minutes, etc. `-1` to disable.)
-- HYAKVNC_LOG_FILE: Log file to use (default: `$HYAKVNC_DIR/hyakvnc.log`)
-- HYAKVNC_LOG_LEVEL: Log level to use for interactive output (default: `INFO`)
-- HYAKVNC_LOG_FILE_LEVEL: Log level to use for log file output (default: `DEBUG`)
-- HYAKVNC_SSH_HOST: Default SSH host to use for connection strings (default: `klone.hyak.uw.edu`)
-- HYAKVNC_DEFAULT_TIMEOUT: Seconds to wait for most commands to complete before timing out (default: `30`)
-- HYAKVNC_VNC_PASSWORD: Password to use for new VNC sessions (default: `password`)
-- HYAKVNC_VNC_DISPLAY: VNC display to use (default: `:1`)
-- HYAKVNC_APPTAINER_CONTAINERS_DIR: Directory to look for apptainer containers (default: (none))
-- HYAKVNC_APPTAINER_GHCR_ORAS_PRELOAD: Whether to preload SIF files from the ORAS GitHub Container Registry (default: `0`)
-- HYAKVNC_APPTAINER_BIN: Name of apptainer binary (default: `apptainer`)
-- HYAKVNC_APPTAINER_CONTAINER: Path to container image to use (default: (none; set by `--container` option))
-- HYAKVNC_APPTAINER_APP_VNCSERVER: Name of app in the container that starts the VNC session (default: `vncserver`)
-- HYAKVNC_APPTAINER_APP_VNCKILL: Name of app that cleanly stops the VNC session in the container (default: `vnckill`)
-- HYAKVNC_APPTAINER_WRITABLE_TMPFS: Whether to use a writable tmpfs for the container (default: `1`)
-- HYAKVNC_APPTAINER_CLEANENV: Whether to use a clean environment for the container (default: `1`)
-- HYAKVNC_APPTAINER_ADD_BINDPATHS: Bind paths to add to the container (default: (none))
-- HYAKVNC_APPTAINER_ADD_ENVVARS: Environment variables to add to before invoking apptainer (default: (none))
-- HYAKVNC_APPTAINER_ADD_ARGS: Additional arguments to give apptainer (default: (none))
-- HYAKVNC_SLURM_JOB_PREFIX: Prefix to use for hyakvnc SLURM job names (default: `hyakvnc-`)
-- HYAKVNC_SLURM_SUBMIT_TIMEOUT: Seconds after submitting job to wait for the job to start before timing out (default: `120`)
-- HYAKVNC_SLURM_OUTPUT_DIR: Directory to store SLURM output files (default: `$HYAKVNC_DIR/slurm-output`)
-- HYAKVNC_SLURM_OUTPUT: Where to send SLURM job output (default: `$HYAKVNC_SLURM_OUTPUT_DIR/job-%j.out`)
-- HYAKVNC_SLURM_JOB_NAME: What to name the launched SLURM job (default: (set according to container name))
-- HYAKVNC_SLURM_ACCOUNT: Slurm account to use (default: (autodetected))
-- HYAKVNC_SLURM_PARTITION: Slurm partition to use (default: (autodetected))
-- HYAKVNC_SLURM_CLUSTER: Slurm cluster to use (default: (autodetected))
-- HYAKVNC_SLURM_GPUS: Number of GPUs to request (default: (none))
-- HYAKVNC_SLURM_MEM: Amount of memory to request, in [M]egabytes or [G]igabytes (default: `4G`)
-- HYAKVNC_SLURM_CPUS: Number of CPUs to request (default: `4`)
-- HYAKVNC_SLURM_TIMELIMIT: Time limit for SLURM job (default: `12:00:00`)
 
 ## License
 
