@@ -12,28 +12,18 @@ set -o nounset  # Exit if an unset variable is used
 [ -n "${XDEBUG:-}" ] && set -x # Set XDEBUG to print commands as they are executed
 # shellcheck disable=SC2292
 [ -n "${BASH_VERSION:-}" ] || { echo "Requires Bash"; exit 1; }
-
-# Check Bash version greater than 4:
-if [[ "${BASH_VERSINFO:-0}" -lt 4 ]]; then
-	echo "Requires Bash version > 4.x"
-	exit 1
-fi
-
-# Check Bash version 4.4 or greater:
-case "${BASH_VERSION:-0}" in
-	4*) if [[ "${BASH_VERSINFO[1]:-0}" -lt 4 ]]; then
-		echo "Requires Bash version > 4.x"
-		exit 1
-	fi ;;
-
-	*) ;;
-esac
+set -o pipefail # Use last non-zero exit code in a pipeline
+set -o errtrace # Ensure the error trap handler is inherited
+set -o nounset  # Exit if an unset variable is used
+SCRIPTDIR="${BASH_SOURCE[0]%/*}"
+# shellcheck source=_lib.bash
+source "${SCRIPTDIR}/_lib.bash"
 
 REMOTE_REPO=https://github.com/maouw/hyakvnc_apptainer
 TAG_FILTER='*.sif'
 git  ls-remote --tags --refs
 
-function main() {
+function select_remote_image() {
 	local height width tagdir found_tags
 	command -v whiptail >/dev/null 2>&1 || { echo >&2 "Requires whiptail. Exiting."; exit 1; }
 	command -v git >/dev/null 2>&1 || { echo >&2 "Requires git. Exiting."; exit 1; }

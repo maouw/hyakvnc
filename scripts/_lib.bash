@@ -554,7 +554,7 @@ function hyakvnc_config_init() {
 
 	# shellcheck disable=SC2046
 	export "${!HYAKVNC_@}" # Export all HYAKVNC_ variables
-	export "${!SBATCH_@}"  # Export all SBATCH_ variables
+	export "${!SBATCH_@}" # Export all SBATCH_ variables
 }
 
 # stop_hyakvnc_session()
