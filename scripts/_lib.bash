@@ -457,13 +457,13 @@ function get_squeue_job_status() {
 	}
 }
 
-# get_slurm_hyak_qos()
+# klone_read_qos()
 # Return the correct QOS on Hyak for the given partition on hyak
 # Arguments: <partition>
-function get_slurm_hyak_qos() {
+# shellcheck disable=SC2120
+function klone_read_qos() {
 	# Logic copied from hyakalloc's hyakqos.py:QosResource.__init__():
-	local qos_name qos_suffix
-	qos_name="${1:-}"
+	local qos_name="${1:-$(</dev/stdin)}"
 	[[ -z "${qos_name:-}" ]] && return 1
 	if [[ "${qos_name}" == *-* ]]; then
 		qos_suffix="${qos_name#*-}" # Extract portion after the first "-"
@@ -478,68 +478,83 @@ function get_slurm_hyak_qos() {
 	fi
 }
 
+function klone_list_hyak_partitions() {
+	local cluster account partitions max_count
+	local sacctmgr_args=(show --noheader --parsable2 --associations user "${USER}" format=qos)
+	while true; do
+		case "${1:-}" in
+			--cluster)
+				shift
+				cluster="${1:-}"
+				shift
+				;;
+			-A | --account)
+				shift
+				account="${1:-}"
+				shift
+				;;
+			-m | --max-count)
+				shift
+				max_count="${1:-}" # Number of partitions to list, 0 for all (passed to head -n -)
+				shift
+				;;
+			*) break ;;
+		esac
+	done
+	# Add filters if specified:
+	[[ -n "${account:-}" ]] && sacctmgr_args+=(where "account=${account}")
+	[[ -n "${cluster:-}" ]] && sacctmgr_args+=("cluster=${cluster}")
+
+	# Get partitions:
+	partitions="$(sacctmgr "${sacctmgr_args[@]}" | tr ',' '\n' | sort | uniq | head -n "${max_count:=0}" || true)"
+	[[ -n "${partitions:-}" ]] || return 1
+
+	# If running on klone, process the partition names as required (see `hyakalloc`)
+	if [[ "${cluster:-}" == "klone" ]]; then
+		partitions="$(echo "${partitions}" | klone_read_qos | sort | uniq || true)"
+		[[ -n "${partitions:-}" ]] || return 1
+	fi
+
+	# Return the partitions:
+	echo "${partitions}"
+	return 0
+}
+
 # hyakvnc_config_init()
 # Initialize the hyakvnc configuration
 # Arguments: None
 function hyakvnc_config_init() {
-	mkdir -p "${HYAKVNC_DIR}/jobs" "${HYAKVNC_SLURM_OUTPUT_DIR}" || {
-		log ERROR "Failed to create HYAKVNC jobs directory ${HYAKVNC_DIR}/jobs"
-		return 1
-	}
-
-	mkdir -p "${HYAKVNC_SLURM_OUTPUT_DIR}" || {
-		log ERROR "Failed to create HYAKVNC jobs directory ${HYAKVNC_DIR}/jobs"
-		return 1
-	}
-
-	if ! check_command squeue; then
-		log ERROR "SLURM is not installed! Can't initialize configuration."
-		return 1
-	fi
-
 	if check_slurm_running; then
-
 		# Set default SLURM cluster, account, and partition if empty:
-		if [[ -z "${HYAKVNC_SLURM_CLUSTER}" ]]; then
-			HYAKVNC_SLURM_CLUSTER="$(sacctmgr show cluster -nPs format=Cluster)" || {
+		if [[ -z "${HYAKVNC_SLURM_CLUSTER:-}" ]]; then
+			HYAKVNC_SLURM_CLUSTER="$(sacctmgr show cluster -nPs format=Cluster | head -n 1 || true)" || {
 				log ERROR "Failed to get default SLURM account"
 				return 1
 			}
+			SBATCH_CLUSTERS="${HYAKVNC_SLURM_CLUSTER:-}" && log TRACE "Set SBATCH_CLUSTERS=\"${SBATCH_CLUSTERS}\""
 		fi
-		export SBATCH_CLUSTERS="${HYAKVNC_SLURM_CLUSTER:-}" && log TRACE "Set SBATCH_CLUSTERS to ${SBATCH_CLUSTERS}"
 
-		if [[ -z "${HYAKVNC_SLURM_ACCOUNT}" ]]; then
+		if [[ -z "${HYAKVNC_SLURM_ACCOUNT:-}" ]]; then
 			# Get the default account for the cluster. Uses grep to get first non-whitespace line:
 			HYAKVNC_SLURM_ACCOUNT=$(sacctmgr show user -nPs "${USER}" format=defaultaccount where cluster="${HYAKVNC_SLURM_CLUSTER}" | grep -o -m 1 -E '\S+') || {
 				log ERROR "Failed to get default account"
 				return 1
 			}
 		fi
-		export SBATCH_ACCOUNT="${HYAKVNC_SLURM_ACCOUNT:-}" && log TRACE "Set SBATCH_ACCOUNT to ${SBATCH_ACCOUNT}"
+		SBATCH_ACCOUNT="${HYAKVNC_SLURM_ACCOUNT:-}" && log TRACE "Set SBATCH_ACCOUNT=\"${SBATCH_ACCOUNT:-}\""
 
 		if [[ -z "${HYAKVNC_SLURM_PARTITION:-}" ]]; then
-			HYAKVNC_SLURM_PARTITION=$(sacctmgr show -nPs user "${USER}" format=qos where account="${HYAKVNC_SLURM_ACCOUNT}" cluster="${HYAKVNC_SLURM_CLUSTER}" | grep -o -m 1 -E '\S+') || {
-				log ERROR "Failed to get SLURM partitions for user ${USER} on account ${HYAKVNC_SLURM_ACCOUNT} on cluster ${HYAKVNC_SLURM_CLUSTER}"
-				return 1
-			}
-			# Get the first partition:
-			HYAKVNC_SLURM_PARTITION="${HYAKVNC_SLURM_PARTITION%%,*}"
-			[[ -z "${HYAKVNC_SLURM_PARTITION}" ]] && {
-				log ERROR "Failed to get default SLURM partition"
-				return 1
-			}
-			HYAKVNC_SLURM_PARTITION=$(get_slurm_hyak_qos "${HYAKVNC_SLURM_PARTITION}") || {
-				log ERROR "Failed to get SLURM partition for ${HYAKVNC_SLURM_PARTITION}"
-				return 1
-			}
+			HYAKVNC_SLURM_PARTITION="$(klone_list_hyak_partitions --account "${HYAKVNC_SLURM_ACCOUNT:-}" --cluster "${HYAKVNC_SLURM_CLUSTER:-}" --max-count 1)" || { log ERROR "Failed to get SLURM partitions for user \"${USER:-}\" on account \"${HYAKVNC_SLURM_ACCOUNT:-}\" on cluster \"${HYAKVNC_SLURM_CLUSTER:-}\""; return 1; }
+
+			SBATCH_PARTITION="${HYAKVNC_SLURM_PARTITION:-}" && log TRACE "Set SBATCH_PARTITION=\"${SBATCH_PARTITION:-}\""
 		fi
-		export SBATCH_PARTITION="${HYAKVNC_SLURM_PARTITION:-}" && log TRACE "Set SBATCH_PARTITION to ${SBATCH_PARTITION}"
 	else
 		log WARN "SLURM is not running. Can't get default SLURM cluster, account, and partition."
 	fi
 
 	# shellcheck disable=SC2046
-	export $(compgen -v HYAKVNC_) # Export all HYAKVNC_ variables
+	export "${!HYAKVNC_@}" # Export all HYAKVNC_ variables
+	export "${!SBATCH_@}"  # Export all SBATCH_ variables
 }
 
 # stop_hyakvnc_session()

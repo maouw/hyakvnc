@@ -1,6 +1,15 @@
 name: Build documentation and installer
 "on":
   push:
+    branches:
+      - main
+      - test-workflows
+    paths:
+      - hyakvnc
+      - .build/README.j2.md
+      - .build/install.j2.sh
+      - .github/workflows/build-documentation.yml
+      - scripts/*.bash
 
 jobs:
   build-readme:
