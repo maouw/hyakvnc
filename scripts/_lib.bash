@@ -506,17 +506,55 @@ function klone_list_hyak_partitions() {
 	[[ -n "${cluster:-}" ]] && sacctmgr_args+=("cluster=${cluster}")
 
 	# Get partitions:
-	partitions="$(sacctmgr "${sacctmgr_args[@]}" | tr ',' '\n' | sort | uniq | head -n "${max_count:=0}" || true)"
+	partitions="$(sacctmgr "${sacctmgr_args[@]}" | tr ',' '\n' | sort | uniq | head -n "${max_count:-0}" || true)"
 	[[ -n "${partitions:-}" ]] || return 1
 
 	# If running on klone, process the partition names as required (see `hyakalloc`)
-	if [[ "${cluster:-}" == "klone" ]]; then
-		partitions="$(echo "${partitions}" | klone_read_qos | sort | uniq || true)"
-		[[ -n "${partitions:-}" ]] || return 1
+	if [[ "${cluster:-}" == "klone" ]] && [[ -n "${partitions:-}" ]]; then
+		partitions="$(echo "${partitions:-}" | klone_read_qos | sort | uniq || true)"
 	fi
 
 	# Return the partitions:
 	echo "${partitions}"
+	return 0
+}
+
+function slurm_list_clusters() {
+	local clusters max_count
+	local sacctmgr_args=(show --noheader --parsable2 --associations format=Cluster)
+	while true; do
+		case "${1:-}" in
+			-m | --max-count)
+				shift
+				max_count="${1:-}" # Number of partitions to list, 0 for all (passed to head -n -)
+				shift
+				;;
+			*) break ;;
+		esac
+	done
+	clusters="$(sacctmgr "${sacctmgr_args[@]}" | tr ',' '\n' | sort | uniq | head -n "${max_count:-0}" || true)"
+	echo "${clusters:-}"
+	return 0
+}
+
+function slurm_get_default_account() {
+	local cluster default_account
+	local sacctmgr_args=(show --noheader --parsable2 --associations format=defaultaccount)
+	[[ -n "${cluster:-}" ]] && sacctmgr_args+=("cluster=${cluster}")
+
+	while true; do
+		case "${1:-}" in
+			-c | --cluster)
+				shift
+				cluster="${1:-}"
+				shift
+				;;
+			*) break ;;
+		esac
+	done
+
+	default_account="$(sacctmgr "${sacctmgr_args[@]}" | tr ',' '\n' | sort | uniq | head -n 1 || true)"
+	echo "${default_account:-}"
 	return 0
 }
 
