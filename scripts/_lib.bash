@@ -37,6 +37,7 @@ HYAKVNC_LOG_FILE_LEVEL="${HYAKVNC_LOG_FILE_LEVEL:-DEBUG}"             # %% Log l
 HYAKVNC_SSH_HOST="${HYAKVNC_SSH_HOST:-klone.hyak.uw.edu}"             # %% Default SSH host to use for connection strings (default: `klone.hyak.uw.edu`)
 HYAKVNC_DEFAULT_TIMEOUT="${HYAKVNC_DEFAULT_TIMEOUT:-30}"              # %% Seconds to wait for most commands to complete before timing out (default: `30`)
 
+HYAKVNC_MODE="${HYAKVNC_MODE:-}" # %% Mode to use (default: <autodetected>. Valid values: `slurm`, `local`)
 # ## VNC preferences:
 HYAKVNC_VNC_PASSWORD="${HYAKVNC_VNC_PASSWORD:-password}" # %% Password to use for new VNC sessions (default: `password`)
 HYAKVNC_VNC_DISPLAY="${HYAKVNC_VNC_DISPLAY:-:10}"        # %% VNC display to use (default: `:1`)
@@ -459,10 +460,10 @@ function get_squeue_job_status() {
 
 # klone_read_qos()
 # Return the correct QOS on Hyak for the given partition on hyak
+# Logic copied from hyakalloc's hyakqos.py:QosResource.__init__():
 # Arguments: <partition>
 # shellcheck disable=SC2120
 function klone_read_qos() {
-	# Logic copied from hyakalloc's hyakqos.py:QosResource.__init__():
 	local qos_name="${1:-$(</dev/stdin)}"
 	[[ -z "${qos_name:-}" ]] && return 1
 	if [[ "${qos_name}" == *-* ]]; then
@@ -478,7 +479,8 @@ function klone_read_qos() {
 	fi
 }
 
-function klone_list_hyak_partitions() {
+function slurm_list_partitions() {
+	check_command sacctmgr ERROR || return 1
 	local cluster account partitions max_count
 	local sacctmgr_args=(show --noheader --parsable2 --associations user "${USER}" format=qos)
 	while true; do
@@ -520,6 +522,7 @@ function klone_list_hyak_partitions() {
 }
 
 function slurm_list_clusters() {
+	check_command sacctmgr ERROR || return 1
 	local clusters max_count
 	local sacctmgr_args=(show --noheader --parsable2 --associations format=Cluster)
 	while true; do
@@ -538,6 +541,7 @@ function slurm_list_clusters() {
 }
 
 function slurm_get_default_account() {
+	check_command sacctmgr ERROR || return 1
 	local cluster default_account
 	local sacctmgr_args=(show --noheader --parsable2 --associations format=defaultaccount)
 	[[ -n "${cluster:-}" ]] && sacctmgr_args+=("cluster=${cluster}")
@@ -562,37 +566,55 @@ function slurm_get_default_account() {
 # Initialize the hyakvnc configuration
 # Arguments: None
 function hyakvnc_config_init() {
-	if check_slurm_running; then
+	# Create the hyakvnc directory if it doesn't exist:
+	mkdir -p "${HYAKVNC_DIR}/jobs" || {
+		log ERROR "Failed to create directory ${HYAKVNC_DIR}"
+		return 1
+	}
+
+	if [[ -z "${HYAKVNC_MODE:-}" ]]; then
+		if check_slurm_running; then
+			HYAKVNC_MODE="slurm"
+		elif check_command apptainer; then
+			HYAKVNC_MODE="local"
+			log DEBUG "Found Apptainer - Running hyakvnc in local mode"
+		else
+			log ERROR "Neither SLURM nor Apptainer are installed. Can't run hyakvnc because there's nowhere to launch the container."
+			return 1
+		fi
+	fi
+
+	if [[ "${HYAKVNC_MODE:-}" == "slurm" ]]; then
+		check_slurm_running || { log ERROR "SLURM is not running. Can't run hyakvnc in SLURM mode.";  return 1; }
+
 		# Set default SLURM cluster, account, and partition if empty:
 		if [[ -z "${HYAKVNC_SLURM_CLUSTER:-}" ]]; then
-			HYAKVNC_SLURM_CLUSTER="$(sacctmgr show cluster -nPs format=Cluster | head -n 1 || true)" || {
-				log ERROR "Failed to get default SLURM account"
-				return 1
-			}
+			HYAKVNC_SLURM_CLUSTER="$(slurm_list_clusters --max-count 1 || true)"
+			[[ -z "${HYAKVNC_SLURM_CLUSTER:-}" ]] && { log ERROR "Failed to get default SLURM cluster"; return 1; }
 			SBATCH_CLUSTERS="${HYAKVNC_SLURM_CLUSTER:-}" && log TRACE "Set SBATCH_CLUSTERS=\"${SBATCH_CLUSTERS}\""
 		fi
 
 		if [[ -z "${HYAKVNC_SLURM_ACCOUNT:-}" ]]; then
-			# Get the default account for the cluster. Uses grep to get first non-whitespace line:
-			HYAKVNC_SLURM_ACCOUNT=$(sacctmgr show user -nPs "${USER}" format=defaultaccount where cluster="${HYAKVNC_SLURM_CLUSTER}" | grep -o -m 1 -E '\S+') || {
-				log ERROR "Failed to get default account"
-				return 1
-			}
+			HYAKVNC_SLURM_ACCOUNT="$(slurm_get_default_account --cluster "${HYAKVNC_SLURM_CLUSTER:-}" || true)"
+			[[ -z "${HYAKVNC_SLURM_ACCOUNT:-}" ]] && { log ERROR "Failed to get default SLURM account"; return 1; }
+			SBATCH_ACCOUNT="${HYAKVNC_SLURM_ACCOUNT:-}" && log TRACE "Set SBATCH_ACCOUNT=\"${SBATCH_ACCOUNT:-}\""
 		fi
-		SBATCH_ACCOUNT="${HYAKVNC_SLURM_ACCOUNT:-}" && log TRACE "Set SBATCH_ACCOUNT=\"${SBATCH_ACCOUNT:-}\""
 
 		if [[ -z "${HYAKVNC_SLURM_PARTITION:-}" ]]; then
-			HYAKVNC_SLURM_PARTITION="$(klone_list_hyak_partitions --account "${HYAKVNC_SLURM_ACCOUNT:-}" --cluster "${HYAKVNC_SLURM_CLUSTER:-}" --max-count 1)" || { log ERROR "Failed to get SLURM partitions for user \"${USER:-}\" on account \"${HYAKVNC_SLURM_ACCOUNT:-}\" on cluster \"${HYAKVNC_SLURM_CLUSTER:-}\""; return 1; }
-
+			HYAKVNC_SLURM_PARTITION="$(slurm_list_partitions --account "${HYAKVNC_SLURM_ACCOUNT:-}" --cluster "${HYAKVNC_SLURM_CLUSTER:-}" --max-count 1 || true)" ||
+				{ log ERROR "Failed to get SLURM partitions for user \"${USER:-}\" on account \"${HYAKVNC_SLURM_ACCOUNT:-}\" on cluster \"${HYAKVNC_SLURM_CLUSTER:-}\""; return 1; }
 			SBATCH_PARTITION="${HYAKVNC_SLURM_PARTITION:-}" && log TRACE "Set SBATCH_PARTITION=\"${SBATCH_PARTITION:-}\""
 		fi
+	elif [[ "${HYAKVNC_MODE:-}" == "local" ]]; then
+		check_command apptainer ERROR || { log ERROR "Apptainer is not installed. Can't run hyakvnc in local mode."; return 1; }
 	else
-		log WARN "SLURM is not running. Can't get default SLURM cluster, account, and partition."
+		log ERROR "Invalid HYAKVNC_MODE: \"${HYAKVNC_MODE:-}\""
+		return 1
 	fi
 
-	# shellcheck disable=SC2046
 	export "${!HYAKVNC_@}" # Export all HYAKVNC_ variables
 	export "${!SBATCH_@}" # Export all SBATCH_ variables
+	return 0
 }
 
 # stop_hyakvnc_session()
