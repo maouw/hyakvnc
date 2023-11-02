@@ -59,19 +59,22 @@ function main() {
 			hyakvnc_config_init || log WARN "Could't initialize config automatically" # Don't exit if config can't be initialized (e.g., not running on SLURM)
 			;;
 		*)
-			hyakvnc_config_init || exit 1                                   # Fill in default values for config variables or exit if config can't be initialized
+			hyakvnc_config_init || exit 1                                 # Fill in default values for config variables or exit if config can't be initialized
 			hyakvnc_autoupdate "${orig_args:-}" || log TRACE "Didn't autoupdate" # Don't exit if didn't autoupdate
 			;;
 	esac
 
-	export "${!HYAKVNC_@}" # Export all variables starting with HYAKVNC_
-	export "${!SBATCH_@}" # Export all variables starting with SBATCH_
-	export "${!SLURM_@}" # Export all variables starting with SLURM_
+	[[ -n "${!HYAKVNC_@}" ]] && export "${!HYAKVNC_@}" # Export all HYAKVNC_ variables
+	[[ -n "${!SBATCH_@}" ]] && export "${!SBATCH_@}" # Export all SBATCH_ variables
+	[[ -n "${!SLURM_@}" ]] && export "${!SLURM_@}" # Export all SLURM_ variables
 
 	exec "${SCRIPTDIR}/${action}.bash" "$@"
 }
 
 # shellcheck disable=SC2046
-export "${!HYAKVNC_@}" # Export all variables starting with HYAKVNC_
+
+[[ -n "${!HYAKVNC_@}"  ]] && export "${!HYAKVNC_@}" # Export all HYAKVNC_ variables
+[[ -n "${!SBATCH_@}"  ]] && export "${!SBATCH_@}" # Export all SBATCH_ variables
+[[ -n "${!SLURM_@}"  ]] && export "${!SLURM_@}" # Export all SLURM_ variables
 
 main "$@"

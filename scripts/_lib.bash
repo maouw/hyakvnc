@@ -3,6 +3,7 @@
 
 export HYAKVNC_VERSION="0.3.1"
 
+set -o pipefail # Use last non-zero exit code in a pipeline
 # shellcheck disable=SC2292
 [ -n "${XDEBUG:-}" ] && set -x # Set XDEBUG to print commands as they are executed
 # shellcheck disable=SC2292
@@ -23,8 +24,6 @@ case "${BASH_VERSION:-0}" in
 
 	*) ;;
 esac
-
-set -o allexport # Export all variables
 
 # ## App preferences:
 HYAKVNC_DIR="${HYAKVNC_DIR:-${HOME}/.hyakvnc}"          # %% Local directory to store application data (default: `$HOME/.hyakvnc`)
@@ -79,18 +78,55 @@ HYAKVNC_SLURM_TIMELIMIT="${HYAKVNC_SLURM_TIMELIMIT:-${SBATCH_TIMELIMIT:-12:00:00
 # Arguments: None
 function hyakvnc_load_config() {
 	[[ -r "${HYAKVNC_CONFIG_FILE:-}" ]] || return 0 # Return if config file doesn't exist
+	shopt -s restricted_shell # Enable restricted shell mode
+	shopt -s interactive_comments # Enable interactive comments
+	# shellcheck source=/dev/null # Ignore non-constant source
+	source "${HYAKVNC_CONFIG_FILE}" || return 1
+	shopt -u restricted_shell # Disable restricted shell mode
+	
+	# # Read each line of the parsed config file and export the variable:
+	# while IFS=$'\n' read -r line; do
+	# 	# Get the variable name by removing everything after the equals sign. Uses nameref to allow indirect assignment (see https://gnu.org/software/bash/manual/html_node/Shell-Parameters.html):
+	# 	declare -n varref="${line%%=*}"
+	# 	# Evaluate the right-hand side of the equals sign:
+	# 	varref="$(bash --restricted --posix -c "echo ${line#*=}" || true)"
+	# 	# Export the variable:
+	# 	export "${!varref}"
+	# 	# If DEBUG is not 0, print the variable:
+	# 	[[ "${DEBUG:-0}" != 0 ]] && echo "Loaded variable from \"CONFIG_FILE\": ${!varref}=(${varref})" >&2
+	# done < <(sed -E 's/^\s*//;  /^[^#=]+=.*/!d;  s/^([^=\s]+)\s+=/\1=/;' "${HYAKVNC_CONFIG_FILE}" || true) # Parse config file, ignoring comments and blank lines, removing leading whitespace, and removing whitespace before (but not after) the equals sign
+}
 
-	# Read each line of the parsed config file and export the variable:
-	while IFS=$'\n' read -r line; do
-		# Get the variable name by removing everything after the equals sign. Uses nameref to allow indirect assignment (see https://gnu.org/software/bash/manual/html_node/Shell-Parameters.html):
-		declare -n varref="${line%%=*}"
-		# Evaluate the right-hand side of the equals sign:
-		varref="$(bash --restricted --posix -c "echo ${line#*=}" || true)"
-		# Export the variable:
-		export "${!varref}"
-		# If DEBUG is not 0, print the variable:
-		[[ "${DEBUG:-0}" != 0 ]] && echo "Loaded variable from \"CONFIG_FILE\": ${!varref}=(${varref})" >&2
-	done < <(sed -E 's/^\s*//;  /^[^#=]+=.*/!d;  s/^([^=\s]+)\s+=/\1=/;' "${HYAKVNC_CONFIG_FILE}" || true) # Parse config file, ignoring comments and blank lines, removing leading whitespace, and removing whitespace before (but not after) the equals sign
+# shellcheck disable=SC2120 # Ignore unused arguments
+function hyakvnc_describe_config() {
+	check_command sed ERROR || return 1
+
+	sed -E '/^HYAKVNC_.*#\s*%%/!d; s/\s*\(default:.*$//; s/=.*(#\s*%%)\s*(.+)/=\2/g;' "${1:-${BASH_SOURCE[0]}}"
+}
+
+# shellcheck disable=SC2034 # Unused variables left for documentation purposes
+declare -A Hyakvnc_Config_Descriptions # Declare Hyakvnc_Config_Descriptions array
+function hyakvnc_init_config_descriptions() {
+	while IFS= read -r line; do
+		key="${line%%=*}" value="${line##*=}"
+		# shellcheck disable=SC2034 # Unused variables left for documentation purposes
+		Hyakvnc_Config_Descriptions["${key}"]="${value}"
+	done < <(hyakvnc_describe_config || true)
+}
+
+# check_command()
+# Check if a command is available
+# Arguments:
+# - <command> - The command to check
+# - <loglevel> <message> - Passed to log if the command is not available (optional)
+function check_command() {
+	if [[ -z "${1:-}" ]] || ! command -v "${1}" >/dev/null 2>&1; then
+		if [[ $# -gt 1 ]]; then
+			log "${@:2}" || echo >&2 "${@:2}" || true # If log fails, print to stderr
+			return 1
+		fi
+	fi
+	return 0
 }
 
 # ## Log levels for log() function:
@@ -151,11 +187,7 @@ function log() {
 		echo >&2 "log(): No log level set"
 		return 1
 	}
-
-	[[ -z "${level:=${1:-}}" ]] && {
-		echo >&2 "log(): No log level set"
-		return 1
-	}
+	shift
 
 	[[ -z "${levelno:=${Log_Levels[${level}]}}" ]] && {
 		echo >&2 "log(): Unknown log level: ${level}"
@@ -177,11 +209,11 @@ function log() {
 	colorno="${Log_Level_Colors[${level}]}"
 
 	if [[ "${levelno}" -ge "${Log_Levels[DEBUG]}" ]] || [[ "${levelno}" -le "${Log_Levels[CRITICAL]}" ]]; then
-		ctx="[ ${BASH_SOURCE[1]##*/}:${BASH_LINENO[1]} in ${FUNCNAME[1]:-}() ]"
+		ctx=" [${BASH_SOURCE[1]##*/}:${BASH_LINENO[1]} in ${FUNCNAME[1]:-}()]"
 	fi
 
 	if [[ "${curlogfilelevelno}" -ge "${Log_Levels[DEBUG]}" ]] || [[ "${curlogfilelevelno}" -le "${Log_Levels[CRITICAL]}" ]]; then
-		logfilectx="[ ${BASH_SOURCE[1]##*/}:${BASH_LINENO[1]} in ${FUNCNAME[1]:-}() ]"
+		logfilectx=" [${BASH_SOURCE[1]##*/}:${BASH_LINENO[1]} in ${FUNCNAME[1]:-}()]"
 	fi
 
 	if [[ "${curlevelno}" -ge "${levelno}" ]]; then
@@ -193,19 +225,15 @@ function log() {
 		fi
 
 		# Print the rest of the message without colors:
-		printf "%s" "${*-}" >&2 || true
-
-		# Add newline if not continuing a line:
-		[[ -z "${nonewline:-}" ]] && { printf "\n" >&2 || true; }
+		printf "%s%b" "${*-}" "${nonewline:-\n}" >&2 || true
 	fi
 
 	if [[ "${curlogfilelevelno}" -ge "${levelno}" ]]; then
-		# If we're in a terminal, use colors:
 		if [[ -z "${continueline:-}" ]]; then
-			printf "%s%s: " "${level:-}" "${logfilectx:- }" >&2 >>"${HYAKVNC_LOG_FILE:-/dev/null}" || true
+			printf "%s %s%s: " "$(date +'%F %T')" "${level:-}" "${logfilectx:- }" >&2 >>"${HYAKVNC_LOG_FILE:-/dev/null}" || true
 		fi
 
-		printf "%s%s" "${*-}" "${newline:-}" >&2 >&2 >>"${HYAKVNC_LOG_FILE:-/dev/null}" || true
+		printf "%s%b" "${*-}%s" "${nonewline:-\n}" >&2 >>"${HYAKVNC_LOG_FILE:-/dev/null}" || true
 	fi
 }
 
@@ -385,19 +413,6 @@ function hyakvnc_autoupdate() {
 
 # ## General utility functions:
 
-# check_command()
-# Check if a command is available
-# Arguments:
-# - <command> - The command to check
-# - <loglevel> <message> - Passed to log if the command is not available (optional)
-function check_command() {
-	if [[ -z "${1:-}" ]] || ! command -v "${1}" >/dev/null 2>&1; then
-		[[ $# -gt 1 ]] && log "${@:2}"
-		return 1
-	fi
-	return 0
-}
-
 # ## SLURM utility functons:
 
 # check_slurm_running {
@@ -412,7 +427,8 @@ function check_slurm_running() {
 # Arguments: <node range>
 function expand_slurm_node_range() {
 	[[ -z "${1:-}" ]] && return 1
-	result=$(scontrol show hostnames --oneliner "${1}" | grep -oE '^.+$' | tr ' ' '\n') || return 1
+	result="$(scontrol show hostnames --oneliner "${1}" | grep -oE '^.+$' | tr ' ' '\n' || true)"
+	[[ -z "${result:-}" ]] && return 1
 	echo "${result}" && return 0
 }
 
@@ -583,9 +599,17 @@ function hyakvnc_config_init() {
 			return 1
 		fi
 	fi
+	if [[ -z "${HYAKVNC_APPTAINER_ADD_BINDPATHS:-}" ]]; then
+		local d
+		for d in /gscratch /data; do
+			[[ -d "${d:-}" ]] && HYAKVNC_APPTAINER_ADD_BINDPATHS+="${d},"
+		done
+		HYAKVNC_APPTAINER_ADD_BINDPATHS="${HYAKVNC_APPTAINER_ADD_BINDPATHS%,}" # Remove trailing comma
+		log TRACE "Set HYAKVNC_APPTAINER_ADD_BINDPATHS=\"${HYAKVNC_APPTAINER_ADD_BINDPATHS}\""
+	fi
 
 	if [[ "${HYAKVNC_MODE:-}" == "slurm" ]]; then
-		check_slurm_running || { log ERROR "SLURM is not running. Can't run hyakvnc in SLURM mode.";  return 1; }
+		check_slurm_running || { log ERROR "SLURM is not running. Can't run hyakvnc in SLURM mode."; return 1; }
 
 		# Set default SLURM cluster, account, and partition if empty:
 		if [[ -z "${HYAKVNC_SLURM_CLUSTER:-}" ]]; then
@@ -605,15 +629,28 @@ function hyakvnc_config_init() {
 				{ log ERROR "Failed to get SLURM partitions for user \"${USER:-}\" on account \"${HYAKVNC_SLURM_ACCOUNT:-}\" on cluster \"${HYAKVNC_SLURM_CLUSTER:-}\""; return 1; }
 			SBATCH_PARTITION="${HYAKVNC_SLURM_PARTITION:-}" && log TRACE "Set SBATCH_PARTITION=\"${SBATCH_PARTITION:-}\""
 		fi
-	elif [[ "${HYAKVNC_MODE:-}" == "local" ]]; then
+
+		if [[ -z "${HYAKVNC_APPTAINER_ADD_BINDPATHS:-}" ]]; then
+			local d
+			for d in /gscratch /data; do
+				[[ -d "${d}" ]] && HYAKVNC_APPTAINER_ADD_BINDPATHS+="${d},"
+			done
+			HYAKVNC_APPTAINER_ADD_BINDPATHS="${HYAKVNC_APPTAINER_ADD_BINDPATHS%,}" # Remove trailing comma
+			log TRACE "Set HYAKVNC_APPTAINER_ADD_BINDPATHS=\"${HYAKVNC_APPTAINER_ADD_BINDPATHS}\""
+		fi
+
+	elif
+		[[ "${HYAKVNC_MODE:-}" == "local" ]]; then
 		check_command apptainer ERROR || { log ERROR "Apptainer is not installed. Can't run hyakvnc in local mode."; return 1; }
 	else
 		log ERROR "Invalid HYAKVNC_MODE: \"${HYAKVNC_MODE:-}\""
 		return 1
 	fi
 
-	export "${!HYAKVNC_@}" # Export all HYAKVNC_ variables
-	export "${!SBATCH_@}" # Export all SBATCH_ variables
+	[[ -n "${!HYAKVNC_@}" ]] && export "${!HYAKVNC_@}" # Export all HYAKVNC_ variables
+	[[ -n "${!SBATCH_@}" ]] && export "${!SBATCH_@}" # Export all SBATCH_ variables
+	[[ -n "${!SLURM_@}" ]] && export "${!SLURM_@}" # Export all SLURM_ variables
+
 	return 0
 }
 
@@ -748,8 +785,8 @@ function print_connection_info() {
 		log ERROR "Socket file ${socket_path} is not a socket"
 		return 1
 	}
-
-	[[ -n "${node}" ]] || node=$(squeue -h -j "${jobid}" -o '%N' | grep -o -m 1 -E '\S+') || log DEBUG "Failed to get node for job ${jobid} from squeue"
+	[[ -n "${node:-}" ]] || node=$(squeue -h -j "${jobid}" -o '%N' | grep -o -m 1 -E '\S+')
+	[[ -n "${node:-}" ]] || log DEBUG "Failed to get node for job ${jobid} from squeue"
 	if [[ -r "${HYAKVNC_DIR}/jobs/${jobid}/vnc/hostname" ]] && launch_hostname=$(cat "${HYAKVNC_DIR}/jobs/${jobid}/vnc/hostname" 2>/dev/null || true) && [[ -n "${launch_hostname:-}" ]]; then
 		[[ "${node}" = "${launch_hostname}" ]] || log WARN "Node for ${jobid} from hostname file (${HYAKVNC_DIR}/jobs/${jobid}/vnc/hostname) (${launch_hostname:-}) does not match node from squeue (${node}). Was the job restarted?"
 		[[ -z "${node}" ]] && {
@@ -811,6 +848,5 @@ EOF
 
 }
 
+hyakvnc_init_config_descriptions # Initialize Hyakvnc_Config_Descriptions array
 hyakvnc_load_config # Load configuration
-
-set +o allexport # Export all variables
