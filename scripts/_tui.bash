@@ -9,12 +9,6 @@ set -o errtrace # Ensure the error trap handler is inherited
 set -o nounset  # Exit if an unset variable is used
 
 # shellcheck disable=SC2292
-[ -n "${XDEBUG:-}" ] && set -x # Set XDEBUG to print commands as they are executed
-# shellcheck disable=SC2292
-[ -n "${BASH_VERSION:-}" ] || { echo "Requires Bash"; exit 1; }
-set -o pipefail # Use last non-zero exit code in a pipeline
-set -o errtrace # Ensure the error trap handler is inherited
-set -o nounset  # Exit if an unset variable is used
 SCRIPTDIR="${BASH_SOURCE[0]%/*}"
 # shellcheck source=_lib.bash
 source "${SCRIPTDIR}/_lib.bash"
@@ -339,8 +333,9 @@ hyakvnc_config() {
 		7 "Set number of GPUs ${HYAKVNC_SLURM_GPUS:+(${HYAKVNC_SLURM_GPUS})}"
 		8 "Add bind paths ${HYAKVNC_APPTAINER_ADD_BINDPATHS:+(${HYAKVNC_APPTAINER_ADD_BINDPATHS})}"
 		9 "Advanced options"
-		10 "Launch Session"
-		11 "Exit"
+		10 "Save configuration"
+		11 "Launch Session"
+		12 "Exit"
 	)
 
 	while true; do
@@ -401,7 +396,8 @@ hyakvnc_config() {
 			10)
 				CMD="echo create -c ${HYAKVNC_APPTAINER_CONTAINER:-}"
 				whiptail --msgbox "Generated Command:\n\n${CMD}" "${height}" "${width}"
-				if (whiptail --yesno "Execute the command now?" 8 78 3>&1 1>&2 2>&3); then
+				if (whiptail --yesno "Execute		10 "Save configuration"
+ the command now?" 8 78 3>&1 1>&2 2>&3); then
 					msg="$(eval "${CMD}")"
 					echo "${msg}"
 					echo
