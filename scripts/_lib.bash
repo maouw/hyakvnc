@@ -27,7 +27,7 @@ esac
 
 # ## App preferences:
 HYAKVNC_DIR="${HYAKVNC_DIR:-${HOME}/.hyakvnc}"          # %% Local directory to store application data (default: `$HOME/.hyakvnc`)
-HYAKVNC_CONFIG_FILE="${HYAKVNC_DIR}/hyakvnc-config.env" # %% Configuration file to use (default: `$HYAKVNC_DIR/hyakvnc-config.env`)
+HYAKVNC_CONFIG_FILE="${HYAKVNC_DIR}/hyakvnc-config.sh" # %% Configuration file to use (default: `$HYAKVNC_DIR/hyakvnc-config.env`)
 HYAKVNC_REPO_DIR="${HYAKVNC_REPO_DIR:-${HYAKVNC_DIR}/hyakvnc}"        # Local directory to store git repository (default: `$HYAKVNC_DIR/hyakvnc`)
 HYAKVNC_CHECK_UPDATE_FREQUENCY="${HYAKVNC_CHECK_UPDATE_FREQUENCY:-0}" # %% How often to check for updates in `[d]`ays or `[m]`inutes (default: `0` for every time. Use `1d` for daily, `10m` for every 10 minutes, etc. `-1` to disable.)
 HYAKVNC_LOG_FILE="${HYAKVNC_LOG_FILE:-${HYAKVNC_DIR}/hyakvnc.log}"    # %% Log file to use (default: `$HYAKVNC_DIR/hyakvnc.log`)
@@ -35,8 +35,9 @@ HYAKVNC_LOG_LEVEL="${HYAKVNC_LOG_LEVEL:-INFO}"                        # %% Log l
 HYAKVNC_LOG_FILE_LEVEL="${HYAKVNC_LOG_FILE_LEVEL:-DEBUG}"             # %% Log level to use for log file output (default: `DEBUG`)
 HYAKVNC_SSH_HOST="${HYAKVNC_SSH_HOST:-klone.hyak.uw.edu}"             # %% Default SSH host to use for connection strings (default: `klone.hyak.uw.edu`)
 HYAKVNC_DEFAULT_TIMEOUT="${HYAKVNC_DEFAULT_TIMEOUT:-30}"              # %% Seconds to wait for most commands to complete before timing out (default: `30`)
-
 HYAKVNC_MODE="${HYAKVNC_MODE:-}" # %% Mode to use (default: <autodetected>. Valid values: `slurm`, `local`)
+HYAKVNC_DISABLE_TUI="${HYAKVNC_DISABLE_TUI:-0}" # %% Whether to disable the wizard interface (default: `0`)
+
 # ## VNC preferences:
 HYAKVNC_VNC_PASSWORD="${HYAKVNC_VNC_PASSWORD:-password}" # %% Password to use for new VNC sessions (default: `password`)
 HYAKVNC_VNC_DISPLAY="${HYAKVNC_VNC_DISPLAY:-:10}"        # %% VNC display to use (default: `:1`)
@@ -80,8 +81,9 @@ function hyakvnc_load_config() {
 	[[ -r "${HYAKVNC_CONFIG_FILE:-}" ]] || return 0 # Return if config file doesn't exist
 	shopt -s restricted_shell # Enable restricted shell mode
 	shopt -s interactive_comments # Enable interactive comments
-	# shellcheck source=/dev/null # Ignore non-constant source
-	source "${HYAKVNC_CONFIG_FILE}" || return 1
+	# shellcheck disable=SC2292
+	# shellcheck source=hyakvnc-config.sh
+	source "${HYAKVNC_CONFIG_FILE}"
 	shopt -u restricted_shell # Disable restricted shell mode
 	
 	# # Read each line of the parsed config file and export the variable:
@@ -225,7 +227,7 @@ function log() {
 		fi
 
 		# Print the rest of the message without colors:
-		printf "%s%b" "${*-}" "${nonewline:-\n}" >&2 || true
+		printf "%s%b" "${*-}" "${newline}" >&2 || true
 	fi
 
 	if [[ "${curlogfilelevelno}" -ge "${levelno}" ]]; then
@@ -233,7 +235,7 @@ function log() {
 			printf "%s %s%s: " "$(date +'%F %T')" "${level:-}" "${logfilectx:- }" >&2 >>"${HYAKVNC_LOG_FILE:-/dev/null}" || true
 		fi
 
-		printf "%s%b" "${*-}%s" "${nonewline:-\n}" >&2 >>"${HYAKVNC_LOG_FILE:-/dev/null}" || true
+		printf "%s%b" "${*-}%s" "${newline}" >&2 >>"${HYAKVNC_LOG_FILE:-/dev/null}" || true
 	fi
 }
 
@@ -846,6 +848,18 @@ EOF
 	echo
 	echo "=========="
 
+}
+
+function ui_screen_dims() {
+	local width height
+	read -r -t 1 height width < <(stty size 2>/dev/null || true) 2>/dev/null || true
+	[[ -n "${height:-}" ]] || height="$(tput lines)" || height="${LINES:-40}"
+	[[ -n "${width:-}" ]] || width="$(tput cols)" || width="${COLUMNS:-78}"
+	((width <= 120)) || width=120 # Limit to 80 characters per line if over 120 characters
+	((height <= 40)) || height=40 # Limit to 40 lines if over 40 lines
+	((width >= 9)) || width=9 # Set minimum width
+	((height >= 7)) || height=7 # Set minimum height
+	echo "${height} ${width}"
 }
 
 hyakvnc_init_config_descriptions # Initialize Hyakvnc_Config_Descriptions array

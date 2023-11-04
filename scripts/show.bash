@@ -63,16 +63,37 @@ function cmd_show() {
 	done
 
 	if [[ -z "${jobid:-}" ]]; then
-		if [[ -t 0 ]]; then
-			echo "Reading available job IDs to select from a menu"
-			running_jobids=$(squeue --noheader --format '%j %i' --states RUNNING | grep -E "^${HYAKVNC_SLURM_JOB_PREFIX}" | grep -oE '[0-9]+$') || {
-				log WARN "Found no running jobs with names that match the prefix ${HYAKVNC_SLURM_JOB_PREFIX}"
-				return 1
-			}
-			PS3="Enter a number: "
-			select jobid in ${running_jobids}; do
-				echo "Selected job: ${jobid}" && echo && break
-			done
+		running_jobids="$(squeue --noheader --format '%j %i' --states RUNNING | grep -E "^${HYAKVNC_SLURM_JOB_PREFIX}" | grep -oE '[0-9]+$' || true)"
+		[[ -z "${running_jobids}" ]] && {
+			log WARN "Found no active hyakvnc jobs (couldn't find any running SLURM jobs with names that match the prefix \"${HYAKVNC_SLURM_JOB_PREFIX}\")"
+			return 1
+		}
+
+		if [[ -t 0 ]]; then # stdin is a terminal
+
+			if [[ "${HYAKVNC_DISABLE_TUI:-0}" == "1" ]] && check_command whiptail; then
+				local jobid_menu=()
+				while read -r jobid; do
+					jobid_menu+=("${jobid}" "")
+				done <<<"${running_jobids}"
+				local height width menu_height
+				read -r height width < <(ui_screen_dims || true)
+				menu_height=$((height - 8))
+				[[ "${menu_height}" -lt 0 ]] && menu_height=2
+				jobid="$(whiptail --title "Select a job" --menu "Select a job to show connection information for" "${height}" "${width}" "${menu_height}" "${jobid_menu[@]}" 3>&1 1>&2 2>&3)" || true
+				[[ -z "${jobid:-}" ]] && {
+					local msg="No job selected! Exiting."
+					whiptail --title "No job selected" --msgbox "${msg}" "${height}" "${width}" || true
+					log WARN "No job selected! Exiting."
+					return 1
+				}
+			else
+				# shellcheck disable=SC2086
+				PS3="Enter a number: "
+				select jobid in ${running_jobids}; do
+					echo "Selected job: ${jobid}" && echo && break
+				done
+			fi
 		fi
 	fi
 	[[ -z "${jobid}" ]] && {
