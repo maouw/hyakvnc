@@ -437,30 +437,74 @@ function expand_slurm_node_range() {
 # get_slurm_job_info()
 # Get info about a SLURM job, given a list of job IDs
 # Arguments: <user> [<jobid>]
+#!/bin/bash
+
+# shellcheck disable=SC2034
 function get_slurm_job_info() {
-	[[ $# -eq 0 ]] && {
-		log ERROR "User or Job ID must be specified"
-		return 1
-	}
+	local -n result_dct_ref
+	local -a field_names
+	local -a squeue_args=()
+	local sep=' '
+	local format='%i %j %a %P %u %T %M %l %C %m %D %N'
+	local -i ref_is_set=0
+	# Parse arguments 
+	while true; do
+		case "${1:-}" in
+			--sep)
+				[[ -n "${2:-}" ]] || {
+					echo "ERROR: --sep requires an argument" >&2
+					return 1
+				}
+				shift
+				sep="${1}"
+				;;
+			--ref)
+				[[ -n "${2:-}" ]] || {
+					echo "ERROR: --ref requires an argument" >&2
+					return 1
+				}
+				shift
+				result_dct_ref="${1}"
+				ref_is_set=1
+				;;
+			--format)
+				[[ -n "${2:-}" ]] || {
+					echo "ERROR: --format requires an argument" >&2
+					return 1
+				}
+				shift
+				format="${1}"
+				;;
+			*)
+				break
+				;;
+		esac
+		shift
+	done
+	squeue_args+=("--format=${format}")
+	local line i=0
 
-	local user="${1:-${USER:-}}"
-	[[ -z "${user}" ]] && {
-		log ERROR "User must be specified"
-		return 1
-	}
-	shift
-	local squeue_format_fields='%i %j %a %P %u %T %M %l %C %m %D %N'
-	squeue_format_fields="${squeue_format_fields// /\t}" # Replace spaces with tab
-	local squeue_args=(--noheader --user "${user}" --format "${squeue_format_fields}")
+	while read -r line; do
+		(( i++ == 0 )) && {
+			# First line contains header
+			# Split header into fields
+			IFS="${sep}" read -r -a field_names <<< "${line}"
+			continue
+		}
+		local -A job_info
 
-	local jobids="${*:-}"
-	if [[ -n "${jobids}" ]]; then
-		jobids="${jobids//,/ }" # Replace commas with spaces
-		squeue_args+=(--job "${jobids}")
-	fi
-	squeue "${squeue_args[@]}"
+		# Split line into fields
+		IFS="${sep}" read -r -a fields <<< "${line}"
+		#readarray -d "${sep}" -t fields <<< "${line}"
+
+		for f in "${!field_names[@]}"; do
+			job_info["${field_names[${f}]}"]="${fields[${f}]}"
+		done
+		job_info_str="$(declare -p job_info)"
+		[[ "${ref_is_set}" -eq 1 ]] && result_dct_ref["JOBID"]="${job_info_str#*=}" || printf "%s\n" "${job_info_str#*=}"
+	done < <(squeue "${squeue_args[@]}" "${@}" || true)
+	return 0	
 }
-
 # get_squeue_job_status()
 # Get the status of a SLURM job, given a job ID
 # Arguments: <jobid>
