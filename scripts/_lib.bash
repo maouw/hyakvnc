@@ -32,7 +32,7 @@ HYAKVNC_VNC_DISPLAY="${HYAKVNC_VNC_DISPLAY:-:10}"        # %% VNC display to use
 HYAKVNC_MACOS_VNC_VIEWER_BUNDLEIDS="${HYAKVNC_MACOS_VNC_VIEWER_BUNDLEIDS:-com.turbovnc.vncviewer.VncViewer com.realvnc.vncviewer com.tigervnc.vncviewer}" # macOS bundle identifiers for VNC viewer executables (default: `com.turbovnc.vncviewer com.realvnc.vncviewer com.tigervnc.vncviewer`)
 
 # ## Apptainer preferences:
-HYAKVNC_APPTAINER_CONTAINERS_DIR="${HYAKVNC_APPTAINER_CONTAINERS_DIR:-}"                               # %% Directory to look for apptainer containers (default: (none))
+HYAKVNC_CONTAINERDIR="${HYAKVNC_CONTAINERDIR:-}"                               # %% Directory to look for apptainer containers (default: (none))
 HYAKVNC_APPTAINER_GHCR_ORAS_PRELOAD="${HYAKVNC_APPTAINER_GHCR_ORAS_PRELOAD:-1}"                        # %% Whether to preload SIF files from the ORAS GitHub Container Registry (default: `0`)
 HYAKVNC_APPTAINER_BIN="${HYAKVNC_APPTAINER_BIN:-apptainer}"                                            # %% Name of apptainer binary (default: `apptainer`)
 HYAKVNC_APPTAINER_CONTAINER="${HYAKVNC_APPTAINER_CONTAINER:-}"                                         # %% Path to container image to use (default: (none; set by `--container` option))
@@ -66,8 +66,8 @@ HYAKVNC_SLURM_TIMELIMIT="${HYAKVNC_SLURM_TIMELIMIT:-${SBATCH_TIMELIMIT:-12:00:00
 # Arguments: None
 function hyakvnc_load_config() {
 	[[ -r "${HYAKVNC_CONFIG_FILE:-}" ]] || return 0 # Return if config file doesn't exist
-	shopt -s restricted_shell                       # Enable restricted shell mode
-	shopt -s interactive_comments                   # Enable interactive comments
+	shopt -s restricted_shell                     # Enable restricted shell mode
+	shopt -s interactive_comments                 # Enable interactive comments
 	# shellcheck disable=SC2292
 	# shellcheck source=hyakvnc-config.sh
 	source "${HYAKVNC_CONFIG_FILE}"
@@ -331,16 +331,16 @@ function hyakvnc_autoupdate() {
 		local find_m_arg=()
 
 		case "${update_frequency_unit:=d}" in
-		d)
-			find_m_arg+=(-mtime "+${update_frequency_value:=0}")
-			;;
-		m)
-			find_m_arg+=(-mmin "+${update_frequency_value:=0}")
-			;;
-		*)
-			log ERROR "Invalid update frequency unit: ${update_frequency_unit}. Please use [d]ays or [m]inutes."
-			return 1
-			;;
+			d)
+				find_m_arg+=(-mtime "+${update_frequency_value:=0}")
+				;;
+			m)
+				find_m_arg+=(-mmin "+${update_frequency_value:=0}")
+				;;
+			*)
+				log ERROR "Invalid update frequency unit: ${update_frequency_unit}. Please use [d]ays or [m]inutes."
+				return 1
+				;;
 		esac
 
 		log DEBUG "Checking if ${HYAKVNC_REPO_DIR}/.last_update_check is older than ${update_frequency_value}${update_frequency_unit}..."
@@ -359,40 +359,37 @@ function hyakvnc_autoupdate() {
 	}
 
 	if [[ -t 0 ]]; then # Check if we're running interactively
-		while true; do     # Ask user if they want to update
+		while true; do   # Ask user if they want to update
 			local choice
 			read -r -p "Would you like to update hyakvnc? [y/n] [x to disable]: " choice
 			case "${choice}" in
-			y | Y | yes | Yes)
-				log INFO "Updating hyakvnc..."
-				hyakvnc_pull_updates || {
-					log WARN "Didn't update hyakvnc"
+				y | Y | yes | Yes)
+					log INFO "Updating hyakvnc..."
+					hyakvnc_pull_updates || {
+						log WARN "Didn't update hyakvnc"
+						return 1
+					}
+					log INFO "Successfully updated hyakvnc. Restarting..."
+					echo
+					exec "${0}" "${@}" # Restart hyakvnc
+					;;
+				n | N | no | No)
+					log INFO "Not updating hyakvnc"
 					return 1
-				}
-				log INFO "Successfully updated hyakvnc. Restarting..."
-				echo
-				exec "${0}" "${@}" # Restart hyakvnc
-				;;
-			n | N | no | No)
-				log INFO "Not updating hyakvnc"
-				return 1
-				;;
-			x | X)
-				log INFO "Disabling update checks"
-				export HYAKVNC_CHECK_UPDATE_FREQUENCY="-1"
+					;;
+				x | X)
+					log INFO "Disabling update checks"
+					export HYAKVNC_CHECK_UPDATE_FREQUENCY="-1"
 
-
-
-
-				if [[ -n "${HYAKVNC_CONFIG_FILE:-}" ]]; then
-					touch "${HYAKVNC_CONFIG_FILE}" && echo 'HYAKVNC_CHECK_UPDATE_FREQUENCY=-1' >>"${HYAKVNC_CONFIG_FILE}"
-					log INFO "Set HYAKVNC_CHECK_UPDATE_FREQUENCY=-1 in ${HYAKVNC_CONFIG_FILE}"
-				fi
-				return 1
-				;;
-			*)
-				echo "Please enter y, n, or x"
-				;;
+					if [[ -n "${HYAKVNC_CONFIG_FILE:-}" ]]; then
+						touch "${HYAKVNC_CONFIG_FILE}" && echo 'HYAKVNC_CHECK_UPDATE_FREQUENCY=-1' >>"${HYAKVNC_CONFIG_FILE}"
+						log INFO "Set HYAKVNC_CHECK_UPDATE_FREQUENCY=-1 in ${HYAKVNC_CONFIG_FILE}"
+					fi
+					return 1
+					;;
+				*)
+					echo "Please enter y, n, or x"
+					;;
 			esac
 		done
 	else
@@ -428,28 +425,72 @@ function expand_slurm_node_range() {
 # get_slurm_job_info()
 # Get info about a SLURM job, given a list of job IDs
 # Arguments: <user> [<jobid>]
+
+# shellcheck disable=SC2034
 function get_slurm_job_info() {
-	[[ $# -eq 0 ]] && {
-		log ERROR "User or Job ID must be specified"
-		return 1
-	}
+	local -n result_dct_ref
+	local -a field_names
+	local -a squeue_args=()
+	local sep=' '
+	local format='%i %j %a %P %u %T %M %l %C %m %D %N'
+	local -i ref_is_set=0
+	# Parse arguments
+	while true; do
+		case "${1:-}" in
+			--sep)
+				[[ -n "${2:-}" ]] || {
+					echo "ERROR: --sep requires an argument" >&2
+					return 1
+				}
+				shift
+				sep="${1}"
+				;;
+			--ref)
+				[[ -n "${2:-}" ]] || {
+					echo "ERROR: --ref requires an argument" >&2
+					return 1
+				}
+				shift
+				result_dct_ref="${1}"
+				ref_is_set=1
+				;;
+			--format)
+				[[ -n "${2:-}" ]] || {
+					echo "ERROR: --format requires an argument" >&2
+					return 1
+				}
+				shift
+				format="${1}"
+				;;
+			*)
+				break
+				;;
+		esac
+		shift
+	done
+	squeue_args+=("--format=${format}")
+	local line i=0
 
-	local user="${1:-${USER:-}}"
-	[[ -z "${user}" ]] && {
-		log ERROR "User must be specified"
-		return 1
-	}
-	shift
-	local squeue_format_fields='%i %j %a %P %u %T %M %l %C %m %D %N'
-	squeue_format_fields="${squeue_format_fields// /\t}" # Replace spaces with tab
-	local squeue_args=(--noheader --user "${user}" --format "${squeue_format_fields}")
+	while read -r line; do
+		((i++ == 0)) && {
+			# First line contains header
+			# Split header into fields
+			IFS="${sep}" read -r -a field_names <<<"${line}"
+			continue
+		}
+		local -A job_info
 
-	local jobids="${*:-}"
-	if [[ -n "${jobids}" ]]; then
-		jobids="${jobids//,/ }" # Replace commas with spaces
-		squeue_args+=(--job "${jobids}")
-	fi
-	squeue "${squeue_args[@]}"
+		# Split line into fields
+		IFS="${sep}" read -r -a fields <<<"${line}"
+		#readarray -d "${sep}" -t fields <<< "${line}"
+
+		for f in "${!field_names[@]}"; do
+			job_info["${field_names[${f}]}"]="${fields[${f}]}"
+		done
+		job_info_str="$(declare -p job_info)"
+		[[ "${ref_is_set}" -eq 1 ]] && result_dct_ref["JOBID"]="${job_info_str#*=}" || printf "%s\n" "${job_info_str#*=}"
+	done < <(squeue "${squeue_args[@]}" "${@}" || true)
+	return 0
 }
 
 # get_squeue_job_status()
@@ -494,22 +535,22 @@ function slurm_list_partitions() {
 	local sacctmgr_args=(show --noheader --parsable2 --associations user "${USER}" format=qos)
 	while true; do
 		case "${1:-}" in
-		--cluster)
-			shift
-			cluster="${1:-}"
-			shift
-			;;
-		-A | --account)
-			shift
-			account="${1:-}"
-			shift
-			;;
-		-m | --max-count)
-			shift
-			max_count="${1:-}" # Number of partitions to list, 0 for all (passed to head -n -)
-			shift
-			;;
-		*) break ;;
+			--cluster)
+				shift
+				cluster="${1:-}"
+				shift
+				;;
+			-A | --account)
+				shift
+				account="${1:-}"
+				shift
+				;;
+			-m | --max-count)
+				shift
+				max_count="${1:-}" # Number of partitions to list, 0 for all (passed to head -n -)
+				shift
+				;;
+			*) break ;;
 		esac
 	done
 	# Add filters if specified:
@@ -536,12 +577,12 @@ function slurm_list_clusters() {
 	local sacctmgr_args=(show --noheader --parsable2 --associations format=Cluster)
 	while true; do
 		case "${1:-}" in
-		-m | --max-count)
-			shift
-			max_count="${1:-}" # Number of partitions to list, 0 for all (passed to head -n -)
-			shift
-			;;
-		*) break ;;
+			-m | --max-count)
+				shift
+				max_count="${1:-}" # Number of partitions to list, 0 for all (passed to head -n -)
+				shift
+				;;
+			*) break ;;
 		esac
 	done
 	clusters="$(sacctmgr "${sacctmgr_args[@]}" | tr ',' '\n' | sort | uniq | head -n "${max_count:-0}" || true)"
@@ -557,12 +598,12 @@ function slurm_get_default_account() {
 
 	while true; do
 		case "${1:-}" in
-		-c | --cluster)
-			shift
-			cluster="${1:-}"
-			shift
-			;;
-		*) break ;;
+			-c | --cluster)
+				shift
+				cluster="${1:-}"
+				shift
+				;;
+			*) break ;;
 		esac
 	done
 
@@ -649,47 +690,46 @@ function hyakvnc_config_init() {
 	fi
 
 	[[ -n "${!HYAKVNC_@}" ]] && export "${!HYAKVNC_@}" # Export all HYAKVNC_ variables
-	[[ -n "${!SBATCH_@}" ]] && export "${!SBATCH_@}"   # Export all SBATCH_ variables
-	[[ -n "${!SLURM_@}" ]] && export "${!SLURM_@}"     # Export all SLURM_ variables
+	[[ -n "${!SBATCH_@}" ]] && export "${!SBATCH_@}" # Export all SBATCH_ variables
+	[[ -n "${!SLURM_@}" ]] && export "${!SLURM_@}"   # Export all SLURM_ variables
 
 	return 0
 }
-
 
 function slurm_list_running_hyakvnc() {
 	check_command squeue ERROR || return 1
 	local jobid remove_prefix="${HYAKVNC_SLURM_JOB_PREFIX:-}"
 	local squeue_args=(--me --noheader)
-	squeue_args+=(--format '%i %T %n %M %j')                   # jobid, node, state, runtime, jobname
+	squeue_args+=(--format '%i %T %n %M %j')                 # jobid, node, state, runtime, jobname
 	[[ -n "${jobid:-}" ]] && squeue_args+=(--job "${jobid}") # Only check status of provided SLURM job ID (optional)
 
 	local -n p_jobid
 
 	while true; do
 		case ${1:-} in
-		-h | --help)
-			help_status
-			return 0
-			;;
-		-j | --jobid) # Job ID to attach to (optional)
-			[[ -z "${jobid:=${2:-}}" ]] && {
-				log ERROR "No job ID provided for option ${1:-}"
+			-h | --help)
+				help_status
+				return 0
+				;;
+			-j | --jobid) # Job ID to attach to (optional)
+				[[ -z "${jobid:=${2:-}}" ]] && {
+					log ERROR "No job ID provided for option ${1:-}"
+					return 1
+				}
+				shift
+				;;
+			--no-remove-prefix)
+				remove_prefix=""
+				shift
+
+				;;
+			-*)
+				log ERROR "Unknown option for ${FUNCNAME[0]}: ${1:-}"
 				return 1
-			}
-			shift 
-			;;
-		--no-remove-prefix)
-			remove_prefix=""
-			shift
-		
-			;;
-		-*)
-			log ERROR "Unknown option for ${FUNCNAME[0]}: ${1:-}"
-			return 1
-			;;
-		*)
-			break
-			;;
+				;;
+			*)
+				break
+				;;
 		esac
 		shift
 	done
@@ -704,18 +744,18 @@ function stop_hyakvnc_session() {
 	local jobid should_cancel no_rm
 	while true; do
 		case ${1:-} in
-		-c | --cancel)
-			shift
-			should_cancel=1
-			;;
-		--no-rm) # Don't remove the job directory
-			shift
-			no_rm=1
-			;;
-		*)
-			jobid="${1:-}"
-			break
-			;;
+			-c | --cancel)
+				shift
+				should_cancel=1
+				;;
+			--no-rm) # Don't remove the job directory
+				shift
+				no_rm=1
+				;;
+			*)
+				jobid="${1:-}"
+				break
+				;;
 		esac
 	done
 
@@ -770,33 +810,33 @@ function print_connection_info() {
 	# Parse arguments:
 	while true; do
 		case ${1:-} in
-		-j | --jobid)
-			shift
-			jobid="${1:-}"
-			shift
-			;;
-		-p | --viewer-port)
-			shift
-			viewer_port="${1:-viewer_port}"
-			shift
-			;;
-		-n | --node)
-			shift
-			node="${1:-}"
-			shift
-			;;
-		-s | --ssh-host)
-			shift
-			ssh_host="${1:-}"
-			shift
-			;;
-		-*)
-			log ERROR "Unknown option for print_connection_info: ${1:-}\n"
-			return 1
-			;;
-		*)
-			break
-			;;
+			-j | --jobid)
+				shift
+				jobid="${1:-}"
+				shift
+				;;
+			-p | --viewer-port)
+				shift
+				viewer_port="${1:-viewer_port}"
+				shift
+				;;
+			-n | --node)
+				shift
+				node="${1:-}"
+				shift
+				;;
+			-s | --ssh-host)
+				shift
+				ssh_host="${1:-}"
+				shift
+				;;
+			-*)
+				log ERROR "Unknown option for print_connection_info: ${1:-}\n"
+				return 1
+				;;
+			*)
+				break
+				;;
 		esac
 	done
 
@@ -898,8 +938,8 @@ function ui_screen_dims() {
 	[[ -n "${width:-}" ]] || width="$(tput cols)" || width="${COLUMNS:-78}"
 	((width <= 120)) || width=120 # Limit to 80 characters per line if over 120 characters
 	((height <= 40)) || height=40 # Limit to 40 lines if over 40 lines
-	((width >= 9)) || width=9     # Set minimum width
-	((height >= 7)) || height=7   # Set minimum height
+	((width >= 9)) || width=9   # Set minimum width
+	((height >= 7)) || height=7 # Set minimum height
 	echo "${height} ${width}"
 }
 _HYAKVNC_LIB_LOADED=1
