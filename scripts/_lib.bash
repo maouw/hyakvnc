@@ -1,33 +1,20 @@
 #! /usr/bin/env bash
-# hyakvnc utility functions
+
+# shellcheck disable=SC2292
+[ "${_HYAKVNC_LIB_LOADED:-0}" != "0" ] && return 0 # Return if already loaded
+
+# shellcheck disable=SC2292
+[ -z "${BASH_VERSION:-}" ] || [ "${BASH_VERSINFO:-0}" -lt 4 ] || [ "${BASH_VERSINFO[0]}" = 4 ] && [ "${BASH_VERSINFO[1]:-0}" -lt 4 ] && { echo >&2 "Requires Bash version > 4.x"; exit 1; }
+
+set -o pipefail # Use last non-zero exit code in a pipeline
+set -o errtrace # Ensure the error trap handler is inherited
+set -o nounset  # Exit if an unset variable is used
 
 export HYAKVNC_VERSION="0.3.1"
 
-set -o pipefail # Use last non-zero exit code in a pipeline
-# shellcheck disable=SC2292
-[ -n "${XDEBUG:-}" ] && set -x # Set XDEBUG to print commands as they are executed
-# shellcheck disable=SC2292
-[ -n "${BASH_VERSION:-}" ] || { echo "Requires Bash"; exit 1; }
-
-# Check Bash version greater than 4:
-if [[ "${BASH_VERSINFO:-0}" -lt 4 ]]; then
-	echo "Requires Bash version > 4.x"
-	exit 1
-fi
-
-# Check Bash version 4.4 or greater:
-case "${BASH_VERSION:-0}" in
-	4*) if [[ "${BASH_VERSINFO[1]:-0}" -lt 4 ]]; then
-		echo "Requires Bash version > 4.x"
-		exit 1
-	fi ;;
-
-	*) ;;
-esac
-
 # ## App preferences:
-HYAKVNC_DIR="${HYAKVNC_DIR:-${HOME}/.hyakvnc}"          # %% Local directory to store application data (default: `$HOME/.hyakvnc`)
-HYAKVNC_CONFIG_FILE="${HYAKVNC_DIR}/hyakvnc-config.sh" # %% Configuration file to use (default: `$HYAKVNC_DIR/hyakvnc-config.env`)
+HYAKVNC_DIR="${HYAKVNC_DIR:-${HOME}/.hyakvnc}"                        # %% Local directory to store application data (default: `$HOME/.hyakvnc`)
+HYAKVNC_CONFIG_FILE="${HYAKVNC_DIR}/hyakvnc-config.sh"                # %% Configuration file to use (default: `$HYAKVNC_DIR/hyakvnc-config.env`)
 HYAKVNC_REPO_DIR="${HYAKVNC_REPO_DIR:-${HYAKVNC_DIR}/hyakvnc}"        # Local directory to store git repository (default: `$HYAKVNC_DIR/hyakvnc`)
 HYAKVNC_CHECK_UPDATE_FREQUENCY="${HYAKVNC_CHECK_UPDATE_FREQUENCY:-0}" # %% How often to check for updates in `[d]`ays or `[m]`inutes (default: `0` for every time. Use `1d` for daily, `10m` for every 10 minutes, etc. `-1` to disable.)
 HYAKVNC_LOG_FILE="${HYAKVNC_LOG_FILE:-${HYAKVNC_DIR}/hyakvnc.log}"    # %% Log file to use (default: `$HYAKVNC_DIR/hyakvnc.log`)
@@ -35,8 +22,8 @@ HYAKVNC_LOG_LEVEL="${HYAKVNC_LOG_LEVEL:-INFO}"                        # %% Log l
 HYAKVNC_LOG_FILE_LEVEL="${HYAKVNC_LOG_FILE_LEVEL:-DEBUG}"             # %% Log level to use for log file output (default: `DEBUG`)
 HYAKVNC_SSH_HOST="${HYAKVNC_SSH_HOST:-klone.hyak.uw.edu}"             # %% Default SSH host to use for connection strings (default: `klone.hyak.uw.edu`)
 HYAKVNC_DEFAULT_TIMEOUT="${HYAKVNC_DEFAULT_TIMEOUT:-30}"              # %% Seconds to wait for most commands to complete before timing out (default: `30`)
-HYAKVNC_MODE="${HYAKVNC_MODE:-}" # %% Mode to use (default: <autodetected>. Valid values: `slurm`, `local`)
-HYAKVNC_DISABLE_TUI="${HYAKVNC_DISABLE_TUI:-0}" # %% Whether to disable the wizard interface (default: `0`)
+HYAKVNC_MODE="${HYAKVNC_MODE:-}"                                      # %% Mode to use (default: <autodetected>. Valid values: `slurm`, `local`)
+HYAKVNC_DISABLE_TUI="${HYAKVNC_DISABLE_TUI:-0}"                       # %% Whether to disable the wizard interface (default: `0`)
 
 # ## VNC preferences:
 HYAKVNC_VNC_PASSWORD="${HYAKVNC_VNC_PASSWORD:-password}" # %% Password to use for new VNC sessions (default: `password`)
@@ -79,13 +66,13 @@ HYAKVNC_SLURM_TIMELIMIT="${HYAKVNC_SLURM_TIMELIMIT:-${SBATCH_TIMELIMIT:-12:00:00
 # Arguments: None
 function hyakvnc_load_config() {
 	[[ -r "${HYAKVNC_CONFIG_FILE:-}" ]] || return 0 # Return if config file doesn't exist
-	shopt -s restricted_shell # Enable restricted shell mode
-	shopt -s interactive_comments # Enable interactive comments
+	shopt -s restricted_shell                       # Enable restricted shell mode
+	shopt -s interactive_comments                   # Enable interactive comments
 	# shellcheck disable=SC2292
 	# shellcheck source=hyakvnc-config.sh
 	source "${HYAKVNC_CONFIG_FILE}"
 	shopt -u restricted_shell # Disable restricted shell mode
-	
+
 	# # Read each line of the parsed config file and export the variable:
 	# while IFS=$'\n' read -r line; do
 	# 	# Get the variable name by removing everything after the equals sign. Uses nameref to allow indirect assignment (see https://gnu.org/software/bash/manual/html_node/Shell-Parameters.html):
@@ -344,16 +331,16 @@ function hyakvnc_autoupdate() {
 		local find_m_arg=()
 
 		case "${update_frequency_unit:=d}" in
-			d)
-				find_m_arg+=(-mtime "+${update_frequency_value:=0}")
-				;;
-			m)
-				find_m_arg+=(-mmin "+${update_frequency_value:=0}")
-				;;
-			*)
-				log ERROR "Invalid update frequency unit: ${update_frequency_unit}. Please use [d]ays or [m]inutes."
-				return 1
-				;;
+		d)
+			find_m_arg+=(-mtime "+${update_frequency_value:=0}")
+			;;
+		m)
+			find_m_arg+=(-mmin "+${update_frequency_value:=0}")
+			;;
+		*)
+			log ERROR "Invalid update frequency unit: ${update_frequency_unit}. Please use [d]ays or [m]inutes."
+			return 1
+			;;
 		esac
 
 		log DEBUG "Checking if ${HYAKVNC_REPO_DIR}/.last_update_check is older than ${update_frequency_value}${update_frequency_unit}..."
@@ -372,36 +359,40 @@ function hyakvnc_autoupdate() {
 	}
 
 	if [[ -t 0 ]]; then # Check if we're running interactively
-		while true; do # Ask user if they want to update
+		while true; do     # Ask user if they want to update
 			local choice
 			read -r -p "Would you like to update hyakvnc? [y/n] [x to disable]: " choice
 			case "${choice}" in
-				y | Y | yes | Yes)
-					log INFO "Updating hyakvnc..."
-					hyakvnc_pull_updates || {
-						log WARN "Didn't update hyakvnc"
-						return 1
-					}
-					log INFO "Successfully updated hyakvnc. Restarting..."
-					echo
-					exec "${0}" "${@}" # Restart hyakvnc
-					;;
-				n | N | no | No)
-					log INFO "Not updating hyakvnc"
+			y | Y | yes | Yes)
+				log INFO "Updating hyakvnc..."
+				hyakvnc_pull_updates || {
+					log WARN "Didn't update hyakvnc"
 					return 1
-					;;
-				x | X)
-					log INFO "Disabling update checks"
-					export HYAKVNC_CHECK_UPDATE_FREQUENCY="-1"
-					if [[ -n "${HYAKVNC_CONFIG_FILE:-}" ]]; then
-						touch "${HYAKVNC_CONFIG_FILE}" && echo 'HYAKVNC_CHECK_UPDATE_FREQUENCY=-1' >>"${HYAKVNC_CONFIG_FILE}"
-						log INFO "Set HYAKVNC_CHECK_UPDATE_FREQUENCY=-1 in ${HYAKVNC_CONFIG_FILE}"
-					fi
-					return 1
-					;;
-				*)
-					echo "Please enter y, n, or x"
-					;;
+				}
+				log INFO "Successfully updated hyakvnc. Restarting..."
+				echo
+				exec "${0}" "${@}" # Restart hyakvnc
+				;;
+			n | N | no | No)
+				log INFO "Not updating hyakvnc"
+				return 1
+				;;
+			x | X)
+				log INFO "Disabling update checks"
+				export HYAKVNC_CHECK_UPDATE_FREQUENCY="-1"
+
+
+
+
+				if [[ -n "${HYAKVNC_CONFIG_FILE:-}" ]]; then
+					touch "${HYAKVNC_CONFIG_FILE}" && echo 'HYAKVNC_CHECK_UPDATE_FREQUENCY=-1' >>"${HYAKVNC_CONFIG_FILE}"
+					log INFO "Set HYAKVNC_CHECK_UPDATE_FREQUENCY=-1 in ${HYAKVNC_CONFIG_FILE}"
+				fi
+				return 1
+				;;
+			*)
+				echo "Please enter y, n, or x"
+				;;
 			esac
 		done
 	else
@@ -503,22 +494,22 @@ function slurm_list_partitions() {
 	local sacctmgr_args=(show --noheader --parsable2 --associations user "${USER}" format=qos)
 	while true; do
 		case "${1:-}" in
-			--cluster)
-				shift
-				cluster="${1:-}"
-				shift
-				;;
-			-A | --account)
-				shift
-				account="${1:-}"
-				shift
-				;;
-			-m | --max-count)
-				shift
-				max_count="${1:-}" # Number of partitions to list, 0 for all (passed to head -n -)
-				shift
-				;;
-			*) break ;;
+		--cluster)
+			shift
+			cluster="${1:-}"
+			shift
+			;;
+		-A | --account)
+			shift
+			account="${1:-}"
+			shift
+			;;
+		-m | --max-count)
+			shift
+			max_count="${1:-}" # Number of partitions to list, 0 for all (passed to head -n -)
+			shift
+			;;
+		*) break ;;
 		esac
 	done
 	# Add filters if specified:
@@ -545,12 +536,12 @@ function slurm_list_clusters() {
 	local sacctmgr_args=(show --noheader --parsable2 --associations format=Cluster)
 	while true; do
 		case "${1:-}" in
-			-m | --max-count)
-				shift
-				max_count="${1:-}" # Number of partitions to list, 0 for all (passed to head -n -)
-				shift
-				;;
-			*) break ;;
+		-m | --max-count)
+			shift
+			max_count="${1:-}" # Number of partitions to list, 0 for all (passed to head -n -)
+			shift
+			;;
+		*) break ;;
 		esac
 	done
 	clusters="$(sacctmgr "${sacctmgr_args[@]}" | tr ',' '\n' | sort | uniq | head -n "${max_count:-0}" || true)"
@@ -566,18 +557,26 @@ function slurm_get_default_account() {
 
 	while true; do
 		case "${1:-}" in
-			-c | --cluster)
-				shift
-				cluster="${1:-}"
-				shift
-				;;
-			*) break ;;
+		-c | --cluster)
+			shift
+			cluster="${1:-}"
+			shift
+			;;
+		*) break ;;
 		esac
 	done
 
 	default_account="$(sacctmgr "${sacctmgr_args[@]}" | tr ',' '\n' | sort | uniq | head -n 1 || true)"
 	echo "${default_account:-}"
 	return 0
+}
+
+# slurm_expand_node_range()
+# Expand a SLURM node range to a list of nodes
+function slurm_expand_node_range() {
+	[ -z "${1:-}" ] && return 1
+	result=$(scontrol show hostnames --oneliner "${1}" | grep -oE '^.+$' | tr ' ' '\n') || return 1
+	echo "${result}" && return 0
 }
 
 # hyakvnc_config_init()
@@ -650,9 +649,51 @@ function hyakvnc_config_init() {
 	fi
 
 	[[ -n "${!HYAKVNC_@}" ]] && export "${!HYAKVNC_@}" # Export all HYAKVNC_ variables
-	[[ -n "${!SBATCH_@}" ]] && export "${!SBATCH_@}" # Export all SBATCH_ variables
-	[[ -n "${!SLURM_@}" ]] && export "${!SLURM_@}" # Export all SLURM_ variables
+	[[ -n "${!SBATCH_@}" ]] && export "${!SBATCH_@}"   # Export all SBATCH_ variables
+	[[ -n "${!SLURM_@}" ]] && export "${!SLURM_@}"     # Export all SLURM_ variables
 
+	return 0
+}
+
+
+function slurm_list_running_hyakvnc() {
+	check_command squeue ERROR || return 1
+	local jobid remove_prefix="${HYAKVNC_SLURM_JOB_PREFIX:-}"
+	local squeue_args=(--me --noheader)
+	squeue_args+=(--format '%i %T %n %M %j')                   # jobid, node, state, runtime, jobname
+	[[ -n "${jobid:-}" ]] && squeue_args+=(--job "${jobid}") # Only check status of provided SLURM job ID (optional)
+
+	local -n p_jobid
+
+	while true; do
+		case ${1:-} in
+		-h | --help)
+			help_status
+			return 0
+			;;
+		-j | --jobid) # Job ID to attach to (optional)
+			[[ -z "${jobid:=${2:-}}" ]] && {
+				log ERROR "No job ID provided for option ${1:-}"
+				return 1
+			}
+			shift 
+			;;
+		--no-remove-prefix)
+			remove_prefix=""
+			shift
+		
+			;;
+		-*)
+			log ERROR "Unknown option for ${FUNCNAME[0]}: ${1:-}"
+			return 1
+			;;
+		*)
+			break
+			;;
+		esac
+		shift
+	done
+	squeue "${squeue_args[@]}" | sed -E '/'"${HYAKVNC_SLURM_JOB_PREFIX:-}"'!d; s/(\s*)('"${remove_prefix:-}"')(.*)$/\1\3/' || true
 	return 0
 }
 
@@ -663,18 +704,18 @@ function stop_hyakvnc_session() {
 	local jobid should_cancel no_rm
 	while true; do
 		case ${1:-} in
-			-c | --cancel)
-				shift
-				should_cancel=1
-				;;
-			--no-rm) # Don't remove the job directory
-				shift
-				no_rm=1
-				;;
-			*)
-				jobid="${1:-}"
-				break
-				;;
+		-c | --cancel)
+			shift
+			should_cancel=1
+			;;
+		--no-rm) # Don't remove the job directory
+			shift
+			no_rm=1
+			;;
+		*)
+			jobid="${1:-}"
+			break
+			;;
 		esac
 	done
 
@@ -729,33 +770,33 @@ function print_connection_info() {
 	# Parse arguments:
 	while true; do
 		case ${1:-} in
-			-j | --jobid)
-				shift
-				jobid="${1:-}"
-				shift
-				;;
-			-p | --viewer-port)
-				shift
-				viewer_port="${1:-viewer_port}"
-				shift
-				;;
-			-n | --node)
-				shift
-				node="${1:-}"
-				shift
-				;;
-			-s | --ssh-host)
-				shift
-				ssh_host="${1:-}"
-				shift
-				;;
-			-*)
-				log ERROR "Unknown option for print_connection_info: ${1:-}\n"
-				return 1
-				;;
-			*)
-				break
-				;;
+		-j | --jobid)
+			shift
+			jobid="${1:-}"
+			shift
+			;;
+		-p | --viewer-port)
+			shift
+			viewer_port="${1:-viewer_port}"
+			shift
+			;;
+		-n | --node)
+			shift
+			node="${1:-}"
+			shift
+			;;
+		-s | --ssh-host)
+			shift
+			ssh_host="${1:-}"
+			shift
+			;;
+		-*)
+			log ERROR "Unknown option for print_connection_info: ${1:-}\n"
+			return 1
+			;;
+		*)
+			break
+			;;
 		esac
 	done
 
@@ -857,10 +898,8 @@ function ui_screen_dims() {
 	[[ -n "${width:-}" ]] || width="$(tput cols)" || width="${COLUMNS:-78}"
 	((width <= 120)) || width=120 # Limit to 80 characters per line if over 120 characters
 	((height <= 40)) || height=40 # Limit to 40 lines if over 40 lines
-	((width >= 9)) || width=9 # Set minimum width
-	((height >= 7)) || height=7 # Set minimum height
+	((width >= 9)) || width=9     # Set minimum width
+	((height >= 7)) || height=7   # Set minimum height
 	echo "${height} ${width}"
 }
-
-hyakvnc_init_config_descriptions # Initialize Hyakvnc_Config_Descriptions array
-hyakvnc_load_config # Load configuration
+_HYAKVNC_LIB_LOADED=1

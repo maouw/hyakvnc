@@ -1,80 +1,158 @@
 #! /usr/bin/env bash
 # hyakvnc - A script to launch VNC sessions on Hyak
 
-# shellcheck disable=SC2292
-[ -n "${XDEBUG:-}" ] && set -x # Set XDEBUG to print commands as they are executed
-# shellcheck disable=SC2292
-[ -n "${BASH_VERSION:-}" ] || { echo "Requires Bash"; exit 1; }
-set -o pipefail # Use last non-zero exit code in a pipeline
-set -o errtrace # Ensure the error trap handler is inherited
-set -o nounset  # Exit if an unset variable is used
+# shellcheck source=scripts/_header.bash
+source "${BASH_SOURCE[0]%/*}/scripts/_header.bash"
 
-SCRIPTDIR="${BASH_SOURCE[0]%/*}/scripts"
-# shellcheck source=scripts/_lib.bash
-source "${SCRIPTDIR}/_lib.bash"
+COMMANDS="create status stop show config update install help"
 
-function main() {
-	local action
-	local orig_args=()
-	orig_args+=("${@:-}")
+TITLE="hyakvnc -- A tool for launching VNC sessions on Hyak."
 
-	action=help
+# show_usage()
+function show_usage() {
+	local isinstalled
+	isinstalled=$(command -v hyakvnc || echo '')
+	[[ -n "${isinstalled:-}" ]] && isinstalled=" (is already installed!)"
+
+	cat <<EOF
+Usage: hyakvnc [hyakvnc options] [${COMMANDS// /|}] [command options] [args...]
+
+Description:
+	Stop a provided HyakVNC sesssion and clean up its job directory
+
+Options:
+	-h, --help		Show this help message and exit
+	-d, --debug		Print debugging information
+	-l
+	-V, --version	Print version information and exit
+
+Available commands:
+	create	Create a new VNC session
+	status	Check status of VNC session(s)
+	stop	Stop a VNC session
+	show	Show connection information for a VNC session
+	config	Show current configuration for hyakvnc
+	update	Update hyakvnc
+	install	Install hyakvnc so the "hyakvnc" command can be run from anywhere.${isinstalled:-}
+	help	Show help for a command
+
+See 'hyakvnc help <command>' for more information on a specific command.
+
+EOF
+}
+
+# help_help()
+function help_help() {
+	cat <<EOF
+Show help for a command
+Usage: hyakvnc [hyakvnc options] help <command>
+
+Description:
+	Show help for a command in hyakvnc
+
+Options:
+	-h, --help		Show this help message and exit
+	-u, --usage		Print only usage information
+	-V, --version	Print version information and exit
+EOF
+}
+
+# cmd_help()
+function cmd_help() {
+	local action_to_help
+	[[ $# == 0 ]] && {
+		echo "${TITLE}"
+		show_usage "$@"
+		exit 0
+	}
+
 	while true; do
-		case "${1:-}" in
-			-d | --debug) # Debug mode
-				set_log_level DEBUG
-				shift
-				;;
-			--log-level) # Set log level
-				[[ -n "${2:-}" ]] || { log ERROR "$1 requires a non-empty option argument"; exit 1; }
-				shift
-				set_log_level "$1"
-				shift
-				;;
-			-h | --help)
-				shift
-				action=help
-				;;
-			-V | --version)
-				echo "HyakVNC version ${HYAKVNC_VERSION:-}"
-				exit 0
-				;;
-			*) action="${1:-}"
-			break
-				;;
+		case ${1:-} in
+		-h | --help)
+			help_help
+			exit 0
+			;;
+		-u | --usage)
+			shift
+			show_usage "$@"
+			exit 0
+			;;
+		*) action_to_help="${1:-}"
+		break ;;
 		esac
 	done
 
-	if [[ -r "${SCRIPTDIR}/${action:=help}.bash" ]]; then
+	if [[ -r "${BASH_SOURCE[0]%/*}/scripts/${action_to_help:-}.bash" ]]; then
+		action_to_help="${1:-}"
 		shift
+		"${BASH_SOURCE[0]%/*}/scripts/${action_to_help}.bash" --help "$@"
 	else
-		log ERROR "Unknown command: \"${action:-}\""
+		log ERROR "Can't show help for unknown command: \"${1:-}\". Available commands: ${COMMANDS}"
 		echo
-		"${SCRIPTDIR}/help.bash" -u
+		show_usage "$@"
 		exit 1
 	fi
 
-	case "${action}" in
-		help | install | update | config)
-			hyakvnc_config_init || log WARN "Could't initialize config automatically" # Don't exit if config can't be initialized (e.g., not running on SLURM)
-			;;
-		*)
-			hyakvnc_config_init || exit 1                                 # Fill in default values for config variables or exit if config can't be initialized
-			hyakvnc_autoupdate "${orig_args:-}" || log TRACE "Didn't autoupdate" # Don't exit if didn't autoupdate
-			;;
-	esac
-
-	[[ -n "${!HYAKVNC_@}" ]] && export "${!HYAKVNC_@}" # Export all HYAKVNC_ variables
-	[[ -n "${!SBATCH_@}" ]] && export "${!SBATCH_@}" # Export all SBATCH_ variables
-	[[ -n "${!SLURM_@}" ]] && export "${!SLURM_@}" # Export all SLURM_ variables
-
-	exec "${SCRIPTDIR}/${action}.bash" "$@"
 }
 
-# shellcheck disable=SC2046
+function main() {
+	local action action_script
+	while true; do
+		case "${1:-}" in
+		-d | --debug) # Debug mode
+			set_log_level DEBUG
+			;;
+		--log-level) # Set log level
+			[[ -n "${1:-}" ]] || { log ERROR "${1:-} requires a non-empty option argument"; exit 1; }
+			shift
+			set_log_level "${1:-}"
+			;;
+		-h | --help | help)
+			shift
+			cmd_help "$@"
+			exit 0
+			;;
+		-V | --version)
+			echo "HyakVNC version ${HYAKVNC_VERSION:-}"
+			exit 0
+			;;
+		*)
+			action="${1:-}"
+			shift
+			break
+			;;
+		esac
+		shift
+	done
 
-[[ -n "${!HYAKVNC_@}"  ]] && export "${!HYAKVNC_@}" # Export all HYAKVNC_ variables
-[[ -n "${!SBATCH_@}"  ]] && export "${!SBATCH_@}" # Export all SBATCH_ variables
-[[ -n "${!SLURM_@}"  ]] && export "${!SLURM_@}" # Export all SLURM_ variables
+	[[ -n "${action:-}" ]] || {
+		log ERROR "No command provided"
+		echo
+		show_usage "$@"
+		exit 1
+	}
+
+	[[ -r "${action_script:=${BASH_SOURCE[0]%/*}/scripts/${action}.bash}" ]] || {
+		log ERROR "Unknown command: \"${action:-}\""
+		echo
+		cmd_help -u
+		exit 1
+	}
+
+	[[ -n "${!HYAKVNC_@}" ]] && export "${!HYAKVNC_@}" # Export all HYAKVNC_ variables
+	[[ -n "${!SBATCH_@}" ]] && export "${!SBATCH_@}"   # Export all SBATCH_ variables
+	[[ -n "${!SLURM_@}" ]] && export "${!SLURM_@}"     # Export all SLURM_ variables
+
+	case "${action}" in
+	nstall | update | config) ;; # Don't check for updates when helping, installing, updating, or showing config
+	*)
+		# shellcheck source=scripts/update.bash
+		source "${BASH_SOURCE[0]%/*}/scripts/update.bash"
+		hyakvnc_autoupdate "$@" || log TRACE "Didn't autoupdate" # Don't exit if didn't autoupdate
+		;;
+	esac
+
+	exec "${action_script}" "$@"
+}
 
 main "$@"

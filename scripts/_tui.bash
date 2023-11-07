@@ -1,32 +1,13 @@
 #!/usr/bin/env bash
 
-# shellcheck disable=SC2292
-[ -n "${XDEBUG:-}" ] && set -x # Set XDEBUG to print commands as they are executed
-# shellcheck disable=SC2292
-[ -n "${BASH_VERSION:-}" ] || { echo "Requires Bash"; exit 1; }
-set -o pipefail # Use last non-zero exit code in a pipeline
-set -o errtrace # Ensure the error trap handler is inherited
-set -o nounset  # Exit if an unset variable is used
-
-# shellcheck disable=SC2292
-SCRIPTDIR="${BASH_SOURCE[0]%/*}"
-# shellcheck source=_lib.bash
-source "${SCRIPTDIR}/_lib.bash"
+# Only enable these shell behaviours if we're not being sourced
+if ! (return 0 2>/dev/null); then
+	# shellcheck source=_header.bash
+	source "${BASH_SOURCE[0]%/*}/_header.bash"
+fi
 
 export REMOTE_REPO=https://github.com/maouw/hyakvnc_apptainer
 export TAG_PREFIX='sif-'
-
-function ui_screen_dims() {
-	local width height
-	read -r -t 1 height width < <(stty size 2>/dev/null || true) 2>/dev/null || true
-	[[ -n "${height:-}" ]] || height="$(tput lines)" || height="${LINES:-40}"
-	[[ -n "${width:-}" ]] || width="$(tput cols)" || width="${COLUMNS:-78}"
-	((width <= 120)) || width=120 # Limit to 80 characters per line if over 120 characters
-	((height <= 40)) || height=40 # Limit to 40 lines if over 40 lines
-	((width >= 9)) || width=9 # Set minimum width
-	((height >= 7)) || height=7 # Set minimum height
-	echo "${height} ${width}"
-}
 
 function list_remote_images() {
 	local height width msg repo
@@ -59,7 +40,7 @@ function select_remote_image() {
 		found_tags+=("${tag}" "${desc:--}")
 	done <<<"$(list_remote_images "${1:-}" || true)"
 
-	choice="$(whiptail --title "hyakvnc" --menu "Select a container image" "${height}" "${width}" $((height - 8)) "${found_tags[@]}" 3>&1 1>&2 2>&3)"
+	choice="$(whiptail --title "hyakvnc" --menu "Select a container image" 0 0 0 "${found_tags[@]}" 3>&1 1>&2 2>&3)"
 	if [[ -n "${choice:-}" ]]; then
 		local cont_name cont_tag
 		cont_name="${choice%%#*}"
@@ -102,11 +83,11 @@ function select_local_image() {
 	while true; do
 		# Enter container directory (default: container directory)
 		while true; do
-			container_dir="$(whiptail --inputbox "Enter the directory to search for container images:" "${height}" "${width}" \
+			container_dir="$(whiptail --inputbox "Enter the directory to search for container images:" 0 0 \
 				"${1:-${HYAKVNC_CONTAINERDIR:-${CONTAINERDIR:-${PWD:-}}}}" \
 				3>&1 1>&2 2>&3)" || { return 0; }
 			[[ -d "${container_dir:-}" ]] && break
-			whiptail --msgbox "Directory does not exist. Please try again." "${height}" "${width}"
+			whiptail --msgbox "Directory does not exist. Please try again." 0 0
 		done
 
 		while read -r line; do
@@ -116,7 +97,7 @@ function select_local_image() {
 			found_tags+=("${tag}" "${desc:--}")
 		done <<<"$(list_local_images "${container_dir:-}" || true)"
 
-		choice="$(whiptail --title "hyakvnc" --menu "Select a container image" "${height}" "${width}" $((height - 8)) "${found_tags[@]}" 3>&1 1>&2 2>&3)" || break
+		choice="$(whiptail --title "hyakvnc" --menu "Select a container image" 0 0 $((height - 8)) "${found_tags[@]}" 3>&1 1>&2 2>&3)" || break
 		[[ -n "${choice:-}" ]] && break
 	done
 	echo "${choice:-}"
@@ -131,39 +112,39 @@ function select_container_image() {
 
 	read -r height width < <(ui_screen_dims || true)
 
-	choice="$(whiptail --title "hyakvnc" --notags --menu "Where should I look for a container?" "${height}" "${width}" $((height - 8)) "${found_tags[@]}" 3>&1 1>&2 2>&3)" || return 0
+	choice="$(whiptail --title "hyakvnc" --notags --menu "Where should I look for a container?" 0 0 0 "${found_tags[@]}" 3>&1 1>&2 2>&3)" || return 0
 
 	case "${choice:-}" in
-		1) selected_image="$(select_local_image || true)" ;;
-		2) selected_image="$(select_remote_image "${REMOTE_REPO:-}" || true)" ;;
-		3) while true; do
-			selected_image="$(whiptail --inputbox "Enter the URL to a container image" "${height}" "${width}" "${selected_image:-"oras://ghcr.io/"}" 3>&1 1>&2 2>&3)" || return 0
+	1) selected_image="$(select_local_image || true)" ;;
+	2) selected_image="$(select_remote_image "${REMOTE_REPO:-}" || true)" ;;
+	3) while true; do
+		selected_image="$(whiptail --inputbox "Enter the URL to a container image" 0 0 "${selected_image:-"oras://ghcr.io/"}" 3>&1 1>&2 2>&3)" || return 0
 
-			case "${selected_image:-}" in
-				library://*/*/* | docker://* | shub://*/* | oras://*/*/* | http://*/* | https://*/*)
-					local cont_name="${selected_image##*/}"
-					if [[ -n "${cont_name:-}" ]]; then
-						[[ "${cont_name}" =~ .*:.* ]] || selected_image="${cont_name}:latest"
-						break
-					fi
+		case "${selected_image:-}" in
+		library://*/*/* | docker://* | shub://*/* | oras://*/*/* | http://*/* | https://*/*)
+			local cont_name="${selected_image##*/}"
+			if [[ -n "${cont_name:-}" ]]; then
+				[[ "${cont_name}" =~ .*:.* ]] || selected_image="${cont_name}:latest"
+				break
+			fi
 
-					;;
-				*) ;;
-			esac
-			whiptail --msgbox "Invalid URL. Please try again." "${height}" "${width}"
-		done
 			;;
-		*) return 0 ;;
+		*) ;;
+		esac
+		whiptail --msgbox "Invalid URL. Please try again." 0 0
+	done
+		;;
+	*) return 0 ;;
 	esac
 
 	export HYAKVNC_APPTAINER_CONTAINER="${selected_image:-${HYAKVNC_APPTAINER_CONTAINER:-}}"
 	return 0
 }
 
-function ui_whip_error()  {
+function ui_whip_error() {
 	local height width
 	read -r height width < <(ui_screen_dims || true)
-	whiptail --title "hyakvnc - error" --msgbox "${1:-}" "${height}" "${width}"
+	whiptail --title "hyakvnc - error" --msgbox "${1:-}" 0 0
 }
 
 function ui_input_config_var() {
@@ -172,27 +153,27 @@ function ui_input_config_var() {
 	read -r height width < <(ui_screen_dims || true)
 	while [[ $# -gt 0 ]]; do
 		case "${1:-}" in
-			--prelude) shift || break; prelude="${1:-}" ;;
-			--note) shift || break; note="${1:-}" ;;
-			--current) shift || break; var_current="${1:-}" ;;
-			--description) shift || break; var_description="${1:-}" ;;
-			-x | --export) export_result="${1:-}" ;;
-			--whiptail-opts)
-				shift || break;
-				while [[ $# -gt 0 ]]; do
-					[[ "${1:-}" == -- ]] && break
-					whiptail_opts+=("${1:-}")
-					shift
-				done
-				;;
-			--whiptail-box-opts) shift || break;
+		--prelude) shift || break; prelude="${1:-}" ;;
+		--note) shift || break; note="${1:-}" ;;
+		--current) shift || break; var_current="${1:-}" ;;
+		--description) shift || break; var_description="${1:-}" ;;
+		-x | --export) export_result="${1:-}" ;;
+		--whiptail-opts)
+			shift || break;
 			while [[ $# -gt 0 ]]; do
 				[[ "${1:-}" == -- ]] && break
-				whiptail_box_opts+=("${1:-}")
+				whiptail_opts+=("${1:-}")
 				shift
 			done
-				;;
-			*) break ;;
+			;;
+		--whiptail-box-opts) shift || break;
+		while [[ $# -gt 0 ]]; do
+			[[ "${1:-}" == -- ]] && break
+			whiptail_box_opts+=("${1:-}")
+			shift
+		done
+			;;
+		*) break ;;
 		esac
 		shift
 	done
@@ -204,7 +185,7 @@ function ui_input_config_var() {
 	note="${note:+"\n${note}"}"
 	var_current="${var_current:-${var_ref:-}}"
 	msg="${prelude:+"${prelude:-}\\n"}${var_description:+"(${var_description})\\n"}${note:+"${note}\\n"}${var_current:+"Current: ${var_current}"}"
-	result="$(whiptail --title "hyakvnc Configuration" --inputbox "${msg}" "${height}" "${width}" "${var_current:-}" 3>&1 1>&2 2>&3)" || return 1
+	result="$(whiptail --title "hyakvnc Configuration" --inputbox "${msg}" 0 0 "${var_current:-}" 3>&1 1>&2 2>&3)" || return 1
 	[[ -v result ]] && var_ref="${result:-}" && [[ "${export_result:-}" == 1 ]] && export "${!var_ref}"
 	return 0
 }
@@ -219,53 +200,53 @@ function ui_select_config_var() {
 
 	while [[ $# -gt 0 ]]; do
 		case "${1:-}" in
-			--prelude) shift || break; prelude="${1:-}" ;;
-			--note) shift || break; note="${1:-}" ;;
-			--current) shift || break; var_current="${1:-}" ;;
-			--description) shift || break; var_description="${1:-}" ;;
-			-x | --export) export_result="${1:-}" ;;
-			--whiptail-opts)
-				shift || break;
-				while [[ $# -gt 0 ]]; do
-					[[ "${1:-}" == -- ]] && break
-					whiptail_opts+=("${1:-}")
-					shift
-				done
-				;;
-			--whiptail-box-opts) shift || break;
+		--prelude) shift || break; prelude="${1:-}" ;;
+		--note) shift || break; note="${1:-}" ;;
+		--current) shift || break; var_current="${1:-}" ;;
+		--description) shift || break; var_description="${1:-}" ;;
+		-x | --export) export_result="${1:-}" ;;
+		--whiptail-opts)
+			shift || break;
 			while [[ $# -gt 0 ]]; do
 				[[ "${1:-}" == -- ]] && break
-				whiptail_box_opts+=("${1:-}")
+				whiptail_opts+=("${1:-}")
 				shift
 			done
-				;;
-			*) break ;;
+			;;
+		--whiptail-box-opts) shift || break;
+		while [[ $# -gt 0 ]]; do
+			[[ "${1:-}" == -- ]] && break
+			whiptail_box_opts+=("${1:-}")
+			shift
+		done
+			;;
+		*) break ;;
 		esac
 		shift
 	done
 	while [[ $# -gt 0 ]]; do
 		case "${1:-}" in
-			--prelude) shift || break; prelude="${1:-}" ;;
-			--note) shift || break; note="${1:-}" ;;
-			--current) shift || break; var_current="${1:-}" ;;
-			--description) shift || break; var_description="${1:-}" ;;
-			-x | --export) shift || break; export_result="${1:-}" ;;
-			--whiptail-opts)
-				shift || break;
-				while [[ $# -gt 0 ]]; do
-					[[ "${1:-}" == -- ]] && break
-					whiptail_opts+=("${1:-}")
-					shift
-				done
-				;;
-			--whiptail-box-opts) shift || break;
+		--prelude) shift || break; prelude="${1:-}" ;;
+		--note) shift || break; note="${1:-}" ;;
+		--current) shift || break; var_current="${1:-}" ;;
+		--description) shift || break; var_description="${1:-}" ;;
+		-x | --export) shift || break; export_result="${1:-}" ;;
+		--whiptail-opts)
+			shift || break;
 			while [[ $# -gt 0 ]]; do
 				[[ "${1:-}" == -- ]] && break
-				whiptail_box_opts+=("${1:-}")
+				whiptail_opts+=("${1:-}")
 				shift
 			done
-				;;
-			*) break ;;
+			;;
+		--whiptail-box-opts) shift || break;
+		while [[ $# -gt 0 ]]; do
+			[[ "${1:-}" == -- ]] && break
+			whiptail_box_opts+=("${1:-}")
+			shift
+		done
+			;;
+		*) break ;;
 		esac
 		shift
 	done
@@ -302,7 +283,7 @@ function ui_select_config_var() {
 
 	# Call whiptail with whiptail_opts and menu_array
 	msg="${prelude:+"${prelude:-}\\n"}${var_description:+"(${var_description})\\n"}${note:+"${note}\\n"}${var_current:+"Current: ${var_current}"}"
-	result="$(whiptail "${whiptail_opts[@]}" --menu "${msg:-}" "${height}" "${width}" "${menu_height}" "${menu_array[@]}" 3>&1 1>&2 2>&3)" || return 1
+	result="$(whiptail "${whiptail_opts[@]}" --menu "${msg:-}" 0 0 0 "${menu_array[@]}" 3>&1 1>&2 2>&3)" || return 1
 	[[ -v result ]] && var_ref="${result:-}" && [[ "${export_result:-}" == 1 ]] && export "${!var_ref}"
 	return 0
 }
@@ -314,8 +295,6 @@ hyakvnc_config() {
 	check_command whiptail || return 1
 	# Exit on critical errors:
 
-	local height width
-	read -r height width < <(ui_screen_dims || true)
 	local slurm_accounts=(escience '')
 	local slurm_partitions=(gpu-a40 '' gpu-rtx6k '')
 
@@ -340,77 +319,77 @@ hyakvnc_config() {
 
 	while true; do
 		local main_menu_choice
-		main_menu_choice=$(whiptail --title "HyakVNC Configuration Wizard" --menu "Choose an option:" "${height}" "${width}" $((height - 8)) "${main_menu_options[@]}" 3>&1 1>&2 2>&3)
+		main_menu_choice=$(whiptail --title "HyakVNC Configuration Wizard" --menu "Choose an option:" 0 0 0 "${main_menu_options[@]}" 3>&1 1>&2 2>&3)
 
 		case "${main_menu_choice:-}" in
-			1)
-				[[ ! -d "${TAGDIR}" ]] && trap 'rm -rf "${TAGDIR:-}"' EXIT
+		1)
+			[[ ! -d "${TAGDIR}" ]] && trap 'rm -rf "${TAGDIR:-}"' EXIT
 
-				select_container_image && ui_whip_error "No container image selected"
-				;;
-			2)
-				#select_slurm_account 1 escience 2 lo || true
-				ui_select_config_var --whiptail-opts --title hyakvnc -- HYAKVNC_SLURM_ACCOUNT 1 escience 2 lo || true
-				;;
-			3)
-				ui_select_config_var --whiptail-opts --title hyakvnc -- HYAKVNC_SLURM_PARTITION 1 a 2 b c 3 || true
-				;;
+			select_container_image && ui_whip_error "No container image selected"
+			;;
+		2)
+			#select_slurm_account 1 escience 2 lo || true
+			ui_select_config_var --whiptail-opts --title hyakvnc -- HYAKVNC_SLURM_ACCOUNT 1 escience 2 lo || true
+			;;
+		3)
+			ui_select_config_var --whiptail-opts --title hyakvnc -- HYAKVNC_SLURM_PARTITION 1 a 2 b c 3 || true
+			;;
 
-			4)
-				ui_input_config_var -x HYAKVNC_SLURM_CPUS || true
-				;;
-			5)
-				ui_input_config_var -x HYAKVNC_SLURM_MEM || true
-				;;
-			6)
-				ui_input_config_var -x HYAKVNC_SLURM_TIMELIMIT || true
-				;;
-			7)
-				ui_input_config_var -x HYAKVNC_SLURM_GPUS || true
-				;;
-			8)
-				ui_input_config_var -x HYAKVNC_APPTAINER_ADD_BINDPATHS || true
-				;;
+		4)
+			ui_input_config_var -x HYAKVNC_SLURM_CPUS || true
+			;;
+		5)
+			ui_input_config_var -x HYAKVNC_SLURM_MEM || true
+			;;
+		6)
+			ui_input_config_var -x HYAKVNC_SLURM_TIMELIMIT || true
+			;;
+		7)
+			ui_input_config_var -x HYAKVNC_SLURM_GPUS || true
+			;;
+		8)
+			ui_input_config_var -x HYAKVNC_APPTAINER_ADD_BINDPATHS || true
+			;;
 
-			
-				9) # Advanced options
-				local -a advanced_options_array=()
-				local key i=1
-				for key in $(echo "${!Hyakvnc_Config_Descriptions[@]}" | tr ' ' '\n' | sort || true); do
-					case "${key:-}" in
-						HYAKVNC_SLURM_ACCOUNT | HYAKVNC_SLURM_PARTITION | HYAKVNC_SLURM_CPUS | HYAKVNC_SLURM_MEM | HYAKVNC_SLURM_TIMELIMIT | HYAKVNC_SLURM_GPUS) ;;
-						*) advanced_options_array+=("${i}" "${key} ${!key:+(${!key})}")
-						((i++))
-							;;
-					esac
-				done
-				local advanced_option_choice
-				while true; do
-					advanced_option_choice="$(whiptail --title "Advanced Option" --menu "Choose an option:" "${height}" "${width}" $((height - 8)) "${advanced_options_array[@]}" 3>&1 1>&2 2>&3)" || break
-					[[ -z "${advanced_option_choice:-}" ]] && break
-					local var_name="${advanced_options_array[$((advanced_option_choice * 2 - 1))]}"
-					var_name="${var_name%% *}"
-					ui_input_config_var -x HYAKVNC_SLURM_OUTPUT || exit 1
-				done
-				;;
-			10)
-				CMD="echo create -c ${HYAKVNC_APPTAINER_CONTAINER:-}"
-				whiptail --msgbox "Generated Command:\n\n${CMD}" "${height}" "${width}"
-				if (whiptail --yesno "Execute		10 "Save configuration"
+		\
+			9) # Advanced options
+			local -a advanced_options_array=()
+			local key i=1
+			for key in $(echo "${!Hyakvnc_Config_Descriptions[@]}" | tr ' ' '\n' | sort || true); do
+				case "${key:-}" in
+				HYAKVNC_SLURM_ACCOUNT | HYAKVNC_SLURM_PARTITION | HYAKVNC_SLURM_CPUS | HYAKVNC_SLURM_MEM | HYAKVNC_SLURM_TIMELIMIT | HYAKVNC_SLURM_GPUS) ;;
+				*) advanced_options_array+=("${i}" "${key} ${!key:+(${!key})}")
+				((i++))
+					;;
+				esac
+			done
+			local advanced_option_choice
+			while true; do
+				advanced_option_choice="$(whiptail --title "Advanced Option" --menu "Choose an option:" 0 0 0 "${advanced_options_array[@]}" 3>&1 1>&2 2>&3)" || break
+				[[ -z "${advanced_option_choice:-}" ]] && break
+				local var_name="${advanced_options_array[$((advanced_option_choice * 2 - 1))]}"
+				var_name="${var_name%% *}"
+				ui_input_config_var -x HYAKVNC_SLURM_OUTPUT || exit 1
+			done
+			;;
+		10)
+			CMD="echo create -c ${HYAKVNC_APPTAINER_CONTAINER:-}"
+			whiptail --msgbox "Generated Command:\n\n${CMD}" 0 0
+			if (whiptail --yesno "Execute		10 "Save configuration"
  the command now?" 8 78 3>&1 1>&2 2>&3); then
-					msg="$(eval "${CMD}")"
-					echo "${msg}"
-					echo
-					read -r -p "Press enter to return to the menu"
-				fi
-				;;
-			11) return 0 ;;
-			*) echo "OK, I'll stop"
-			return 0
-				;;
+				msg="$(eval "${CMD}")"
+				echo "${msg}"
+				echo
+				read -r -p "Press enter to return to the menu"
+			fi
+			;;
+		11) return 0 ;;
+		*) echo "OK, I'll stop"
+		return 0
+			;;
 		esac
 
 	done
 }
 
-hyakvnc_config "$@"
+! (return 0 2>/dev/null) && hyakvnc_config "$@"

@@ -1,16 +1,11 @@
 #! /usr/bin/env bash
 # hyakvnc create - Create a VNC session on Hyak
 
-# shellcheck disable=SC2292
-[ -n "${XDEBUG:-}" ] && set -x # Set XDEBUG to print commands as they are executed
-# shellcheck disable=SC2292
-[ -n "${BASH_VERSION:-}" ] || { echo "Requires Bash"; exit 1; }
-set -o pipefail # Use last non-zero exit code in a pipeline
-set -o errtrace # Ensure the error trap handler is inherited
-set -o nounset  # Exit if an unset variable is used
-SCRIPTDIR="${BASH_SOURCE[0]%/*}"
-# shellcheck source=_lib.bash
-source "${SCRIPTDIR}/_lib.bash"
+# Only enable these shell behaviours if we're not being sourced
+if ! (return 0 2>/dev/null); then
+	# shellcheck source=_header.bash
+	source "${BASH_SOURCE[0]%/*}/_header.bash"
+fi
 
 # help_create()
 function help_create() {
@@ -64,7 +59,7 @@ function cleanup_launched_jobs_and_exit() {
 		jobdir="${HYAKVNC_DIR}/jobs/${jobid}"
 		[[ -d "${jobdir}" ]] && rm -rf "${jobdir}" && log DEBUG "Removed job directory ${jobdir}"
 	fi
-	kill -TERM %tail 2>/dev/null                    # Stop following the SLURM log file
+	kill -TERM %tail 2>/dev/null                      # Stop following the SLURM log file
 	trap - SIGINT SIGTERM SIGHUP SIGABRT SIGQUIT EXIT # Remove traps
 	exit 1
 }
@@ -83,111 +78,100 @@ function cmd_create() {
 
 	while true; do
 		case ${1:-} in
-			-d | --debug) # Debug mode
-				set_log_level DEBUG
-				shift
-				;;
-			--log-level) # Set log level
-				[[ -n "${2:-}" ]] || { log ERROR "$1 requires a non-empty option argument"; exit 1; }
-				shift
-				set_log_level "$1"
-				shift
-				;;
+		-h | --help | help) # Show help
+			shift
+			help_create "$@" && exit 0 || exit 1
+			;;
 
-			-h | --help | help) # Show help
-				shift
-				help_create "$@" && exit 0 || exit 1
-				;;
+		-c | --container) # Path to container image
+			[[ -n "${2:-}" ]] || { log ERROR "$1 requires a non-empty option argument"; exit 1; }
+			shift
+			export HYAKVNC_APPTAINER_CONTAINER="$1"
+			shift
+			;;
+		-A | --account) # Slurm account to use
+			[[ -n "${2:-}" ]] || { log ERROR "$1 requires a non-empty option argument"; exit 1; }
+			shift
+			export HYAKVNC_SLURM_ACCOUNT="$1"
+			shift
+			;;
+		-p | --partition) # Slurm partition to use
+			[[ -n "${2:-}" ]] || { log ERROR "$1 requires a non-empty option argument"; exit 1; }
+			shift
+			export HYAKVNC_SLURM_PARTITION="$1"
+			shift
+			;;
+		-C | --cpus)
+			[[ -n "${2:-}" ]] || { log ERROR "$1 requires a non-empty option argument"; exit 1; }
+			shift
+			export HYAKVNC_SLURM_CPUS="$1"
+			shift
+			;;
+		-m | --mem)
+			[[ -n "${2:-}" ]] || { log ERROR "$1 requires a non-empty option argument"; exit 1; }
+			shift
+			export HYAKVNC_SLURM_MEM="$1"
+			shift
+			;;
+		-t | --timelimit) # Slurm timelimit to use
+			[[ -n "${2:-}" ]] || { log ERROR "$1 requires a non-empty option argument"; exit 1; }
 
-			-c | --container) # Path to container image
-				[[ -n "${2:-}" ]] || { log ERROR "$1 requires a non-empty option argument"; exit 1; }
-				shift
-				export HYAKVNC_APPTAINER_CONTAINER="$1"
-				shift
-				;;
-			-A | --account) # Slurm account to use
-				[[ -n "${2:-}" ]] || { log ERROR "$1 requires a non-empty option argument"; exit 1; }
-				shift
-				export HYAKVNC_SLURM_ACCOUNT="$1"
-				shift
-				;;
-			-p | --partition) # Slurm partition to use
-				[[ -n "${2:-}" ]] || { log ERROR "$1 requires a non-empty option argument"; exit 1; }
-				shift
-				export HYAKVNC_SLURM_PARTITION="$1"
-				shift
-				;;
-			-C | --cpus)
-				[[ -n "${2:-}" ]] || { log ERROR "$1 requires a non-empty option argument"; exit 1; }
-				shift
-				export HYAKVNC_SLURM_CPUS="$1"
-				shift
-				;;
-			-m | --mem)
-				[[ -n "${2:-}" ]] || { log ERROR "$1 requires a non-empty option argument"; exit 1; }
-				shift
-				export HYAKVNC_SLURM_MEM="$1"
-				shift
-				;;
-			-t | --timelimit) # Slurm timelimit to use
-				[[ -n "${2:-}" ]] || { log ERROR "$1 requires a non-empty option argument"; exit 1; }
+			shift
+			export HYAKVNC_SLURM_TIMELIMIT="${1:-}"
+			shift
+			;;
+		-g | --gpus) # Number of GPUs to request
+			[[ -n "${2:-}" ]] || { log ERROR "$1 requires a non-empty option argument"; exit 1; }
+			shift
+			export HYAKVNC_SLURM_GPUS="${1:-}"
+			shift
+			;;
+		--no-ghcr-oras-preload) # Don't preload ORAS GitHub Container Registry images
+			export HYAKVNC_APPTAINER_GHCR_ORAS_PRELOAD=0
+			shift
+			;;
 
-				shift
-				export HYAKVNC_SLURM_TIMELIMIT="${1:-}"
-				shift
-				;;
-			-g | --gpus) # Number of GPUs to request
-				[[ -n "${2:-}" ]] || { log ERROR "$1 requires a non-empty option argument"; exit 1; }
-				shift
-				export HYAKVNC_SLURM_GPUS="${1:-}"
-				shift
-				;;
-			--no-ghcr-oras-preload) # Don't preload ORAS GitHub Container Registry images
-				export HYAKVNC_APPTAINER_GHCR_ORAS_PRELOAD=0
-				shift
-				;;
-
-			--sbatch-args) # Extra sbatch arguments
-				[[ -n "${2:-}" ]] || { log ERROR "$1 requires a non-empty option argument"; exit 1; }
-				shift
-				while true; do
-					case "${1:-}" in
-						--) # End of sbatch args
-							shift
-							break
-							;;
-						*)
-							extra_sbatch_args+=("${1:-}")
-							shift
-							;;
-					esac
-				done
+		--sbatch-args) # Extra sbatch arguments
+			[[ -n "${2:-}" ]] || { log ERROR "$1 requires a non-empty option argument"; exit 1; }
+			shift
+			while true; do
+				case "${1:-}" in
+				--) # End of sbatch args
+					shift
+					break
+					;;
+				*)
+					extra_sbatch_args+=("${1:-}")
+					shift
+					;;
+				esac
+			done
+			[[ $# -eq 0 ]] && break # Break if no more arguments
+			;;
+		--apptainer-args)
+			[[ -n "${2:-}" ]] || { log ERROR "$1 requires a non-empty option argument"; exit 1; }
+			shift
+			while true; do
+				case "${1:-}" in
+				--) # End of Apptainer args
+					shift
+					break
+					;;
+				*)
+					extra_apptainer_args+=("${1:-}")
+					shift
+					;;
+				esac
 				[[ $# -eq 0 ]] && break # Break if no more arguments
-				;;
-			--apptainer-args)
-				[[ -n "${2:-}" ]] || { log ERROR "$1 requires a non-empty option argument"; exit 1; }
-				shift
-				while true; do
-					case "${1:-}" in
-						--) # End of Apptainer args
-							shift
-							break
-							;;
-						*)
-							extra_apptainer_args+=("${1:-}")
-							shift
-							;;
-					esac
-					[[ $# -eq 0 ]] && break # Break if no more arguments
-				done
-				;;
-			-*)
-				log ERROR "Unknown option: ${1:-}"
-				exit 1
-				;;
-			*)
-				break
-				;;
+			done
+			;;
+		-*)
+			log ERROR "Unknown option: ${1:-}"
+			exit 1
+			;;
+		*)
+			break
+			;;
 		esac
 	done
 
@@ -201,19 +185,19 @@ function cmd_create() {
 
 	case "${HYAKVNC_APPTAINER_CONTAINER}" in
 
-		library://* | docker://* | shub://* | oras://* | http://* | https://*)
-			log DEBUG "Container image ${HYAKVNC_APPTAINER_CONTAINER} is a URL"
+	library://* | docker://* | shub://* | oras://* | http://* | https://*)
+		log DEBUG "Container image ${HYAKVNC_APPTAINER_CONTAINER} is a URL"
 
-			# Add a tag if none is specified:
-			[[ "${container_basename}" =~ .*:.* ]] || HYAKVNC_APPTAINER_CONTAINER="${HYAKVNC_APPTAINER_CONTAINER}:latest"
-			;;
+		# Add a tag if none is specified:
+		[[ "${container_basename}" =~ .*:.* ]] || HYAKVNC_APPTAINER_CONTAINER="${HYAKVNC_APPTAINER_CONTAINER}:latest"
+		;;
 
-		*)
-			# Check that container is specified
-			[[ ! -e "${HYAKVNC_APPTAINER_CONTAINER:-}" ]] && { log ERROR "Container image at ${HYAKVNC_APPTAINER_CONTAINER} does not exist	"; exit 1; }
+	*)
+		# Check that container is specified
+		[[ ! -e "${HYAKVNC_APPTAINER_CONTAINER:-}" ]] && { log ERROR "Container image at ${HYAKVNC_APPTAINER_CONTAINER} does not exist	"; exit 1; }
 
-			# Check that the container is readable:
-			[[ ! -r "${HYAKVNC_APPTAINER_CONTAINER:-}" ]] && { log ERROR "Container image ${HYAKVNC_APPTAINER_CONTAINER} is not readable"; exit 1; } ;;
+		# Check that the container is readable:
+		[[ ! -r "${HYAKVNC_APPTAINER_CONTAINER:-}" ]] && { log ERROR "Container image ${HYAKVNC_APPTAINER_CONTAINER} is not readable"; exit 1; } ;;
 	esac
 
 	container_name="${container_basename//\.@(sif|simg|img|sqsh)/}"
@@ -231,24 +215,24 @@ function cmd_create() {
 			while true; do
 				read -rp "Would you like to set APPTAINER_CACHEDIR to \"${newcachedir}\" (Recommended)? (y/n): " choice1
 				case "${choice1:-}" in
-					y | Y)
-						log INFO "Creating ${newcachedir}"
-						mkdir -p "${newcachedir}" || {
-							log WARN "Failed to create directory ${newcachedir}"
-							return 1
-						}
-						choice1=y # Set choice1 to y so we can use it in the next case statement
-						export APPTAINER_CACHEDIR="${newcachedir}"
-						break
-						;;
-					n | N)
-						log WARN "Not setting APPTAINER_CACHEDIR."
-						break
+				y | Y)
+					log INFO "Creating ${newcachedir}"
+					mkdir -p "${newcachedir}" || {
+						log WARN "Failed to create directory ${newcachedir}"
+						return 1
+					}
+					choice1=y # Set choice1 to y so we can use it in the next case statement
+					export APPTAINER_CACHEDIR="${newcachedir}"
+					break
+					;;
+				n | N)
+					log WARN "Not setting APPTAINER_CACHEDIR."
+					break
 
-						;;
-					*)
-						log ERROR "Invalid choice ${choice1:-}."
-						;;
+					;;
+				*)
+					log ERROR "Invalid choice ${choice1:-}."
+					;;
 				esac
 			done
 
@@ -258,32 +242,32 @@ function cmd_create() {
 				while true; do
 					read -rp "Would you like to add APPTAINER_CACHEDIR to your shell's startup file to persist this setting? (y/n): " choice2
 					case "${choice2:-}" in
-						y | Y)
-							# Check if using ZSH:
-							if [[ -n "${ZSH_VERSION:-}" ]]; then
-								if [[ -w "${HOME}/.zshenv}" ]]; then
-									echo "export APPTAINER_CACHEDIR=\"${newcachedir}\"" >>"${HOME}/.zshenv" && log INFO "Added APPTAINER_CACHEDIR to ~/.zshenv"
-								else
-									echo "export APPTAINER_CACHEDIR=\"${newcachedir}\"" >>"${ZDOTDIR:-${HOME}}/.zshrc" && log INFO "Added APPTAINER_CACHEDIR to ${ZDOTDIR:-~}/.zshrc"
-								fi
-							# Check if using Bash:
-							elif [[ -n "${BASH_VERSION:-}" ]]; then
-								echo "export APPTAINER_CACHEDIR=\"${newcachedir}\"" >>"${HOME}/.bashrc" && log INFO "Added APPTAINER_CACHEDIR to ~/.bashrc"
-							# Write to ~/.profile if we can't determine shell type:
+					y | Y)
+						# Check if using ZSH:
+						if [[ -n "${ZSH_VERSION:-}" ]]; then
+							if [[ -w "${HOME}/.zshenv}" ]]; then
+								echo "export APPTAINER_CACHEDIR=\"${newcachedir}\"" >>"${HOME}/.zshenv" && log INFO "Added APPTAINER_CACHEDIR to ~/.zshenv"
 							else
-								log INFO "Could not determine shell type. Adding APPTAINER_CACHEDIR to ~/.profile."
-								echo "export APPTAINER_CACHEDIR=\"${newcachedir}\"" >>"${HOME}/.profile" && log INFO "Added APPTAINER_CACHEDIR to ~/.profile"
+								echo "export APPTAINER_CACHEDIR=\"${newcachedir}\"" >>"${ZDOTDIR:-${HOME}}/.zshrc" && log INFO "Added APPTAINER_CACHEDIR to ${ZDOTDIR:-~}/.zshrc"
 							fi
-							break
-							;;
+						# Check if using Bash:
+						elif [[ -n "${BASH_VERSION:-}" ]]; then
+							echo "export APPTAINER_CACHEDIR=\"${newcachedir}\"" >>"${HOME}/.bashrc" && log INFO "Added APPTAINER_CACHEDIR to ~/.bashrc"
+						# Write to ~/.profile if we can't determine shell type:
+						else
+							log INFO "Could not determine shell type. Adding APPTAINER_CACHEDIR to ~/.profile."
+							echo "export APPTAINER_CACHEDIR=\"${newcachedir}\"" >>"${HOME}/.profile" && log INFO "Added APPTAINER_CACHEDIR to ~/.profile"
+						fi
+						break
+						;;
 
-						n | N)
-							log WARN "Not adding APPTAINER_CACHEDIR to your shell's startup file. You may need to do this again in the future."
-							break
-							;;
-						*)
-							log ERROR "Invalid choice ${choice2:-}."
-							;;
+					n | N)
+						log WARN "Not adding APPTAINER_CACHEDIR to your shell's startup file. You may need to do this again in the future."
+						break
+						;;
+					*)
+						log ERROR "Invalid choice ${choice2:-}."
+						;;
 					esac
 				done
 			fi
@@ -329,10 +313,10 @@ function cmd_create() {
 	apptainer_start_args+=(--writable-tmpfs)
 
 	case "${HYAKVNC_APPTAINER_CLEANENV:-}" in
-		1 | true | yes | y | Y | TRUE | YES)
-			apptainer_start_args+=("--cleanenv")
-			;;
-		*) ;;
+	1 | true | yes | y | Y | TRUE | YES)
+		apptainer_start_args+=("--cleanenv")
+		;;
+	*) ;;
 	esac
 
 	# Final command should look like:
@@ -389,19 +373,19 @@ function cmd_create() {
 		sleep 1
 		squeue_result=$(squeue --job "${launched_jobid}" --format "%T" --noheader || true)
 		case "${squeue_result:-}" in
-			SIGNALING | PENDING | CONFIGURING | STAGE_OUT | SUSPENDED | REQUEUE_HOLD | REQUEUE_FED | RESV_DEL_HOLD | STOPPED | RESIZING | REQUEUED)
-				log TRACE "Job ${launched_jobid} is in a state that could potentially run: ${squeue_result}"
-				sleep 1
-				continue
-				;;
-			RUNNING)
-				log DEBUG "Job ${launched_jobid} is ${squeue_result}"
-				break
-				;;
-			*)
-				log ERROR "Job ${launched_jobid} is in unexpected state ${squeue_result}"
-				exit 1
-				;;
+		SIGNALING | PENDING | CONFIGURING | STAGE_OUT | SUSPENDED | REQUEUE_HOLD | REQUEUE_FED | RESV_DEL_HOLD | STOPPED | RESIZING | REQUEUED)
+			log TRACE "Job ${launched_jobid} is in a state that could potentially run: ${squeue_result}"
+			sleep 1
+			continue
+			;;
+		RUNNING)
+			log DEBUG "Job ${launched_jobid} is ${squeue_result}"
+			break
+			;;
+		*)
+			log ERROR "Job ${launched_jobid} is in unexpected state ${squeue_result}"
+			exit 1
+			;;
 		esac
 	done
 
@@ -430,20 +414,20 @@ function cmd_create() {
 	fi
 
 	case "${HYAKVNC_APPTAINER_CONTAINER}" in
-		library://* | docker://* | shub://* | oras://* | http://* | https://*)
-			local protocol="${HYAKVNC_APPTAINER_CONTAINER#*://}"
-			if [[ -n "${protocol:-}" ]]; then
-				# Wait for the container to start downloading:
-				log INFO "Downloading ${HYAKVNC_APPTAINER_CONTAINER}..."
-				until grep -q -iE '(Download|cached).*image' "${jobdir}/slurm.log"; do
-					sleep 1
-				done
-				# Wait for the container to stop downloading:
-				# shellcheck disable=SC2016
-				srun --jobid "${launched_jobid}" --output /dev/null sh -c 'while pgrep -u $USER -fia '"'"'^.*apptainer.*jobs/'"${launched_jobid}"'.*'"${protocol}""'"' | grep -v "^$$"; do sleep 1; done' || log WARN "Couldn't poll for container download process for ${HYAKVNC_APPTAINER_CONTAINER}"
-			fi
-			;;
-		*) ;;
+	library://* | docker://* | shub://* | oras://* | http://* | https://*)
+		local protocol="${HYAKVNC_APPTAINER_CONTAINER#*://}"
+		if [[ -n "${protocol:-}" ]]; then
+			# Wait for the container to start downloading:
+			log INFO "Downloading ${HYAKVNC_APPTAINER_CONTAINER}..."
+			until grep -q -iE '(Download|cached).*image' "${jobdir}/slurm.log"; do
+				sleep 1
+			done
+			# Wait for the container to stop downloading:
+			# shellcheck disable=SC2016
+			srun --jobid "${launched_jobid}" --output /dev/null sh -c 'while pgrep -u $USER -fia '"'"'^.*apptainer.*jobs/'"${launched_jobid}"'.*'"${protocol}""'"' | grep -v "^$$"; do sleep 1; done' || log WARN "Couldn't poll for container download process for ${HYAKVNC_APPTAINER_CONTAINER}"
+		fi
+		;;
+	*) ;;
 	esac
 
 	log INFO "Waiting for VNC server to start..."
@@ -480,4 +464,4 @@ function cmd_create() {
 	return 0
 }
 
-cmd_create "$@"
+! (return 0 2>/dev/null) && cmd_create "$@"
