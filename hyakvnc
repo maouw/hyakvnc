@@ -1439,7 +1439,7 @@ function cmd_stop {
 	if [[ -z "${jobids}" ]]; then
 		if [[ -t 0 ]]; then
 			echo "Reading available job IDs to select from a menu"
-			running_jobids=$(squeue --noheader --format '%j %i' | grep -E "^${HYAKVNC_SLURM_JOB_PREFIX}" | grep -oE '[0-9]+$') || {
+			running_jobids=$(squeue --me --noheader --format '%j %i' | grep -E "^${HYAKVNC_SLURM_JOB_PREFIX}" | grep -oE '[0-9]+$') || {
 				log WARN "Found no running jobs  with names that match the prefix ${HYAKVNC_SLURM_JOB_PREFIX}"
 				return 1
 			}
@@ -1517,7 +1517,7 @@ function cmd_show {
 	if [[ -z "${jobid:-}" ]]; then
 		if [[ -t 0 ]]; then
 			echo "Reading available job IDs to select from a menu"
-			running_jobids=$(squeue --noheader --format '%j %i' --states RUNNING | grep -E "^${HYAKVNC_SLURM_JOB_PREFIX}" | grep -oE '[0-9]+$') || {
+			running_jobids=$(squeue --me --noheader --format '%j %i' --states RUNNING | grep -E "^${HYAKVNC_SLURM_JOB_PREFIX}" | grep -oE '[0-9]+$') || {
 				log WARN "Found no running jobs with names that match the prefix ${HYAKVNC_SLURM_JOB_PREFIX}"
 				return 1
 			}
@@ -1531,7 +1531,7 @@ function cmd_show {
 		log ERROR "Must specify running job IDs"
 		return 1
 	}
-	running_jobids=$(squeue --job "${jobid}" --noheader --format '%j %i' | grep -E "^${HYAKVNC_SLURM_JOB_PREFIX}" | grep -oE '[0-9]+$') || {
+	running_jobids=$(squeue --me --job "${jobid}" --noheader --format '%j %i' | grep -E "^${HYAKVNC_SLURM_JOB_PREFIX}" | grep -oE '[0-9]+$') || {
 		log WARN "Found no running job for job ${jobid} with names that match the prefix ${HYAKVNC_SLURM_JOB_PREFIX}"
 		return 1
 	}
