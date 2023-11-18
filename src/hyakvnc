@@ -8,10 +8,18 @@
 set -o pipefail # Use last non-zero exit code in a pipeline
 set -o errtrace # Ensure the error trap handler is inherited
 set -o nounset  # Exit if an unset variable is used
+shopt -qs inherit_errexit # Ensure the error trap handler is inherited
+shopt -qs nullglob # Expand globs to nothing if no matches
 
-SCRIPTDIR="${BASH_SOURCE[0]%/*}/scripts"
-# shellcheck source=scripts/_lib.bash
-source "${SCRIPTDIR}/_lib.bash"
+SourcedFiles+=("${BASH_SOURCE[0]}")
+
+SCRIPTDIR="${BASH_SOURCE[0]%/*}" # Get the directory name
+# shellcheck source=_lib.bash
+# shellcheck disable=SC1091
+source "$SCRIPTDIR/_lib.bash"
+# shellcheck source=_tui.bash
+# shellcheck disable=SC1091
+source "$SCRIPTDIR/_tui.bash"
 
 function main() {
 	local action

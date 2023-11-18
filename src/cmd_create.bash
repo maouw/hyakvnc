@@ -1,18 +1,16 @@
 #! /usr/bin/env bash
+
 # hyakvnc create - Create a VNC session on Hyak
+[ -n "${_HYAKVNC_LIB_CREATE_LOADED:-}" ] && return 0 # Return if already loaded
+
 
 # Only enable these shell behaviours if we're not being sourced
 if ! (return 0 2>/dev/null); then
-[ "${XDEBUG:-}" = "1" ] && set -x # Set XDEBUG to print commands as they are executed
-# shellcheck disable=SC2292
-[ -z "${BASH_VERSION:-}" ] || [ "${BASH_VERSINFO:-0}" -lt 4 ] || [ "${BASH_VERSINFO:-0}" = 4 ] && [ "${BASH_VERSINFO[1]:-0}" -lt 4 ] && { echo >&2 "Requires Bash version > 4.x"; exit 1; }
-set -o pipefail # Use last non-zero exit code in a pipeline
-set -o errtrace # Ensure the error trap handler is inherited
-set -o nounset  # Exit if an unset variable is used
-# set -o errexit                 # Exit on error
-shopt -qs inherit_errexit      # Ensure subshells exit on error
-shopt -qs nullglob             # Expand globs to nothing if no matches
+	set -EuT -o pipefail
+	shopt -s inherit_errexit
 fi
+
+
 
 # help_create()
 function help_create() {
@@ -471,4 +469,4 @@ function cmd_create() {
 	return 0
 }
 
-! (return 0 2>/dev/null) && cmd_create "$@"
+_HYAKVNC_LIB_CREATE_LOADED=1

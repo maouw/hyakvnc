@@ -1,73 +1,57 @@
 #! /usr/bin/env bash
+# hyakvnc utility functions
 
 # shellcheck disable=SC2292
-[ "${_HYAKVNC_LIB_LOADED:-0}" != "0" ] && return 0 # Return if already loaded
+[ -n "${_HYAKVNC_LIB_LOADED:-}" ] && return 0 # Return if already loaded
 
 # shellcheck disable=SC2292
-[ -z "${BASH_VERSION:-}" ] || [ "${BASH_VERSINFO:-0}" -lt 4 ] || [ "${BASH_VERSINFO[0]}" = 4 ] && [ "${BASH_VERSINFO[1]:-0}" -lt 4 ] && { echo >&2 "Requires Bash version > 4.x"; exit 1; }
+[ -n "${XDEBUG:-}" ] && set -x # Set XDEBUG to print commands as they are executed
+# shellcheck disable=SC2292
+[ -n "${BASH_VERSION:-}" ] || { echo "Requires Bash"; exit 1; }
 
-set -o pipefail # Use last non-zero exit code in a pipeline
-set -o errtrace # Ensure the error trap handler is inherited
-set -o nounset  # Exit if an unset variable is used
+# Check Bash version greater than 4:
+if [[ "${BASH_VERSINFO:-0}" -lt 4 ]]; then
+	echo "Requires Bash version > 4.x"
+	exit 1
+fi
 
-export HYAKVNC_VERSION="0.3.1"
+# Check Bash version 4.4 or greater:
+case "${BASH_VERSION:-0}" in
+	4*) if [[ "${BASH_VERSINFO[1]:-0}" -lt 4 ]]; then
+		echo "Requires Bash version > 4.x"
+		exit 1
+	fi ;;
 
-# ## App preferences:
-HYAKVNC_DIR="${HYAKVNC_DIR:-${HOME}/.hyakvnc}"                        # %% Local directory to store application data (default: `$HOME/.hyakvnc`)
-HYAKVNC_CONFIG_FILE="${HYAKVNC_DIR}/hyakvnc-config.sh"                # %% Configuration file to use (default: `$HYAKVNC_DIR/hyakvnc-config.env`)
-HYAKVNC_REPO_DIR="${HYAKVNC_REPO_DIR:-${HYAKVNC_DIR}/hyakvnc}"        # Local directory to store git repository (default: `$HYAKVNC_DIR/hyakvnc`)
-HYAKVNC_CHECK_UPDATE_FREQUENCY="${HYAKVNC_CHECK_UPDATE_FREQUENCY:-0}" # %% How often to check for updates in `[d]`ays or `[m]`inutes (default: `0` for every time. Use `1d` for daily, `10m` for every 10 minutes, etc. `-1` to disable.)
-HYAKVNC_LOG_FILE="${HYAKVNC_LOG_FILE:-${HYAKVNC_DIR}/hyakvnc.log}"    # %% Log file to use (default: `$HYAKVNC_DIR/hyakvnc.log`)
-HYAKVNC_LOG_LEVEL="${HYAKVNC_LOG_LEVEL:-INFO}"                        # %% Log level to use for interactive output (default: `INFO`)
-HYAKVNC_LOG_FILE_LEVEL="${HYAKVNC_LOG_FILE_LEVEL:-DEBUG}"             # %% Log level to use for log file output (default: `DEBUG`)
-HYAKVNC_SSH_HOST="${HYAKVNC_SSH_HOST:-klone.hyak.uw.edu}"             # %% Default SSH host to use for connection strings (default: `klone.hyak.uw.edu`)
-HYAKVNC_DEFAULT_TIMEOUT="${HYAKVNC_DEFAULT_TIMEOUT:-30}"              # %% Seconds to wait for most commands to complete before timing out (default: `30`)
-HYAKVNC_MODE="${HYAKVNC_MODE:-}"                                      # %% Mode to use (default: <autodetected>. Valid values: `slurm`, `local`)
-HYAKVNC_DISABLE_TUI="${HYAKVNC_DISABLE_TUI:-0}"                       # %% Whether to disable the wizard interface (default: `0`)
+	*) ;;
+esac
 
-# ## VNC preferences:
-HYAKVNC_VNC_PASSWORD="${HYAKVNC_VNC_PASSWORD:-password}" # %% Password to use for new VNC sessions (default: `password`)
-HYAKVNC_VNC_DISPLAY="${HYAKVNC_VNC_DISPLAY:-:10}"        # %% VNC display to use (default: `:1`)
+# Only enable these shell behaviours if we're not being sourced
+if ! (return 0 2>/dev/null); then
+	set -EuT -o pipefail
+	shopt -s inherit_errexit
+fi
 
-HYAKVNC_MACOS_VNC_VIEWER_BUNDLEIDS="${HYAKVNC_MACOS_VNC_VIEWER_BUNDLEIDS:-com.turbovnc.vncviewer.VncViewer com.realvnc.vncviewer com.tigervnc.vncviewer}" # macOS bundle identifiers for VNC viewer executables (default: `com.turbovnc.vncviewer com.realvnc.vncviewer com.tigervnc.vncviewer`)
 
-# ## Apptainer preferences:
-HYAKVNC_CONTAINERDIR="${HYAKVNC_CONTAINERDIR:-}"                               # %% Directory to look for apptainer containers (default: (none))
-HYAKVNC_APPTAINER_GHCR_ORAS_PRELOAD="${HYAKVNC_APPTAINER_GHCR_ORAS_PRELOAD:-1}"                        # %% Whether to preload SIF files from the ORAS GitHub Container Registry (default: `0`)
-HYAKVNC_APPTAINER_BIN="${HYAKVNC_APPTAINER_BIN:-apptainer}"                                            # %% Name of apptainer binary (default: `apptainer`)
-HYAKVNC_APPTAINER_CONTAINER="${HYAKVNC_APPTAINER_CONTAINER:-}"                                         # %% Path to container image to use (default: (none; set by `--container` option))
-HYAKVNC_APPTAINER_APP_VNCSERVER="${HYAKVNC_APPTAINER_APP_VNCSERVER:-vncserver}"                        # %% Name of app in the container that starts the VNC session (default: `vncserver`)
-HYAKVNC_APPTAINER_APP_VNCKILL="${HYAKVNC_APPTAINER_APP_VNCKILL:-vnckill}"                              # %% Name of app that cleanly stops the VNC session in the container (default: `vnckill`)
-HYAKVNC_APPTAINER_WRITABLE_TMPFS="${HYAKVNC_APPTAINER_WRITABLE_TMPFS:-${APPTAINER_WRITABLE_TMPFS:-1}}" # %% Whether to use a writable tmpfs for the container (default: `1`)
-HYAKVNC_APPTAINER_CLEANENV="${HYAKVNC_APPTAINER_CLEANENV:-${APPTAINER_CLEANENV:-1}}"                   # %% Whether to use a clean environment for the container (default: `1`)
-HYAKVNC_APPTAINER_ADD_BINDPATHS="${HYAKVNC_APPTAINER_ADD_BINDPATHS:-}"                                 # %% Bind paths to add to the container (default: (none))
-HYAKVNC_APPTAINER_ADD_ENVVARS="${HYAKVNC_APPTAINER_ADD_ENVVARS:-}"                                     #  %% Environment variables to add to before invoking apptainer (default: (none))
-HYAKVNC_APPTAINER_ADD_ARGS="${HYAKVNC_APPTAINER_ADD_ARGS:-}"                                           #  %% Additional arguments to give apptainer (default: (none))
+function hyakvnc_init() {
+	check_klone && klone_init
+	hyakvnc_load_config
+	[[ -n "${!HYAKVNC_@}"  ]] && export "${!HYAKVNC_@}" # Export all HYAKVNC_ variables
+	[[ -n "${!SBATCH_@}"  ]] && export "${!SBATCH_@}" # Export all SBATCH_ variables
+	[[ -n "${!SLURM_@}"  ]] && export "${!SLURM_@}" # Export all SLURM_ variables
+}
 
-# ## Slurm preferences:
-HYAKVNC_SLURM_JOB_PREFIX="${HYAKVNC_SLURM_JOB_PREFIX:-hyakvnc-}"    # %% Prefix to use for hyakvnc SLURM job names (default: `hyakvnc-`)
-HYAKVNC_SLURM_SUBMIT_TIMEOUT="${HYAKVNC_SLURM_SUBMIT_TIMEOUT:-120}" # %% Seconds after submitting job to wait for the job to start before timing out (default: `120`)
 
-HYAKVNC_SLURM_OUTPUT_DIR="${HYAKVNC_SLURM_OUTPUT_DIR:-${HYAKVNC_DIR}/slurm-output}"                      # %% Directory to store SLURM output files (default: `$HYAKVNC_DIR/slurm-output`)
-HYAKVNC_SLURM_OUTPUT="${HYAKVNC_SLURM_OUTPUT:-${SBATCH_OUTPUT:-${HYAKVNC_SLURM_OUTPUT_DIR}/job-%j.out}}" # %% Where to send SLURM job output (default: `$HYAKVNC_SLURM_OUTPUT_DIR/job-%j.out`)
-
-HYAKVNC_SLURM_JOB_NAME="${HYAKVNC_SLURM_JOB_NAME:-${SBATCH_JOB_NAME:-}}"            # %% What to name the launched SLURM job (default: (set according to container name))
-HYAKVNC_SLURM_ACCOUNT="${HYAKVNC_SLURM_ACCOUNT:-${SBATCH_ACCOUNT:-}}"               # %% Slurm account to use (default: (autodetected))
-HYAKVNC_SLURM_PARTITION="${HYAKVNC_SLURM_PARTITION:-${SBATCH_PARTITION:-}}"         # %% Slurm partition to use (default: (autodetected))
-HYAKVNC_SLURM_CLUSTER="${HYAKVNC_SLURM_CLUSTER:-${SBATCH_CLUSTERS:-}}"              # %% Slurm cluster to use (default: (autodetected))
-HYAKVNC_SLURM_GPUS="${HYAKVNC_SLURM_GPUS:-${SBATCH_GPUS:-}}"                        # %% Number of GPUs to request (default: (none))
-HYAKVNC_SLURM_MEM="${HYAKVNC_SLURM_MEM:-${SBATCH_MEM:-4G}}"                         # %% Amount of memory to request, in [M]egabytes or [G]igabytes (default: `4G`)
-HYAKVNC_SLURM_CPUS="${HYAKVNC_SLURM_CPUS:-4}"                                       # %% Number of CPUs to request (default: `4`)
-HYAKVNC_SLURM_TIMELIMIT="${HYAKVNC_SLURM_TIMELIMIT:-${SBATCH_TIMELIMIT:-12:00:00}}" # %% Time limit for SLURM job (default: `12:00:00`)
-
+function hyakvnc_parse_default_config() {
+	env -i HOME="$HOME" USER="$USER" PATH="$PATH" bash --login --norc --noprofile
+}
 # hyakvnc_load_config()
 # Load the hyakvnc configuration from the config file
 # This is high up in the file so that settings can be overridden by the user's config
 # Arguments: None
 function hyakvnc_load_config() {
 	[[ -r "${HYAKVNC_CONFIG_FILE:-}" ]] || return 0 # Return if config file doesn't exist
-	shopt -s restricted_shell                     # Enable restricted shell mode
-	shopt -s interactive_comments                 # Enable interactive comments
+	shopt -s restricted_shell # Enable restricted shell mode
+	shopt -s interactive_comments # Enable interactive comments
 	# shellcheck disable=SC2292
 	# shellcheck source=hyakvnc-config.sh
 	source "${HYAKVNC_CONFIG_FILE}"
@@ -89,8 +73,7 @@ function hyakvnc_load_config() {
 # shellcheck disable=SC2120 # Ignore unused arguments
 function hyakvnc_describe_config() {
 	check_command sed ERROR || return 1
-
-	sed -E '/^HYAKVNC_.*#\s*%%/!d; s/\s*\(default:.*$//; s/=.*(#\s*%%)\s*(.+)/=\2/g;' "${1:-${BASH_SOURCE[0]}}"
+	sed -E '/^\s*HYAKVNC_.*#\s*%%/!d; s/\.\s*default:.*$//; s/([^=]+)=.*#+\s*%+\s*(.*)$/\1=\2/g' "${1:-${BASH_SOURCE[0]}}"
 }
 
 # shellcheck disable=SC2034 # Unused variables left for documentation purposes
@@ -359,7 +342,7 @@ function hyakvnc_autoupdate() {
 	}
 
 	if [[ -t 0 ]]; then # Check if we're running interactively
-		while true; do   # Ask user if they want to update
+		while true; do # Ask user if they want to update
 			local choice
 			read -r -p "Would you like to update hyakvnc? [y/n] [x to disable]: " choice
 			case "${choice}" in
@@ -380,7 +363,6 @@ function hyakvnc_autoupdate() {
 				x | X)
 					log INFO "Disabling update checks"
 					export HYAKVNC_CHECK_UPDATE_FREQUENCY="-1"
-
 					if [[ -n "${HYAKVNC_CONFIG_FILE:-}" ]]; then
 						touch "${HYAKVNC_CONFIG_FILE}" && echo 'HYAKVNC_CHECK_UPDATE_FREQUENCY=-1' >>"${HYAKVNC_CONFIG_FILE}"
 						log INFO "Set HYAKVNC_CHECK_UPDATE_FREQUENCY=-1 in ${HYAKVNC_CONFIG_FILE}"
@@ -402,223 +384,6 @@ function hyakvnc_autoupdate() {
 }
 
 # ## General utility functions:
-
-# ## SLURM utility functons:
-
-# check_slurm_running {
-# Check if SLURM is running
-# Arguments: None
-function check_slurm_running() {
-	sinfo >/dev/null 2>&1 || return 1
-}
-
-# expand_slurm_node_range()
-# Expand a SLURM node range to a list of nodes
-# Arguments: <node range>
-function expand_slurm_node_range() {
-	[[ -z "${1:-}" ]] && return 1
-	result="$(scontrol show hostnames --oneliner "${1}" | grep -oE '^.+$' | tr ' ' '\n' || true)"
-	[[ -z "${result:-}" ]] && return 1
-	echo "${result}" && return 0
-}
-
-# get_slurm_job_info()
-# Get info about a SLURM job, given a list of job IDs
-# Arguments: <user> [<jobid>]
-
-# shellcheck disable=SC2034
-function get_slurm_job_info() {
-	local -n result_dct_ref
-	local -a field_names
-	local -a squeue_args=()
-	local sep=' '
-	local format='%i %j %a %P %u %T %M %l %C %m %D %N'
-	local -i ref_is_set=0
-	# Parse arguments
-	while true; do
-		case "${1:-}" in
-			--sep)
-				[[ -n "${2:-}" ]] || {
-					echo "ERROR: --sep requires an argument" >&2
-					return 1
-				}
-				shift
-				sep="${1}"
-				;;
-			--ref)
-				[[ -n "${2:-}" ]] || {
-					echo "ERROR: --ref requires an argument" >&2
-					return 1
-				}
-				shift
-				result_dct_ref="${1}"
-				ref_is_set=1
-				;;
-			--format)
-				[[ -n "${2:-}" ]] || {
-					echo "ERROR: --format requires an argument" >&2
-					return 1
-				}
-				shift
-				format="${1}"
-				;;
-			*)
-				break
-				;;
-		esac
-		shift
-	done
-	squeue_args+=("--format=${format}")
-	local line i=0
-
-	while read -r line; do
-		((i++ == 0)) && {
-			# First line contains header
-			# Split header into fields
-			IFS="${sep}" read -r -a field_names <<<"${line}"
-			continue
-		}
-		local -A job_info
-
-		# Split line into fields
-		IFS="${sep}" read -r -a fields <<<"${line}"
-		#readarray -d "${sep}" -t fields <<< "${line}"
-
-		for f in "${!field_names[@]}"; do
-			job_info["${field_names[${f}]}"]="${fields[${f}]}"
-		done
-		job_info_str="$(declare -p job_info)"
-		[[ "${ref_is_set}" -eq 1 ]] && result_dct_ref["JOBID"]="${job_info_str#*=}" || printf "%s\n" "${job_info_str#*=}"
-	done < <(squeue "${squeue_args[@]}" "${@}" || true)
-	return 0
-}
-
-# get_squeue_job_status()
-# Get the status of a SLURM job, given a job ID
-# Arguments: <jobid>
-function get_squeue_job_status() {
-	local jobid="${1:-}"
-	[[ -z "${jobid}" ]] && {
-		log ERROR "Job ID must be specified"
-		return 1
-	}
-	squeue -j "${1}" -h -o '%T' || {
-		log ERROR "Failed to get status for job ${jobid}"
-		return 1
-	}
-}
-
-# klone_read_qos()
-# Return the correct QOS on Hyak for the given partition on hyak
-# Logic copied from hyakalloc's hyakqos.py:QosResource.__init__():
-# Arguments: <partition>
-# shellcheck disable=SC2120
-function klone_read_qos() {
-	local qos_name="${1:-$(</dev/stdin)}"
-	[[ -z "${qos_name:-}" ]] && return 1
-	if [[ "${qos_name}" == *-* ]]; then
-		qos_suffix="${qos_name#*-}" # Extract portion after the first "-"
-
-		if [[ "${qos_suffix}" == *mem ]]; then
-			echo "compute-${qos_suffix}"
-		else
-			echo "${qos_suffix}"
-		fi
-	else
-		echo "compute"
-	fi
-}
-
-function slurm_list_partitions() {
-	check_command sacctmgr ERROR || return 1
-	local cluster account partitions max_count
-	local sacctmgr_args=(show --noheader --parsable2 --associations user "${USER}" format=qos)
-	while true; do
-		case "${1:-}" in
-			--cluster)
-				shift
-				cluster="${1:-}"
-				shift
-				;;
-			-A | --account)
-				shift
-				account="${1:-}"
-				shift
-				;;
-			-m | --max-count)
-				shift
-				max_count="${1:-}" # Number of partitions to list, 0 for all (passed to head -n -)
-				shift
-				;;
-			*) break ;;
-		esac
-	done
-	# Add filters if specified:
-	[[ -n "${account:-}" ]] && sacctmgr_args+=(where "account=${account}")
-	[[ -n "${cluster:-}" ]] && sacctmgr_args+=("cluster=${cluster}")
-
-	# Get partitions:
-	partitions="$(sacctmgr "${sacctmgr_args[@]}" | tr ',' '\n' | sort | uniq | head -n "${max_count:-0}" || true)"
-	[[ -n "${partitions:-}" ]] || return 1
-
-	# If running on klone, process the partition names as required (see `hyakalloc`)
-	if [[ "${cluster:-}" == "klone" ]] && [[ -n "${partitions:-}" ]]; then
-		partitions="$(echo "${partitions:-}" | klone_read_qos | sort | uniq || true)"
-	fi
-
-	# Return the partitions:
-	echo "${partitions}"
-	return 0
-}
-
-function slurm_list_clusters() {
-	check_command sacctmgr ERROR || return 1
-	local clusters max_count
-	local sacctmgr_args=(show --noheader --parsable2 --associations format=Cluster)
-	while true; do
-		case "${1:-}" in
-			-m | --max-count)
-				shift
-				max_count="${1:-}" # Number of partitions to list, 0 for all (passed to head -n -)
-				shift
-				;;
-			*) break ;;
-		esac
-	done
-	clusters="$(sacctmgr "${sacctmgr_args[@]}" | tr ',' '\n' | sort | uniq | head -n "${max_count:-0}" || true)"
-	echo "${clusters:-}"
-	return 0
-}
-
-function slurm_get_default_account() {
-	check_command sacctmgr ERROR || return 1
-	local cluster default_account
-	local sacctmgr_args=(show --noheader --parsable2 --associations format=defaultaccount)
-	[[ -n "${cluster:-}" ]] && sacctmgr_args+=("cluster=${cluster}")
-
-	while true; do
-		case "${1:-}" in
-			-c | --cluster)
-				shift
-				cluster="${1:-}"
-				shift
-				;;
-			*) break ;;
-		esac
-	done
-
-	default_account="$(sacctmgr "${sacctmgr_args[@]}" | tr ',' '\n' | sort | uniq | head -n 1 || true)"
-	echo "${default_account:-}"
-	return 0
-}
-
-# slurm_expand_node_range()
-# Expand a SLURM node range to a list of nodes
-function slurm_expand_node_range() {
-	[ -z "${1:-}" ] && return 1
-	result=$(scontrol show hostnames --oneliner "${1}" | grep -oE '^.+$' | tr ' ' '\n') || return 1
-	echo "${result}" && return 0
-}
 
 # hyakvnc_config_init()
 # Initialize the hyakvnc configuration
@@ -691,49 +456,8 @@ function hyakvnc_config_init() {
 
 	[[ -n "${!HYAKVNC_@}" ]] && export "${!HYAKVNC_@}" # Export all HYAKVNC_ variables
 	[[ -n "${!SBATCH_@}" ]] && export "${!SBATCH_@}" # Export all SBATCH_ variables
-	[[ -n "${!SLURM_@}" ]] && export "${!SLURM_@}"   # Export all SLURM_ variables
+	[[ -n "${!SLURM_@}" ]] && export "${!SLURM_@}" # Export all SLURM_ variables
 
-	return 0
-}
-
-function slurm_list_running_hyakvnc() {
-	check_command squeue ERROR || return 1
-	local jobid remove_prefix="${HYAKVNC_SLURM_JOB_PREFIX:-}"
-	local squeue_args=(--me --noheader)
-	squeue_args+=(--format '%i %T %n %M %j')                 # jobid, node, state, runtime, jobname
-	[[ -n "${jobid:-}" ]] && squeue_args+=(--job "${jobid}") # Only check status of provided SLURM job ID (optional)
-
-	local -n p_jobid
-
-	while true; do
-		case ${1:-} in
-			-h | --help)
-				help_status
-				return 0
-				;;
-			-j | --jobid) # Job ID to attach to (optional)
-				[[ -z "${jobid:=${2:-}}" ]] && {
-					log ERROR "No job ID provided for option ${1:-}"
-					return 1
-				}
-				shift
-				;;
-			--no-remove-prefix)
-				remove_prefix=""
-				shift
-
-				;;
-			-*)
-				log ERROR "Unknown option for ${FUNCNAME[0]}: ${1:-}"
-				return 1
-				;;
-			*)
-				break
-				;;
-		esac
-		shift
-	done
-	squeue "${squeue_args[@]}" | sed -E '/'"${HYAKVNC_SLURM_JOB_PREFIX:-}"'!d; s/(\s*)('"${remove_prefix:-}"')(.*)$/\1\3/' || true
 	return 0
 }
 
@@ -931,15 +655,180 @@ EOF
 
 }
 
-function ui_screen_dims() {
-	local width height
-	read -r -t 1 height width < <(stty size 2>/dev/null || true) 2>/dev/null || true
-	[[ -n "${height:-}" ]] || height="$(tput lines)" || height="${LINES:-40}"
-	[[ -n "${width:-}" ]] || width="$(tput cols)" || width="${COLUMNS:-78}"
-	((width <= 120)) || width=120 # Limit to 80 characters per line if over 120 characters
-	((height <= 40)) || height=40 # Limit to 40 lines if over 40 lines
-	((width >= 9)) || width=9   # Set minimum width
-	((height >= 7)) || height=7 # Set minimum height
-	echo "${height} ${width}"
+
+
+COMMANDS="create status stop show config update install help"
+
+TITLE="hyakvnc -- A tool for launching VNC sessions on Hyak."
+
+# show_usage()
+function show_usage() {
+	local isinstalled
+	isinstalled=$(command -v hyakvnc || echo '')
+	[[ -n "${isinstalled:-}" ]] && isinstalled=" (is already installed!)"
+
+	cat <<EOF
+Usage: hyakvnc [hyakvnc options] [${COMMANDS// /|}] [command options] [args...]
+
+Description:
+	Stop a provided HyakVNC sesssion and clean up its job directory
+
+Options:
+	-h, --help		Show this help message and exit
+	-d, --debug		Print debugging information
+	-V, --version	Print version information and exit
+
+Available commands:
+	create	Create a new VNC session
+	status	Check status of VNC session(s)
+	stop	Stop a VNC session
+	show	Show connection information for a VNC session
+	config	Show current configuration for hyakvnc
+	update	Update hyakvnc
+	install	Install hyakvnc so the "hyakvnc" command can be run from anywhere.${isinstalled:-}
+	help	Show help for a command
+
+See 'hyakvnc help <command>' for more information on a specific command.
+
+EOF
 }
+
+# help_help()
+function help_help() {
+	cat <<EOF
+Show help for a command
+Usage: hyakvnc [hyakvnc options] help <command>
+
+Description:
+	Show help for a command in hyakvnc
+
+Options:
+	-h, --help		Show this help message and exit
+	-u, --usage		Print only usage information
+	-V, --version	Print version information and exit
+EOF
+}
+
+# cmd_help()
+function cmd_help() {
+	local action_to_help
+	[[ $# == 0 ]] && {
+		echo "${TITLE}"
+		show_usage "$@"
+		exit 0
+	}
+
+	while true; do
+		case ${1:-} in
+			-h | --help)
+				help_help
+				exit 0
+				;;
+			-u | --usage)
+				shift
+				show_usage "$@"
+				exit 0
+				;;
+			*) break ;;
+		esac
+	done
+
+	if [[ -r "${SCRIPTDIR}/${1:-}.bash" ]]; then
+		action_to_help="${1:-}"
+		shift
+		"${SCRIPTDIR}/${action_to_help}.bash" --help "$@"
+
+	else
+		log ERROR "Can't show help for unknown command: \"${1:-}\". Available commands: ${COMMANDS}"
+		echo
+		show_usage "$@"
+		exit 1
+	fi
+
+}
+# help_update()
+function help_update() {
+	cat <<EOF
+Update hyakvnc
+
+Usage: hyakvnc update [update options...]
+	
+Description:
+	Update hyakvnc.
+
+Options:
+	-h, --help			Show this help message and exit
+
+Examples:
+	# Update hyakvnc
+	hyakvnc update
+EOF
+}
+
+# cmd_update()
+function cmd_update() {
+	log INFO "Checking for updates..."
+	if ! hyakvnc_check_updates; then
+		log INFO "No updates to apply."
+	else
+		log INFO "Applying updates..."
+		if ! hyakvnc_pull_updates; then
+			log WARN "No updates applied."
+			exit 1
+		else
+			log INFO "Update complete."
+		fi
+	fi
+}
+# help_config()
+function help_config() {
+	cat <<EOF
+Show the current configuration for hyakvnc
+
+Usage: hyakvnc config [config options...]
+	
+Description:
+	Show the current configuration for hyakvnc, as set in the user configuration file at ${HYAKVNC_CONFIG_FILE}, in the current environment, or the default values set by hyakvnc.
+
+Options:
+	-h, --help		Show this help message and exit
+
+Examples:
+	# Show configuration
+	hyakvnc config
+EOF
+}
+
+# cmd_config()
+function cmd_config() {
+	# Parse arguments:
+	while true; do
+		case "${1:-}" in
+			-h | --help)
+				help_config
+				return 0
+				;;
+			-*)
+				help log ERROR "Unknown option for config: ${1:-}\n"
+				return 1
+				;;
+			*)
+				break
+				;;
+		esac
+	done
+	export -p | sed -E 's/^declare\s+-x\s+//; /^HYAKVNC_/!d'
+	return 0
+}
+SourcedFiles+=("${BASH_SOURCE[0]}")
+
+# shellcheck source=/dev/null
+source "${BASH_SOURCE[0]%/*}/_default_config.sh" # Load default configuration
+# shellcheck source=/dev/null
+source "${BASH_SOURCE[0]%/*}/_slurm.bash" # Load SLURM functions
+# shellcheck source=/dev/null
+source "${BASH_SOURCE%/*}/modules/klone.bash"
+#hyakvnc_init_config
+#hyakvnc_init_config_descriptions # Initialize Hyakvnc_Config_Descriptions array
+#hyakvnc_load_config # Load configuration
 _HYAKVNC_LIB_LOADED=1
