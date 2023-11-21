@@ -2,7 +2,7 @@
 # shellcheck disable=SC2292
 
 [[ -n "${XDEBUG:-}" ]] && [[ "${XDEBUG^^}" =~ ^(1|TRUE|ON|YES)$ ]] && { PS4=':${LINENO}+'; set -x; }
-set -o pipefail -o errtrace -o nounset -o functrace
+set -o pipefail -o errtrace  -o functrace
 shopt -qs inherit_errexit || true
 shopt -qs lastpipe || true
 shopt -qs extglob || true
@@ -120,6 +120,74 @@ function tui_log() {
 	retval="${?}"; [[ -z "${option:-}" ]] || ((retval != 0)) && return "${retval}"
 }
 
+
+#shellcheck disable=SC2178
+function tui_config_multi() {
+	local -A short_to_long=(
+		[-o]="--options"
+		[-t]="--states"
+		[-t]="--title"
+	)
+	local -a p_options=()
+	local -a p_states=()
+	local -i p_use_title=0
+	for k in "${!short_to_long[@]}"; do
+		short_to_long[${short_to_long[${k}]}]="${k}"
+	done
+	local p_title="${FUNCNAME[0]}"
+
+	while (($# > 0)); do
+		case "${1:-}" in
+			--?*= | -?*=)
+				set -- "${1%%=*}" "${1#*=}" "${@:2}"
+				continue ;;
+			--?* | -?*)
+				param="${1#--}"
+				param="${param#-}"
+				param="${param//-/_}"
+				param="p_${param}"
+				;;&
+			-?) local long_arg
+			long_arg="${short_to_long[$1]:-}"
+			[[ -n "${long_arg:-}" ]] || { log ERROR "Unknown option \"$1\""; return 1; }
+			set -- "${long_arg}" "${@:2}" && continue
+				;;
+			
+			--?*)
+				local param="${1#--}"
+				param="${param#-}" param="${param//-/_}" param="p_${param}"
+				local -n __tui_config_multi_param_ref="${param}"
+				[[ -R "${__tui_config_multi_param_ref}" ]] || { log ERROR "Unknown option \"$1\""; return 1; }
+				case "${!__tui_config_multi_param_ref@a}" in
+	
+					*i*)
+						echo "Using integer"
+						__tui_config_multi_param_ref=1;;
+				*a* | *A*)
+						while (($# > 0)) ; do
+							case "${1:---}" in
+								--) shift; break ;;
+								?*) __tui_config_multi_param_ref+=("$1") ;;
+								*) break ;;
+							esac
+							shift
+						done
+						continue
+						;;
+					*) 	shift || { log ERROR "$1 requires an argument"; return 1; }
+
+						__tui_config_multi_param_ref="$1" ;;
+				esac			
+				echo "${!__tui_config_multi_param_ref}=${__tui_config_multi_param_ref} (${__tui_config_multi_param_ref@a})"
+				;;
+			?*) tui_log ERROR "Unknown option \"${1:-}\""; return 1 ;;
+			*) break ;;
+		esac
+		shift
+	done
+	local -p
+}
+
 # shellcheck disable=SC2034
 function default_action_config_var() {
 	local title="${FUNCNAME[0]}"
@@ -179,7 +247,7 @@ function default_action_config_var() {
 	fi
 
 	declare -p "${!p_var_ref}" >/dev/null 2>&1 || { tui_log "No such variable: \"${!p_var_ref}\""; return 1; }
-	declare    -p "${!p_var_ref}"
+	declare  -p "${!p_var_ref}"
 
 	if [[ -n "${p_var_default:-}" ]]; then
 		var_default_meta_str="\"${p_var_default}\""
@@ -308,8 +376,8 @@ foo() {
 	#	default_action_config_var --var-ref someselvar --var-desc 'a description of someselvar\ninfo' --var-options asxc --var-selections-ref someselvar_selections
 	#	tui_log INFO "someselvar: ${someselvar}"
 	echo "someselvar: ${someselvar}"
-	
-	local  -a someselvars=(one four)
+
+	local -a someselvars=(one four)
 	local -p someselvars
 	default_action_config_var --var-ref someselvars --var-desc 'a description of someselvars\ninfo' --var-options asxmc --var-selections-ref someselvar_selections
 	#	tui_log INFO "someselvars: ${someselvars[*]}"
@@ -317,6 +385,5 @@ foo() {
 }
 
 if ! (return 0 2>/dev/null); then
-	foo "$@"
-
+	tui_config_multi "$@"
 fi
