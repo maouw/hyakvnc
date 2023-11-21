@@ -121,150 +121,79 @@ function tui_log() {
 }
 
 
-#shellcheck disable=SC2178
-function tui_config_multi() {
-	local -A short_to_long=(
-		[-o]="--options"
-		[-t]="--states"
-		[-t]="--title"
-	)
-	local -a p_options=()
-	local -a p_states=()
-	local -i p_use_title=0
-	for k in "${!short_to_long[@]}"; do
-		short_to_long[${short_to_long[${k}]}]="${k}"
+
+do_parse_options() {
+	# do_parse_options a b c d 
+	local -n __do_parse_options_options_ref="$1"
+	local -n __do_parse_options_parsed_options_ref="$2"
+	local __do_parse_options_param
+	local -A __do_parse_options_short_to_long=()
+	local -A __do_parse_options_types=()
+	# [ -v 'array[i]' ];
+
+	shift 2
+	local ____do_parse_options_options_ref_key
+	for ____do_parse_options_options_ref_key in "${!__do_parse_options_options_ref[@]}"; do
+		__do_parse_options_types["${____do_parse_options_options_ref_key}"]="${____do_parse_options_options_ref_key}"
 	done
-	local p_title="${FUNCNAME[0]}"
 
 	while (($# > 0)); do
+		local __do_parse_options_param="$1"
 		case "${1:-}" in
 			--?*= | -?*=)
 				set -- "${1%%=*}" "${1#*=}" "${@:2}"
-				continue ;;
-			--?* | -?*)
-				param="${1#--}"
-				param="${param#-}"
-				param="${param//-/_}"
-				param="p_${param}"
-				;;&
-			-?) local long_arg
-			long_arg="${short_to_long[$1]:-}"
-			[[ -n "${long_arg:-}" ]] || { log ERROR "Unknown option \"$1\""; return 1; }
-			set -- "${long_arg}" "${@:2}" && continue
+				continue
 				;;
-			
 			--?*)
-				local param="${1#--}"
-				param="${param#-}" param="${param//-/_}" param="p_${param}"
-				local -n __tui_config_multi_param_ref="${param}"
-				[[ -R "${__tui_config_multi_param_ref}" ]] || { log ERROR "Unknown option \"$1\""; return 1; }
-				case "${!__tui_config_multi_param_ref@a}" in
+				[[ -v '__do_parse_options_types[${1}]' ]] || { log ERROR "Unknown option \"$1\""; return 1; }
+				local __do_parse_options_param="$1"
+				local __do_parse_options_type="${__do_parse_options_options_ref[${__do_parse_options_param}]}"
+				shift || { log ERROR "$1 requires an argument"; return 1; }
+				case "${__do_parse_options_type:-}" in
+					--) __do_parse_options_parsed_options_ref["${__do_parse_options_param}"]="$1" ;;
+					-b) 
+					while (($# > 0)) ; do
+				 			case "${1:---}" in
+				 				--) shift; break ;;
+				 				?*) __do_parse_options_parsed_options_ref["${__do_parse_options_param}"]+=("$1") ;;
+				 				*) break ;;
+				 			esac
+				 			shift
+					done
+					;;
+					*) __do_parse_options_parsed_options_ref["${__do_parse_options_param}"]="$1" ;;
+				esac
+			
+				# param="${param#-}" param="${param//-/_}" param="p_${param}"
+				# local -n __tui_config_multi_param_ref="${param}"
+				# [[ -R "${__tui_config_multi_param_ref}" ]] || { log ERROR "Unknown option \"$1\""; return 1; }
+				# case "${!__tui_config_multi_param_ref@a}" in
 	
-					*i*)
-						echo "Using integer"
-						__tui_config_multi_param_ref=1;;
-				*a* | *A*)
-						while (($# > 0)) ; do
-							case "${1:---}" in
-								--) shift; break ;;
-								?*) __tui_config_multi_param_ref+=("$1") ;;
-								*) break ;;
-							esac
-							shift
-						done
-						continue
-						;;
-					*) 	shift || { log ERROR "$1 requires an argument"; return 1; }
+				# 	*i*)
+				# 		echo "Using integer"
+				# 		__tui_config_multi_param_ref=1;;
+				# *a* | *A*)
+				# 		while (($# > 0)) ; do
+				# 			case "${1:---}" in
+				# 				--) shift; break ;;
+				# 				?*) __tui_config_multi_param_ref+=("$1") ;;
+				# 				*) break ;;
+				# 			esac
+				# 			shift
+				# 		done
+				# 		continue
+				# 		;;
+				# 	*) 	shift || { log ERROR "$1 requires an argument"; return 1; }
 
-						__tui_config_multi_param_ref="$1" ;;
-				esac			
-				echo "${!__tui_config_multi_param_ref}=${__tui_config_multi_param_ref} (${__tui_config_multi_param_ref@a})"
+				# 		__tui_config_multi_param_ref="$1" ;;
 				;;
-			?*) tui_log ERROR "Unknown option \"${1:-}\""; return 1 ;;
+			?*) log ERROR "Unknown option \"${1:-}\""; return 1 ;;
 			*) break ;;
 		esac
 		shift
 	done
-	local -p
 }
-
-# shellcheck disable=SC2034
-function default_action_config_var() {
-	local title="${FUNCNAME[0]}"
-	local -n p_var_ref
-	local p_var_type p_var_desc p_var_default p_var_regex p_var_options
-	local -n p_var_selections_ref
-	local var_default_meta_str
-	local var_opt_auto var_opt_unset var_opt_multi var_opt_export var_opt_allow_custom
-	# Parse arguments
-	while true; do
-		local param
-		(($# == 0)) && break
-		param="${1:-}"
-		# shellcheck disable=SC2249
-		case "${1:-}" in
-			--?*= | -?*=)
-				set -- "${1%%=*}" "${1#*=}" "${@:2}"
-				continue ;;
-			--?* | -?*)
-				param="${1#--}"
-				param="${param#-}"
-				param="${param//-/_}"
-				param="p_${param}"
-				;;&
-			--var-ref)
-				shift || { log ERROR "$1 requires an argument"; return 1; }
-				p_var_ref="$1"
-				;;
-			--var-selections-ref)
-				shift || { log ERROR "$1 requires an argument"; return 1; }
-				p_var_selections_ref="$1"
-				;;
-			--var-type | --var-desc | --var-default | --var-regex | --var-options)
-				shift || { log ERROR "$1 requires an argument"; return 1; }
-				local -n param_ref="${param}"
-				param_ref="$1"
-				echo "${!param_ref}=${param_ref}"
-				;;
-			?*) tui_log ERROR "Unknown option \"${1:-}\""; return 1 ;;
-			*) break ;;
-		esac
-		shift
-	done
-	[[ -R p_var_ref ]] || tui_log ERROR "Missing required argument: --var-ref"
-
-	case "${var_options:-}" in
-		*a*) var_opt_auto=1; var_default_meta='**auto**' ;;&
-		*u*) var_opt_unset=1 ;;&
-		*x*) var_opt_export=1 ;;&
-		*m*) var_opt_multi=1 ;;&
-		*c*) var_opt_allow_custom=1 ;;&
-		*) ;;
-	esac
-
-	if [[ "${p_var_ref@a}" =~ .*a.* ]]; then
-		var_opt_multi=1
-	fi
-
-	declare -p "${!p_var_ref}" >/dev/null 2>&1 || { tui_log "No such variable: \"${!p_var_ref}\""; return 1; }
-	declare  -p "${!p_var_ref}"
-
-	if [[ -n "${p_var_default:-}" ]]; then
-		var_default_meta_str="\"${p_var_default}\""
-	else
-		var_default_meta_str='**auto**'
-	fi
-
-	while true; do
-		local msg_lines="Choose an option"
-		local var_current_str
-		if [[ "${p_var_ref@a}" =~ .*a.* ]]; then
-			var_current_str="(${p_var_ref[*]:-})"
-		else
-			var_current_str="${p_var_ref:-}"
-		fi
-		var_current_str="${var_current_str:-${var_default_meta_str:-} (default)}"
-		msg_lines+="\nCurrent value: ${var_current_str}"
+ 
 		msg_lines+="\nDefault value: ${var_default_meta_str}"
 		[[ -n "${p_var_type:-}" ]] && msg_lines+="\nType: ${p_var_type}"
 		[[ -n "${p_var_options:-}" ]] && msg_lines+="\nOptions: ${p_var_options}"
@@ -385,5 +314,16 @@ foo() {
 }
 
 if ! (return 0 2>/dev/null); then
-	tui_config_multi "$@"
+	#tui_config_multi "$@"
+	declare -A options=(
+		['--choices']='--' ['--states']='--' ['--title']='' ['--use-title']='-b'
+	)
+	declare -A parsed_options=(
+		[--choices]=''
+		[--states]=''
+		[--title]=''
+		[--use_title]=0
+	)
+	set -x
+	tui_config_multi --choices one two three -- --states one three --
 fi
