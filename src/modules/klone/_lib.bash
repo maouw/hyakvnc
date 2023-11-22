@@ -1,8 +1,11 @@
-#! /usr/bin/env bash
-# hyakvnc utility functions
+#!/usr/bin/env bash
+[[ "${_SOURCED_MODULE_LIB_KLONE:-0}" != 0  ]] && return 0
+(return 0 2>/dev/null) && echo >&2 "ERROR: This script must be sourced, not executed." && exit 1
+source "${BASH_SOURCE[0]%/*}/_lib.bash"
 
-# shellcheck disable=SC2292
-[ -n "${_HYAKVNC_LIB_SLURM_LOADED:-}" ] && return 0 # Return if already loaded
+#! /usr/bin/env bash
+
+[[ "${_HYAKVNC_M_KLONE_LOADED:-0}" != 0 ]] && return 0 # Return if already loaded
 
 # Only enable these shell behaviours if we're not being sourced
 if ! (return 0 2>/dev/null); then
@@ -10,14 +13,24 @@ if ! (return 0 2>/dev/null); then
 	shopt -s inherit_errexit
 fi
 
+function m_klone_init_config() {
+	HYAKVNC_SLURM_OUTPUT_DIR="${HYAKVNC_SLURM_OUTPUT_DIR:-${HYAKVNC_DIR}/slurm-output}"                      # %% Directory to store SLURM output files. default: $HYAKVNC_DIR/slurm-output
+	HYAKVNC_SLURM_OUTPUT="${HYAKVNC_SLURM_OUTPUT:-${HYAKVNC_SLURM_OUTPUT_DIR}/job-%j.out}"                                 # %% Where to send SLURM job output. default: HYAKVNC_SLURM_OUTPUT_DIR/job-%j.out
+	HYAKVNC_SSH_HOST="${HYAKVNC_SSH_HOST:-klone.hyak.uw.edu}"                                                             # %% SSH host to connect to. default: klone.hyak.uw.edu
+	HYAKVNC_SLURM_CLUSTER="${HYAKVNC_SLURM_CLUSTER:-${SBATCH_CLUSTER:-klone}}"                                            # %% SLURM cluster to use. default: $SBATCH_CLUSTER or klone
+	HYAKVNC_SLURM_PARTITION="${HYAKVNC_SLURM_PARTITION:-${SBATCH_PARTITION:-}}"                                          # %% SLURM partition to use. default: $SBATCH_PARTITION or ""
+	HYAKVNC_SLURM_MEM="${HYAKVNC_SLURM_MEM:-${SBATCH_MEM:-4G}}"                                                            # %% SLURM memory to request. default: $SBATCH_MEM or 4G
+	HYAKVNC_SLURM_CPUS="${HYAKVNC_SLURM_CPUS:-${SRUN_CPUS_PER_TASK:-2}}"                                                  # %% SLURM CPUs to request. default: $SRUN_CPUS_PER_TASK or 2
+	HYAKVNC_SLURM_TIMELIMIT="${HYAKVNC_SLURM_TIMELIMIT:-SBATCH_TIMELIMIT:-12:00}"                                                                  # %% SLURM time limit. default: $SBATCH_TIMELIMIT or 12:00
+	HYAKVNC_SLURM_ACCOUNT="${HYAKVNC_SLURM_ACCOUNT:-${SBATCH_ACCOUNT:-}}"                                                  # %% SLURM account to use. default: $SBATCH_ACCOUNT or ""
+}
 
-
-# check_slurm_running()
-# Check if SLURM is running
-#
-# Returns: 0 if SLURM is running, 1 otherwise
-function check_slurm_running() {
-	sinfo >/dev/null 2>&1 || return 1
+function check_klone() {
+	local domain
+	domain="$(hostname -d)" || return 1
+	[[ "${domain}" == "hyak.local" ]] || return 1
+	slurm_list_clusters --max-count 1 | grep -q klone || return 1
+	return 0
 }
 
 # expand_slurm_node_range()
@@ -236,6 +249,126 @@ function slurm_get_default_account() {
 }
 
 
-SourcedFiles+=("${BASH_SOURCE[0]}")
+# klone_read_qos()
+# Return the correct QOS on Hyak for the given partition on hyak
+# Logic copied from hyakalloc's hyakqos.py:QosResource.__init__():
+# Arguments: <partition>
+# shellcheck disable=SC2120
+function klone_read_qos() {
+	local qos_name="${1:-$(</dev/stdin)}"
+	[[ -z "${qos_name:-}" ]] && return 1
+	if [[ "${qos_name}" == *-* ]]; then
+		qos_suffix="${qos_name#*-}" # Extract portion after the first "-"
 
-_HYAKVNC_LIB_SLURM_LOADED=1
+		if [[ "${qos_suffix}" == *mem ]]; then
+			echo "compute-${qos_suffix}"
+		else
+			echo "${qos_suffix}"
+		fi
+	else
+		echo "compute"
+	fi
+}
+
+function klone_slurm_list_partitions() {
+	local partitions result
+	partitions="$(slurm_list_partitions --cluster klone "$@")" || return 1
+	[[ -n "${partitions:-}" ]] || return 0
+	result="$(echo "${partitions:-}" | klone_read_qos | sort | uniq)" || return 1
+	[[ -n "${result:-}" ]] || return 1
+	echo "${result}"
+}
+
+function klone_setup_apptainer_cachedir() {
+	local parentdir
+	local newcachedir
+	local abs_apptainer_cachedir
+	local add_to_shells=0
+
+	[[ -d "/gscratch/scrubbed" ]] && parentdir="/gscratch/scrubbed/${USER}/.cache"
+	while true; do
+		case "${1:-}" in
+			--parent-dir)
+				shift || { log ERROR "$1 requires an argument"; return 1; }
+				parentdir="$1" ;;
+			--new-cache-dir)
+				shift || { log ERROR "$1 requires an argument"; return 1; }
+				newcachedir="$1" ;;
+			--add-to-shells)
+				shift
+				add_to_shells=1 ;;
+			*) break ;;
+		esac
+		shift
+	done
+
+	abs_apptainer_cachedir="$(realpath "${APPTAINER_CACHEDIR:-}")" || {
+		log WARN "Failed to resolve APPTAINER_CACHEDIR to an absolute path"
+	}
+
+	case "${abs_apptainer_cachedir:-${APPTAINER_CACHEDIR:-}}" in
+		*/gscratch | */gscratch/* | /tmp | /tmp/*) return 0 ;;
+		*) ;;
+	esac
+
+	[[ -n "${parentdir:-}" ]] || parentdir="$(mktemp -d "${USER}--XXXXXX")" || {
+		log WARN "Failed to create temporary directory"
+		return 1
+	}
+	[[ -n "${newcachedir:-}" ]] || newcachedir="${parentdir}/.cache/apptainer"
+
+	mkdir -p "${newcachedir}" || {
+		log WARN "Failed to create directory ${newcachedir}"
+		return 1
+	}
+	export APPTAINER_CACHEDIR="${newcachedir:-}"
+	log DEBUG "Set APPTAINER_CACHEDIR to ${APPTAINER_CACHEDIR}"
+
+	if [[ "${add_to_shells:-0}" != 0 ]]; then
+		if ps T -o 'comm=' --pid "$$" | grep -q zsh; then
+			printf "export APPTAINER_CACHEDIR='%q'\n" "${APPTAINER_CACHEDIR}" >>"${HOME}/.zshrc"
+		fi
+		if ps T -o 'comm=' --pid "$$" | grep -q bash; then
+			[[ -w "${HOME}/.bashrc" ]] && printf "export APPTAINER_CACHEDIR='%q'\n" "${APPTAINER_CACHEDIR}" >>"${HOME}/.bashrc"
+		fi
+	fi
+
+	printf '%q\n' "${APPTAINER_CACHEDIR}"
+}
+
+function m_klone_config_tui_edit_HYAKVNC_SLURM_PARTITION() {
+	local -a partitions
+	partitions="$(klone_slurm_list_partitions)" || return 1
+	[[ -n "${partitions:-}" ]] || return 1
+	local menu=()
+	local old_value="${HYAKVNC_SLURM_PARTITION:-}"
+	local -i i=0
+	for p in ${partitions}; do
+		menu+=($((++i)) "${p}")
+	done
+	menu+=(custom "...Enter custom")
+	menu+=(reset "...Reset")
+
+	new_value="$(whiptail --title "${title}" --notags --checklist "Choose a partition" 0 0 0 "${menu[@]}" 3>&1 1>&2 2>&3)"
+	retval="${?}"; ((retval != 0)) && return "${retval}"
+	case "${new_value}" in
+		"custom")
+			new_value="$(whiptail --title "${title}" --notags --inputbox "Enter a partition" 0 0 "${HYAKVNC_SLURM_PARTITION:-}" 3>&1 1>&2 2>&3)"
+			retval="${?}"; ((retval != 0)) && return "${retval}"
+			export HYAKVNC_SLURM_PARTITION="${new_value:-}"
+
+			;;
+		"reset")
+			unset HYAKVNC_SLURM_PARTITION
+			;;
+		*)
+			new_value="${menu[$((new_value * 2))]}"
+			export HYAKVNC_SLURM_PARTITION="${new_value:-}"
+			;;
+	esac
+	echo "${old_value:-}"
+	return 0
+}
+
+_SOURCED_MODULE_LIB_KLONE=1
+

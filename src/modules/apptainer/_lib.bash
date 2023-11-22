@@ -1,55 +1,14 @@
 #!/usr/bin/env bash
 [[ "${_SOURCED_MODULE_LIB_APPTAINER:-0}" != 0  ]] && return 0
-# Only enable these shell behaviours if we're not being sourced
-if ! (return 0 2>/dev/null); then
-	set -EuT -o pipefail
-	shopt -s inherit_errexit
-fi
+(return 0 2>/dev/null) && echo >&2 "ERROR: This script must be sourced, not executed." && exit 1
+source "${BASH_SOURCE[0]%/*}/_lib.bash"
+
 
 
 function m_apptainer_init_config() {
 	HYAKVNC_SSH_HOST="${HYAKVNC_SSH_HOST:-localhost}" # %?% default: localhost
 }
 
-
-function help_m_apptainer_list() {
-	cat <<EOF
-List hyakvnc sessions.
-
-Usage: hyakvnc list [options...]
-	
-Description:
-	List hyakvnc sessions.
-
-Options:
-	-h, --help			Show this help message and exit
-
-Examples:
-	# Update hyakvnc
-	hyakvnc update
-EOF
-}
-
-function m_apptainer_list() {
-	local 0a args=(instance list)
-	[[ -n "${1:-}" ]] && args+=("${1}?**")
-	printf "ID\tCREATED\tSTATUS\tNAME\n"
-	local  s 
-	s="$(apptainer "${args[@]}")" || return 1
-      
-	local i=0     
- 
-	while IFS= read -r; do  
-		local pid created state name id rest
-		((i++ > 0)) || continue  
-		read -r name pid rest <<<"${REPLY}" || return 1
-		created="$(date --date "$(ps -p "${pid}" -o  lstart= || true)" '+%F %T %:z %Z')" || return 1
-		state="$(ps -p "${pid}" -o state=)" || return 1
-		id="${pid}--${name}"
-		printf "%s\t%s\t%s\t%s\n" "${id}" "${created}" "${state}" "${name}"  
-	done <<<"${s}"
-	return 0	
-}
 
 m_apptainer_list_remote_images() {
 	local height width msg repo

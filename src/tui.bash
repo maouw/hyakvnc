@@ -12,6 +12,7 @@ SCRIPTDIR="${BASH_SOURCE[0]%/*}"
 # shellcheck source=/dev/null
 source "${SCRIPTDIR}/_lib.bash"
 
+
 function tui_main_menu() {
 	local -n actions
 	[[ -n "${1:-}" ]] && actions="$1"

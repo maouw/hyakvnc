@@ -1,88 +1,57 @@
 #! /usr/bin/env bash
 # hyakvnc - A script to launch VNC sessions on Hyak
+set -EuT -o pipefail
+shopt -qs lastpipe
+shopt -qs inherit_errexit
 
-# shellcheck disable=SC2292
-[ -n "${XDEBUG:-}" ] && set -x # Set XDEBUG to print commands as they are executed
-# shellcheck disable=SC2292
-[ -n "${BASH_VERSION:-}" ] || { echo "Requires Bash"; exit 1; }
-set -o pipefail # Use last non-zero exit code in a pipeline
-set -o errtrace # Ensure the error trap handler is inherited
-set -o nounset  # Exit if an unset variable is used
-shopt -qs inherit_errexit # Ensure the error trap handler is inherited
-shopt -qs nullglob # Expand globs to nothing if no matches
 
-SourcedFiles+=("${BASH_SOURCE[0]}")
+SCRIPTPATH="$(readlink -f "${BASH_SOURCE[0]}")"
+SCRIPTDIR="$(dirname "${SCRIPTPATH}")"
 
-SCRIPTDIR="${BASH_SOURCE[0]%/*}" # Get the directory name
+SCRIPTDIR=${BASH_SOURCE[0]%/*}
 # shellcheck source=_lib.bash
-# shellcheck disable=SC1091
-source "$SCRIPTDIR/_lib.bash"
-# shellcheck source=_tui.bash
-# shellcheck disable=SC1091
-source "$SCRIPTDIR/_tui.bash"
+source "${SCRIPTDIR}/_lib.bash"
+
+case "${XDEBUG:-0}" in 1|t*|T*|y*|Y*) export PS4='${BASH_SOURCE[0]##*/}:${LINENO} : '; set -x ;; *) ;; esac
 
 function main() {
-	local action
-	local orig_args=()
+	local action=help
+  local actionfn
+	local -a orig_args=()
 	orig_args+=("${@:-}")
 
-	action=help
-	while true; do
+	while (($# > 0)); do
 		case "${1:-}" in
 			-d | --debug) # Debug mode
-				set_log_level DEBUG
-				shift
+				set_log_level DEBUG || { log ERROR "Couldn't set log level to DEBUG"; return 1; }
 				;;
 			--log-level) # Set log level
-				[[ -n "${2:-}" ]] || { log ERROR "$1 requires a non-empty option argument"; exit 1; }
-				shift
-				set_log_level "$1"
-				shift
+				shift || { log ERROR "$1 requires an argument"; return 1; }
+				set_log_level "$1" || { log ERROR "Couldn't set log level to \"$1\""; return 1; }
 				;;
 			-h | --help)
-				shift
 				action=help
+				;;
+			-m | --module)
+				shift || { log ERROR "$1 requires an argument"; return 1; }
+				export HYAKVNC_MODULE="$1"
 				;;
 			-V | --version)
 				echo "HyakVNC version ${HYAKVNC_VERSION:-}"
 				exit 0
 				;;
-			*) action="${1:-}"
-			break
+			help | create | show | list | stop | config | update)
+				action="$1"
+				;;
+			*)  # Unknown option
+				log   ERROR "Unknown option: \"$1\""
+				return   1
 				;;
 		esac
-	done
-
-	if [[ -r "${SCRIPTDIR}/${action:=help}.bash" ]]; then
 		shift
-	else
-		log ERROR "Unknown command: \"${action:-}\""
-		echo
-		"${SCRIPTDIR}/help.bash" -u
-		exit 1
-	fi
-
-	case "${action}" in
-		help | install | update | config)
-			hyakvnc_config_init || log WARN "Could't initialize config automatically" # Don't exit if config can't be initialized (e.g., not running on SLURM)
-			;;
-		*)
-			hyakvnc_config_init || exit 1                                 # Fill in default values for config variables or exit if config can't be initialized
-			hyakvnc_autoupdate "${orig_args:-}" || log TRACE "Didn't autoupdate" # Don't exit if didn't autoupdate
-			;;
-	esac
-
-	[[ -n "${!HYAKVNC_@}" ]] && export "${!HYAKVNC_@}" # Export all HYAKVNC_ variables
-	[[ -n "${!SBATCH_@}" ]] && export "${!SBATCH_@}" # Export all SBATCH_ variables
-	[[ -n "${!SLURM_@}" ]] && export "${!SLURM_@}" # Export all SLURM_ variables
-
-	exec "${SCRIPTDIR}/${action}.bash" "$@"
+	done
+	hyakvnc_init "${orig_args[@]}" || { log ERROR "Couldn't initialize HyakVNC"; return 1; }
+	hyakvnc_command "${action:-}" "${@:-}" || { log ERROR "Couldn't run command: \"${action:-}\""; return 1; }
 }
-
-# shellcheck disable=SC2046
-
-[[ -n "${!HYAKVNC_@}"  ]] && export "${!HYAKVNC_@}" # Export all HYAKVNC_ variables
-[[ -n "${!SBATCH_@}"  ]] && export "${!SBATCH_@}" # Export all SBATCH_ variables
-[[ -n "${!SLURM_@}"  ]] && export "${!SLURM_@}" # Export all SLURM_ variables
 
 main "$@"

@@ -4,26 +4,6 @@
 # shellcheck disable=SC2292
 [ -n "${_HYAKVNC_LIB_LOADED:-}" ] && return 0 # Return if already loaded
 
-# shellcheck disable=SC2292
-[ -n "${XDEBUG:-}" ] && set -x # Set XDEBUG to print commands as they are executed
-# shellcheck disable=SC2292
-[ -n "${BASH_VERSION:-}" ] || { echo "Requires Bash"; exit 1; }
-
-# Check Bash version greater than 4:
-if [[ "${BASH_VERSINFO:-0}" -lt 4 ]]; then
-	echo "Requires Bash version > 4.x"
-	exit 1
-fi
-
-# Check Bash version 4.4 or greater:
-case "${BASH_VERSION:-0}" in
-	4*) if [[ "${BASH_VERSINFO[1]:-0}" -lt 4 ]]; then
-		echo "Requires Bash version > 4.x"
-		exit 1
-	fi ;;
-
-	*) ;;
-esac
 
 # Only enable these shell behaviours if we're not being sourced
 if ! (return 0 2>/dev/null); then
@@ -32,42 +12,66 @@ if ! (return 0 2>/dev/null); then
 fi
 
 
+function hyakvnc_module_init_config() {
+	local module="${1:-${HYAKVNC_MODULE:-}}"
+	[[ -z "${module}" ]] && { log ERROR "Module not specified"; return 1; }
+	local init_func="m_${module//-/_}_init_config"
+	declare -F "${init_func}" >/dev/null || { log ERROR "Could not find initialization function for module \"${module}"\"; return 1; }
+	"${init_func}" || { log ERROR "Failed to initialize module \"${module}\""; return 1; }
+}
+
+
 function hyakvnc_init() {
-	check_klone && klone_init
-	hyakvnc_load_config
-	[[ -n "${!HYAKVNC_@}"  ]] && export "${!HYAKVNC_@}" # Export all HYAKVNC_ variables
-	[[ -n "${!SBATCH_@}"  ]] && export "${!SBATCH_@}" # Export all SBATCH_ variables
-	[[ -n "${!SLURM_@}"  ]] && export "${!SLURM_@}" # Export all SLURM_ variables
+	[[ -n "${HYAKVNC_MODULE:-}" ]] && HYAKVNC_MODULE=$(hyakvnc_guess_module) || { log ERROR "Couldn't guess module"; return 1; }
+	hyakvnc_init_config || { log ERROR "Couldn't initialize configuration"; return 1; }
+	hyakvnc_load_config || { log ERROR "Couldn't load configuration"; return 1; }
+	hyakvnc_module_init_config || { log ERROR "Couldn't initialize module configuration"; return 1; }
+	hyakvnc_load_config || { log ERROR "Couldn't load configuration"; return 1; }
+	hyakvnc_autoupdate || { log WARN "Couldn't check for updates"; }
+#	[[ -n "${!HYAKVNC_@}" ]] && export "${!HYAKVNC_@}" # Export all HYAKVNC_ variables
+#	[[ -n "${!SBATCH_@}" ]] && export "${!SBATCH_@}" # Export all SBATCH_ variables
+#	[[ -n "${!APPTAINER_@}" ]] && export "${!SLURM_@}" # Export all APPTAINER_ variables
+#	[[ -n "${!SINGULARITY_@}" ]] && export "${!SINGULARITY_@}" # Export all APPTAINER_ variables
+}
+
+	
+
+function hyakvnc_init_config() {
+	HYAKVNC_DIR="${HYAKVNC_DIR:-${HOME}/.hyakvnc}"                                                        # %% Local directory to store application. default:$HOME/.hyakvnc
+	HYAKVNC_CONFIG_FILE="${HYAKVNC_DIR}/hyakvnc-config.sh"                                                # %% Configuration file to use. default: $HYAKVNC_DIR/hyakvnc-config.sh
+	HYAKVNC_REPO_DIR="${HYAKVNC_REPO_DIR:-${HYAKVNC_DIR}/hyakvnc}"                                        # %% Local directory to store git repository. default: $HYAKVNC_DIR/hyakvnc
+	HYAKVNC_CHECK_UPDATE_FREQUENCY="${HYAKVNC_CHECK_UPDATE_FREQUENCY:-0}"                                 # %% How often to check for updates in `[d]`ays or `[m]`inutes; use `0` for every time, `-1` to disable`, 1d` for daily, `10m` for every 10 minutes, etc. default: 0
+	HYAKVNC_LOG_FILE="${HYAKVNC_LOG_FILE:-${HYAKVNC_DIR}/hyakvnc.log}"                                    # %% Log file to use. default: $HYAKVNC_DIR/hyakvnc.log
+	HYAKVNC_LOG_LEVEL="${HYAKVNC_LOG_LEVEL:-INFO}"                                                        # %% Log level to use for interactive output. default: INFO
+	HYAKVNC_LOG_FILE_LEVEL="${HYAKVNC_LOG_FILE_LEVEL:-DEBUG}"                                             # %% Log level to use for log file output. default: DEBUG
+	HYAKVNC_DEFAULT_TIMEOUT="${HYAKVNC_DEFAULT_TIMEOUT:-30}"                                              # %% Seconds to wait for most commands to complete before timing out. default: 30
+	HYAKVNC_JOB_PREFIX="${HYAKVNC_JOB_PREFIX:-hyakvnc-}"                                                  # %% Prefix to use for hyakvnc SLURM job names. default: hyakvnc-
+	HYAKVNC_JOB_SUBMIT_TIMEOUT="${HYAKVNC_JOB_SUBMIT_TIMEOUT:-120}"                                       # %% Seconds after submitting job to wait for the job to start before timing out. default: 120
+
+	# :%% VNC preferences
+	HYAKVNC_VNC_PASSWORD="${HYAKVNC_VNC_PASSWORD:-password}"                                              # %% Password to use for new VNC sessions. default: password
+	HYAKVNC_VNC_DISPLAY="${HYAKVNC_VNC_DISPLAY:-:10}"                                                     # %% VNC display to use. default: :10
+
+	HYAKVNC_MODULE="${HYAKVNC_MODULE:-}"                                                                  # %% Module to load before launching VNC session. default: none
 }
 
 
-function hyakvnc_parse_default_config() {
-	env -i HOME="$HOME" USER="$USER" PATH="$PATH" bash --login --norc --noprofile
+function check_bash_version() {
+	if [ -z "${BASH_VERSION:-}" ] || [ "${BASH_VERSINFO:-0}" -lt 4 ] || { [ "${BASH_VERSINFO:-0}" -eq 4 ] && [ "${BASH_VERSINFO[1]:-0}" -lt 4 ] ;}; then
+		echo >&2 "Requires Bash version > 4.x"; return 1
+	else
+		return 0
+	fi
 }
-# hyakvnc_load_config()
-# Load the hyakvnc configuration from the config file
-# This is high up in the file so that settings can be overridden by the user's config
-# Arguments: None
+
+# shellcheck disable=SC1090
 function hyakvnc_load_config() {
-	[[ -r "${HYAKVNC_CONFIG_FILE:-}" ]] || return 0 # Return if config file doesn't exist
-	shopt -s restricted_shell # Enable restricted shell mode
-	shopt -s interactive_comments # Enable interactive comments
-	# shellcheck disable=SC2292
-	# shellcheck source=hyakvnc-config.sh
-	source "${HYAKVNC_CONFIG_FILE}"
-	shopt -u restricted_shell # Disable restricted shell mode
-
-	# # Read each line of the parsed config file and export the variable:
-	# while IFS=$'\n' read -r line; do
-	# 	# Get the variable name by removing everything after the equals sign. Uses nameref to allow indirect assignment (see https://gnu.org/software/bash/manual/html_node/Shell-Parameters.html):
-	# 	declare -n varref="${line%%=*}"
-	# 	# Evaluate the right-hand side of the equals sign:
-	# 	varref="$(bash --restricted --posix -c "echo ${line#*=}" || true)"
-	# 	# Export the variable:
-	# 	export "${!varref}"
-	# 	# If DEBUG is not 0, print the variable:
-	# 	[[ "${DEBUG:-0}" != 0 ]] && echo "Loaded variable from \"CONFIG_FILE\": ${!varref}=(${varref})" >&2
-	# done < <(sed -E 's/^\s*//;  /^[^#=]+=.*/!d;  s/^([^=\s]+)\s+=/\1=/;' "${HYAKVNC_CONFIG_FILE}" || true) # Parse config file, ignoring comments and blank lines, removing leading whitespace, and removing whitespace before (but not after) the equals sign
+	if [[ -n "${HYAKVNC_CONFIG_FILE:-}" ]] && [[ -f "${HYAKVNC_CONFIG_FILE:-}" ]] && [[ -r "${HYAKVNC_CONFIG_FILE:-}" ]]; then
+		# shellcheck source=/dev/null
+		source "${HYAKVNC_CONFIG_FILE:-}" 2>/dev/null || { log ERROR "Couldn't load configuration file ${HYAKVNC_CONFIG_FILE:-}"; return 1; }
+	else
+		return 0
+	fi
 }
 
 # shellcheck disable=SC2120 # Ignore unused arguments
@@ -197,16 +201,16 @@ function log() {
 		fi
 
 		# Print the rest of the message without colors:
-		printf "%s%b" "${*-}" "${newline}" >&2 || true
+		printf "%s%b" "${*-}" "${newline:-}" >&2 || true
 	fi
 
-	if [[ "${curlogfilelevelno}" -ge "${levelno}" ]]; then
-		if [[ -z "${continueline:-}" ]]; then
-			printf "%s %s%s: " "$(date +'%F %T')" "${level:-}" "${logfilectx:- }" >&2 >>"${HYAKVNC_LOG_FILE:-/dev/null}" || true
-		fi
+#	if [[ "${curlogfilelevelno}" -ge "${levelno}" ]] && [[ -n "${HYAKVNC_LOG_FILE:-}" ]] && [[ -w "${HYAKVNC_LOG_FILE:-}" ]]; then
+#		if [[ -z "${continueline:-}" ]]; then
+#			printf "%s %s%s: " "$(date +'%F %T')" "${level:-}" "${logfilectx:- }" >&2 >>"${HYAKVNC_LOG_FILE}" || true
+#		fi
 
-		printf "%s%b" "${*-}%s" "${newline}" >&2 >>"${HYAKVNC_LOG_FILE:-/dev/null}" || true
-	fi
+#		printf "%s%b" "${*-}%s" "${newline:-}" >&2 >>"${HYAKVNC_LOG_FILE}" || true
+#	fi
 }
 
 # ## Update functions:
@@ -350,15 +354,15 @@ function hyakvnc_autoupdate() {
 					log INFO "Updating hyakvnc..."
 					hyakvnc_pull_updates || {
 						log WARN "Didn't update hyakvnc"
-						return 1
+						return 0
 					}
 					log INFO "Successfully updated hyakvnc. Restarting..."
 					echo
-					exec "${0}" "${@}" # Restart hyakvnc
+					exec "${0}" "$@" # Restart hyakvnc
 					;;
 				n | N | no | No)
 					log INFO "Not updating hyakvnc"
-					return 1
+					return 0
 					;;
 				x | X)
 					log INFO "Disabling update checks"
@@ -367,7 +371,7 @@ function hyakvnc_autoupdate() {
 						touch "${HYAKVNC_CONFIG_FILE}" && echo 'HYAKVNC_CHECK_UPDATE_FREQUENCY=-1' >>"${HYAKVNC_CONFIG_FILE}"
 						log INFO "Set HYAKVNC_CHECK_UPDATE_FREQUENCY=-1 in ${HYAKVNC_CONFIG_FILE}"
 					fi
-					return 1
+					return 0
 					;;
 				*)
 					echo "Please enter y, n, or x"
@@ -377,7 +381,7 @@ function hyakvnc_autoupdate() {
 	else
 		hyakvnc_pull_updates || {
 			log INFO "Didn't update hyakvnc"
-			return 1
+			return 0
 		}
 	fi
 	return 0
@@ -637,7 +641,8 @@ EOF
 	echo "MACOS TERMINAL"
 	printf "ssh -f %s sleep 20 && " "${ssh_args[*]}"
 	# Print a command to open a VNC viewer for each bundle ID:
-	for bundleid in ${HYAKVNC_MACOS_VNC_VIEWER_BUNDLEIDS}; do
+	HYAKVNC_MACOS_VNC_VIEWER_BUNDLEIDS=(com.turbovnc.vncviewer.VncViewer com.realvnc.vncviewer com.tigervnc.vncviewer)
+	for bundleid in "${HYAKVNC_MACOS_VNC_VIEWER_BUNDLEIDS[@]}"; do
 		printf "open -b %s --args localhost:%s 2>/dev/null || " "${bundleid}" "${viewer_port}"
 	done
 
@@ -654,8 +659,6 @@ EOF
 	echo "=========="
 
 }
-
-
 
 COMMANDS="create status stop show config update install help"
 
@@ -820,15 +823,34 @@ function cmd_config() {
 	export -p | sed -E 's/^declare\s+-x\s+//; /^HYAKVNC_/!d'
 	return 0
 }
-SourcedFiles+=("${BASH_SOURCE[0]}")
 
 # shellcheck source=/dev/null
-source "${BASH_SOURCE[0]%/*}/_default_config.sh" # Load default configuration
-# shellcheck source=/dev/null
-source "${BASH_SOURCE[0]%/*}/_slurm.bash" # Load SLURM functions
+source "${BASH_SOURCE%/*}/modules/apptainer.bash"
+
 # shellcheck source=/dev/null
 source "${BASH_SOURCE%/*}/modules/klone.bash"
-#hyakvnc_init_config
-#hyakvnc_init_config_descriptions # Initialize Hyakvnc_Config_Descriptions array
-#hyakvnc_load_config # Load configuration
+
+function hyakvnc_guess_module() {
+	if check_klone; then
+		echo "klone"
+	elif check_command apptainer; then
+		echo "apptainer"
+	else
+		log ERROR "Neither SLURM nor Apptainer are installed. Can't run hyakvnc because there's nowhere to launch the container."
+		return 1
+	fi
+}
+
+function hyakvnc_command() {
+	local module="${HYAKVNC_MODULE:-}"
+	[[ -z "${module}" ]] && { module=$(hyakvnc_guess_module) || log ERROR "Failed to determine module to use"; return 1; }
+	(($# < 1)) || { log ERROR "No command specified"; return 1; }
+	local func="m_${module}_$1"
+	declare -F "${func}" >/dev/null || func="hyakvnc_cmd_$1"
+	declare -F "${func}" >/dev/null || { log ERROR "Unknown command: ${1:-}"; return 1; }
+	shift
+	"${func}" "$@"
+}
+
+
 _HYAKVNC_LIB_LOADED=1
