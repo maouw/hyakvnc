@@ -1,37 +1,81 @@
 #! /usr/bin/env bash
 # hyakvnc - A script to launch VNC sessions on Hyak
+HYAKVNC_VERSION="0.3.1"
 
-# Check Bash version greater than 4:
-if [[ "${BASH_VERSINFO:-0}" -lt 4 ]]; then
-	echo "Requires Bash version > 4.x"
-	exit 1
-fi
-
-# Check Bash version 4.4 or greater:
-case "${BASH_VERSION:-0}" in
-	4*) if [[ "${BASH_VERSINFO[1]:-0}" -lt 4 ]]; then
-		echo "Requires Bash version > 4.x"
-		exit 1
-	fi ;;
-
-	*) ;;
-esac
+# Check Bash version greater than 4.4:
+if [[ "${BASH_VERSINFO:-0}" -lt 4 ]] || [[ "${BASH_VERSINFO[0]:-0}" -eq 4 && "${BASH_VERSINFO[1]:-0}" -lt 4 ]]; then { echo >&2 "Requires Bash version > 4.x"; exit 1; }; fi
 
 # Only enable these shell behaviours if we're not being sourced
 if ! (return 0 2>/dev/null); then
-	[[ -n "${XDEBUG:-}" ]] && set -x # %% Set XDEBUG to print commands as they are executed
-	set -o pipefail                # Use last non-zero exit code in a pipeline
-	set -o errtrace                # Ensure the error trap handler is inherited
-	# set -o errexit                 # Exit on error
-	# shopt -qs inherit_errexit      # Ensure subshells exit on error
+	[[ "${XDEBUG:-0}" =~ ^[1yYtT] ]] && set -x
+	set -o pipefail           # Use last non-zero exit code in a pipeline
+	set -o errtrace           # Ensure the error trap handler is inherited
+	shopt -qs lastpipe        # Run the last command in a pipeline in the current shell
+	shopt -qs inherit_errexit # Ensure subshells exit on error
 fi
 
-# # Preferences and settings:
-HYAKVNC_VERSION="0.3.1"
-
 # ## App preferences:
-HYAKVNC_DIR="${HYAKVNC_DIR:-${HOME}/.hyakvnc}"          # %% Local directory to store application data (default: `$HOME/.hyakvnc`)
-HYAKVNC_CONFIG_FILE="${HYAKVNC_DIR}/hyakvnc-config.env" # %% Configuration file to use (default: `$HYAKVNC_DIR/hyakvnc-config.env`)
+HYAKVNC_DIR="${HYAKVNC_DIR:-${HOME}/.hyakvnc}"                     # %% Local directory to store application data (default: `$HOME/.hyakvnc`)
+HYAKVNC_CONFIG_FILE="${HYAKVNC_DIR}/hyakvnc-config.env"            # %% Configuration file to use (default: `$HYAKVNC_DIR/hyakvnc-config.env`)
+HYAKVNC_LOG_FILE="${HYAKVNC_LOG_FILE:-${HYAKVNC_DIR}/hyakvnc.log}" # %% Log file to use (default: `$HYAKVNC_DIR/hyakvnc.log`)
+HYAKVNC_LOG_LEVEL="${HYAKVNC_LOG_LEVEL:-INFO}"                     # %% Log level to use for interactive output (default: `INFO`)
+HYAKVNC_LOG_FILE_LEVEL="${HYAKVNC_LOG_FILE_LEVEL:-DEBUG}"          # %% Log level to use for log file output (default: `DEBUG`)
+
+# # Utility functions
+declare -A Log_Levels=([OFF]=0 [FATAL]=1 [ERROR]=2 [WARN]=3 [INFO]=4 [DEBUG]=5 [TRACE]=6 [ALL]=100)
+declare -A Log_Level_Colors=([FATAL]=5 [ERROR]=1 [WARN]=3 [INFO]=4 [DEBUG]=6 [TRACE]=2)
+
+# check_log_level()
+# Check if the current log level is high enough to log a message
+# Arguments: <level>
+function check_log_level() {
+	local -i refloglevel refloglevelno
+	[[ -z "${levelno:=${Log_Levels[${level:-INFO}]}}" ]] && return 1
+	[[ -z "${refloglevelno:=${Log_Levels[${refloglevel:-INFO}]}}" ]] && return 1
+	((levelno >= refloglevelno))
+}
+
+# log()
+# Log a message to the stderr and the log file if the log level is high enough
+# Arguments: <level> <message>
+# 	<level> is the log level, e.g. INFO, WARN, ERROR, etc. (default: INFO)
+#	<message> is the message to log (default: empty string)
+#
+# Environment variables:
+#	$HYAKVNC_LOG_LEVEL - The log level to use for interactive output (default: INFO)
+#	$HYAKVNC_LOG_FILE - The log file to use (default: $HYAKVNC_DIR/hyakvnc.log)
+#  	$HYAKVNC_LOG_FILE_LEVEL - The log level to use for log file output (default: DEBUG)
+function log() {
+	(($# < 1)) && { echo >&2 "ERROR in log(): No arguments provided"; return 1; }
+	local level levelno curlevelno curlogfilelevelno curloglevel curlogfilelevel
+	level="${1:-}"
+	shift
+	[[ -z "${levelno:=${Log_Levels[${level}]}}" ]] && { echo >&2 "ERROR in log(): Unknown log level: ${level}"; return 0; }
+	curloglevel="${HYAKVNC_LOG_LEVEL:-INFO}"
+	[[ -z "${curlevelno:=${Log_Levels[${curloglevel}]}}" ]] && { echo >&2 "ERROR in log(): Unknown interactive log level: ${curloglevel}"; return 0; }
+	[[ "${HYAKVNC_LOG_FILE:-/dev/null}" == "/dev/null" ]] && curlogfilelevel="OFF" || curlogfilelevel="${HYAKVNC_LOG_FILE_LEVEL:-DEBUG}"
+	[[ -z "${curlogfilelevelno:=${Log_Levels[${curlogfilelevel}]}}" ]] && { echo >&2 "log() Unknown logfile log level: ${curloglevel}"; return 0; }
+
+	local logctx curlogctx sourcefile lineno funcname
+	sourcefile="${BASH_SOURCE[1]:-}"
+	sourcefile="${sourcefile##*/}" # Remove everything before the last slash
+	lineno="${BASH_LINENO[1]:-}"
+	[[ -n "${funcname:=${FUNCNAME[1]:-}}" ]] && funcname="${funcname}()" # Add parentheses to function name
+	logctx=" @ ${sourcefile:+${sourcefile}${lineno:+:}}${lineno:+${lineno}${funcname:+:}}${funcname:+${funcname}}"
+	if ((curlevelno >= levelno)); then
+		((curlevelno >= "${Log_Levels[DEBUG]}")) && curlogctx="${logctx}"
+		[[ -t 1 ]] && tput setaf "${Log_Level_Colors[${level}]:-}" 2>/dev/null # If we're in a terminal, use colors
+		printf >&2 '%s%s:' "${level}" "${curlogctx:-}"
+		[[ -t 1 ]] && tput sgr0 2>/dev/null # If we're in a terminal, unset colors
+		printf >&2 ' %b\n' "${*:-}"
+	fi
+
+	if ((curlogfilelevelno >= levelno)); then
+		((curlogfilelevelno >= "${Log_Levels[DEBUG]}")) && curlogctx="${logctx}"
+		printf >&2 '%s %s%s: %b\n' "$(date -Is || printf '' || true)" "${level}" "${curlogctx:-}" "${*:-}" >>"${HYAKVNC_LOG_FILE:-/dev/null}"
+	fi
+	return 0
+}
 
 # hyakvnc_load_config()
 # Load the hyakvnc configuration from the config file
@@ -58,13 +102,25 @@ if ! (return 0 2>/dev/null); then
 	hyakvnc_load_config
 fi
 
-HYAKVNC_REPO_DIR="${HYAKVNC_REPO_DIR:-${HYAKVNC_DIR}/hyakvnc}"        # Local directory to store git repository (default: `$HYAKVNC_DIR/hyakvnc`)
-HYAKVNC_CHECK_UPDATE_FREQUENCY="${HYAKVNC_CHECK_UPDATE_FREQUENCY:-0}" # %% How often to check for updates in `[d]`ays or `[m]`inutes (default: `0` for every time. Use `1d` for daily, `10m` for every 10 minutes, etc. `-1` to disable.)
-HYAKVNC_LOG_FILE="${HYAKVNC_LOG_FILE:-${HYAKVNC_DIR}/hyakvnc.log}"    # %% Log file to use (default: `$HYAKVNC_DIR/hyakvnc.log`)
-HYAKVNC_LOG_LEVEL="${HYAKVNC_LOG_LEVEL:-INFO}"                        # %% Log level to use for interactive output (default: `INFO`)
-HYAKVNC_LOG_FILE_LEVEL="${HYAKVNC_LOG_FILE_LEVEL:-DEBUG}"             # %% Log level to use for log file output (default: `DEBUG`)
-HYAKVNC_SSH_HOST="${HYAKVNC_SSH_HOST:-klone.hyak.uw.edu}"             # %% Default SSH host to use for connection strings (default: `klone.hyak.uw.edu`)
-HYAKVNC_DEFAULT_TIMEOUT="${HYAKVNC_DEFAULT_TIMEOUT:-30}"              # %% Seconds to wait for most commands to complete before timing out (default: `30`)
+if sacctmgr show cluster -o --noheader --associations --parsable2 format=Cluster 2>/dev/null | grep -q '^klone$'; then
+	HYAKVNC_BACKEND="slurm"
+	HYAKVNC_SSH_HOST="klone.hyak.uw.edu"
+	SBATCH_CLUSTERS="klone"
+elif command -v apptainer >/dev/null 2>&1; then
+	HYAKVNC_BACKEND="apptainer"
+else
+	log "No backend found. Please run on the UW klone cluster or install apptainer."
+	exit 1
+fi
+
+HYAKVNC_JOBS_DIR="${HYAKVNC_JOBS_DIR:-${HYAKVNC_DIR}/${HYAKVNC_BACKEND}/jobs}" # %% Directory to store job data (default: `$HYAKVNC_DIR/jobs`)
+HYAKVNC_REPO_DIR="${HYAKVNC_REPO_DIR:-${HYAKVNC_DIR}/hyakvnc}"                 # Local directory to store git repository (default: `$HYAKVNC_DIR/hyakvnc`)
+HYAKVNC_CHECK_UPDATE_FREQUENCY="${HYAKVNC_CHECK_UPDATE_FREQUENCY:-0}"          # %% How often to check for updates in `[d]`ays or `[m]`inutes (default: `0` for every time. Use `1d` for daily, `10m` for every 10 minutes, etc. `-1` to disable.)
+HYAKVNC_SSH_HOST="${HYAKVNC_SSH_HOST:-}"                                       # %% Default SSH host to use for connection strings (default: (autodetected))
+HYAKVNC_DEFAULT_TIMEOUT="${HYAKVNC_DEFAULT_TIMEOUT:-30}"                       # %% Seconds to wait for most commands to complete before timing out (default: `30`)
+HYAKVNC_BACKEND="${HYAKVNC_BACKEND:-}"                                         # %% Backend to use (default: (autodetected, can be `klone`, `apptainer`))
+
+HYAKVNC_SSH_HOST="${HYAKVNC_SSH_HOST:-localhost}" # %% Default SSH host to use for connection strings (default: `localhost` if backend is apptainer or docker, `klone.hyak.uw.edu` if backend is `klone`)
 
 # ## VNC preferences:
 HYAKVNC_VNC_PASSWORD="${HYAKVNC_VNC_PASSWORD:-password}" # %% Password to use for new VNC sessions (default: `password`)
@@ -73,112 +129,37 @@ HYAKVNC_VNC_DISPLAY="${HYAKVNC_VNC_DISPLAY:-:10}"        # %% VNC display to use
 HYAKVNC_MACOS_VNC_VIEWER_BUNDLEIDS="${HYAKVNC_MACOS_VNC_VIEWER_BUNDLEIDS:-com.turbovnc.vncviewer.VncViewer com.turbovnc.vncviewer}" # macOS bundle identifiers for VNC viewer executables (default: `com.turbovnc.vncviewer com.realvnc.vncviewer com.tigervnc.vncviewer`)
 
 # ## Apptainer preferences:
-HYAKVNC_APPTAINER_CONTAINERS_DIR="${HYAKVNC_APPTAINER_CONTAINERS_DIR:-}"                               # %% Directory to look for apptainer containers (default: (none))
-HYAKVNC_APPTAINER_GHCR_ORAS_PRELOAD="${HYAKVNC_APPTAINER_GHCR_ORAS_PRELOAD:-1}"                        # %% Whether to preload SIF files from the ORAS GitHub Container Registry (default: `0`)
-HYAKVNC_APPTAINER_BIN="${HYAKVNC_APPTAINER_BIN:-apptainer}"                                            # %% Name of apptainer binary (default: `apptainer`)
-HYAKVNC_APPTAINER_CONTAINER="${HYAKVNC_APPTAINER_CONTAINER:-}"                                         # %% Path to container image to use (default: (none; set by `--container` option))
-HYAKVNC_APPTAINER_APP_VNCSERVER="${HYAKVNC_APPTAINER_APP_VNCSERVER:-vncserver}"                        # %% Name of app in the container that starts the VNC session (default: `vncserver`)
-HYAKVNC_APPTAINER_APP_VNCKILL="${HYAKVNC_APPTAINER_APP_VNCKILL:-vnckill}"                              # %% Name of app that cleanly stops the VNC session in the container (default: `vnckill`)
-HYAKVNC_APPTAINER_WRITABLE_TMPFS="${HYAKVNC_APPTAINER_WRITABLE_TMPFS:-${APPTAINER_WRITABLE_TMPFS:-1}}" # %% Whether to use a writable tmpfs for the container (default: `1`)
-HYAKVNC_APPTAINER_CLEANENV="${HYAKVNC_APPTAINER_CLEANENV:-${APPTAINER_CLEANENV:-1}}"                   # %% Whether to use a clean environment for the container (default: `1`)
-HYAKVNC_APPTAINER_ADD_BINDPATHS="${HYAKVNC_APPTAINER_ADD_BINDPATHS:-}"                                 # %% Bind paths to add to the container (default: (none))
-HYAKVNC_APPTAINER_ADD_ENVVARS="${HYAKVNC_APPTAINER_ADD_ENVVARS:-}"                                     #  %% Environment variables to add to before invoking apptainer (default: (none))
-HYAKVNC_APPTAINER_ADD_ARGS="${HYAKVNC_APPTAINER_ADD_ARGS:-}"                                           #  %% Additional arguments to give apptainer (default: (none))
+HYAKVNC_APPTAINER_CONTAINERS_DIR="${HYAKVNC_APPTAINER_CONTAINERS_DIR:-}"        # %% Directory to look for apptainer containers (default: (none))
+HYAKVNC_APPTAINER_GHCR_ORAS_PRELOAD="${HYAKVNC_APPTAINER_GHCR_ORAS_PRELOAD:-1}" # %% Whether to preload SIF files from the ORAS GitHub Container Registry (default: `0`)
+HYAKVNC_APPTAINER_BIN="${HYAKVNC_APPTAINER_BIN:-apptainer}"                     # %% Name of apptainer binary (default: `apptainer`)
+HYAKVNC_APPTAINER_CONTAINER="${HYAKVNC_APPTAINER_CONTAINER:-}"                  # %% Path to container image to use (default: (none; set by `--container` option))
+HYAKVNC_APPTAINER_APP_VNCSERVER="${HYAKVNC_APPTAINER_APP_VNCSERVER:-vncserver}" # %% Name of app in the container that starts the VNC session (default: `vncserver`)
 
+APPTAINER_WRITABLE_TMPFS="${APPTAINER_WRITABLE_TMPFS:-1}" # %% Whether to mount a writable tmpfs at /tmp (default: `1`)
+APPTAINER_CONTAIN="${APPTAINER_CONTAIN:-1}"               # %% Whether to run the container in a separate process (default: `1`)
+HYAKVNC_JOB_PREFIX="${HYAKVNC_JOB_PREFIX:-hyakvnc-}" # %% Prefix to use for hyakvnc job names (default: `hyakvnc-`)
 # ## Slurm preferences:
-HYAKVNC_SLURM_JOB_PREFIX="${HYAKVNC_SLURM_JOB_PREFIX:-hyakvnc-}"    # %% Prefix to use for hyakvnc SLURM job names (default: `hyakvnc-`)
-HYAKVNC_SLURM_SUBMIT_TIMEOUT="${HYAKVNC_SLURM_SUBMIT_TIMEOUT:-120}" # %% Seconds after submitting job to wait for the job to start before timing out (default: `120`)
 
-HYAKVNC_SLURM_OUTPUT_DIR="${HYAKVNC_SLURM_OUTPUT_DIR:-${HYAKVNC_DIR}/slurm-output}"                      # %% Directory to store SLURM output files (default: `$HYAKVNC_DIR/slurm-output`)
-HYAKVNC_SLURM_OUTPUT="${HYAKVNC_SLURM_OUTPUT:-${SBATCH_OUTPUT:-${HYAKVNC_SLURM_OUTPUT_DIR}/job-%j.out}}" # %% Where to send SLURM job output (default: `$HYAKVNC_SLURM_OUTPUT_DIR/job-%j.out`)
+if [[ "${HYAKVNC_BACKEND}" == "slurm" ]]; then
+	HYAKVNC_SLURM_SUBMIT_TIMEOUT="${HYAKVNC_SLURM_SUBMIT_TIMEOUT:-120}"                         # %% Seconds after submitting job to wait for the job to start before timing out (default: `120`)
+	HYAKVNC_SLURM_OUTPUT_DIR="${SBATCH_OUTPUT:-${HYAKVNC_DIR}/${HYAKVNC_BACKEND}/slurm-output}" # %% Directory to store SLURM output files (default: `$HYAKVNC_DIR/slurm/slurm-output`)
+	SBATCH_OUTPUT="${SBATCH_OUTPUT:-${HYAKVNC_SLURM_OUTPUT_DIR}/%j.out}}"                       # %% Where to send SLURM job output (default: `$HYAKVNC_SLURM_OUTPUT_DIR/%j.out`)
+	SBATCH_ACCOUNT="${SBATCH_ACCOUNT:-}"                                                        # %% Slurm account to use (default: (autodetected))
+	SBATCH_PARTITION="${SBATCH_PARTITION:-}"                                                    # %% Slurm partition to use (default: (autodetected))
+	SBATCH_CLUSTERS="${SBATCH_CLUSTERS:-}"                                                      # %% Slurm cluster to use (default: (autodetected))
+	SBATCH_GPUS="${SBATCH_GPUS:-}"                                                              # %% Number of GPUs to request (default: (none))
 
-HYAKVNC_SLURM_JOB_NAME="${HYAKVNC_SLURM_JOB_NAME:-${SBATCH_JOB_NAME:-}}"            # %% What to name the launched SLURM job (default: (set according to container name))
-HYAKVNC_SLURM_ACCOUNT="${HYAKVNC_SLURM_ACCOUNT:-${SBATCH_ACCOUNT:-}}"               # %% Slurm account to use (default: (autodetected))
-HYAKVNC_SLURM_PARTITION="${HYAKVNC_SLURM_PARTITION:-${SBATCH_PARTITION:-}}"         # %% Slurm partition to use (default: (autodetected))
-HYAKVNC_SLURM_CLUSTER="${HYAKVNC_SLURM_CLUSTER:-${SBATCH_CLUSTERS:-}}"              # %% Slurm cluster to use (default: (autodetected))
-HYAKVNC_SLURM_GPUS="${HYAKVNC_SLURM_GPUS:-${SBATCH_GPUS:-}}"                        # %% Number of GPUs to request (default: (none))
-HYAKVNC_SLURM_MEM="${HYAKVNC_SLURM_MEM:-${SBATCH_MEM:-4G}}"                         # %% Amount of memory to request, in [M]egabytes or [G]igabytes (default: `4G`)
-HYAKVNC_SLURM_CPUS="${HYAKVNC_SLURM_CPUS:-4}"                                       # %% Number of CPUs to request (default: `4`)
-HYAKVNC_SLURM_TIMELIMIT="${HYAKVNC_SLURM_TIMELIMIT:-${SBATCH_TIMELIMIT:-12:00:00}}" # %% Time limit for SLURM job (default: `12:00:00`)
-
-# # Global variables (using CamelCase):
-declare -a Launched_JobIDs # Declare array of launched jobs
-Launched_JobIDs=()         # Array of launched jobs
-
-# ## Log levels for log() function:
-declare -A Log_Levels Log_Level_Colors # Declare Log_Levels and Log_Level_Colors arrays
-Log_Levels=(["OFF"]=0 ["FATAL"]=1 ["ERROR"]=2 ["WARN"]=3 ["INFO"]=4 ["DEBUG"]=5 ["TRACE"]=6 ["ALL"]=100)
-Log_Level_Colors=(["FATAL"]=5 ["ERROR"]=1 ["WARN"]=3 ["INFO"]=4 ["DEBUG"]=6 ["TRACE"]=2)
-
-# # Utility functions
-
-# check_log_level()
-# Check if the current log level is high enough to log a message
-# Arguments: <level>
-function check_log_level() {
-	local level levelno refloglevel refloglevelno
-	level="${1:-INFO}"
-	refloglevel="${2:-${HYAKVNC_LOG_LEVEL:-INFO}}"
-	[[ -z "${levelno:=${Log_Levels[${level}]}}" ]] && {
-		echo >&2 "log(): Unknown log level: ${level}"
-		return 1
-	}
-	[[ -z "${refloglevelno:=${Log_Levels[${refloglevel}]}}" ]] && {
-		echo >&2 "log() Unknown log level: ${refloglevel}"
-		return 1
-	}
-	[[ "${levelno}" -lt "${refloglevelno}" ]] && return 1
-	return 0
-}
-
-# log()
-# Log a message to the stderr and the log file if the log level is high enough
-# Arguments: <level> <message>
-# 	<level> is the log level, e.g. INFO, WARN, ERROR, etc. (default: INFO)
-#	<message> is the message to log (default: empty string)
-#
-# Environment variables:
-#	$HYAKVNC_LOG_LEVEL - The log level to use for interactive output (default: INFO)
-#	$HYAKVNC_LOG_FILE - The log file to use (default: $HYAKVNC_DIR/hyakvnc.log)
-#  	$HYAKVNC_LOG_FILE_LEVEL - The log level to use for log file output (default: DEBUG)
-function log() {
-	local level levelno colorno curlevelno curlogfilelevelno funcname logfilefuncname curloglevel curlogfilelevel
-	[[ $# -lt 1 ]] && return 1
-	level="${1:-}"
-	shift
-	[[ -z "${level}" ]] && {
-		echo >&2 "log(): No log level set"
-		return 1
-	}
-
-	[[ -z "${levelno:=${Log_Levels[${level}]}}" ]] && {
-		echo >&2 "log(): Unknown log level: ${level}"
-		return 1
-	}
-	curloglevel="${HYAKVNC_LOG_LEVEL:-INFO}" && curlogfilelevel="${HYAKVNC_LOG_FILE_LEVEL:-DEBUG}"
-	[[ -z "${curlevelno:=${Log_Levels[${curloglevel}]}}" ]] && {
-		echo >&2 "log() Unknown interactive log level: ${curloglevel}"
-		return 1
-	}
-	[[ -z "${curlogfilelevelno:=${Log_Levels[${curlogfilelevel}]}}" ]] && {
-		echo >&2 "log() Unknown logfile log level: ${curloglevel}"
-		return 1
-	}
-	colorno="${Log_Level_Colors[${level}]}"
-	[[ "${levelno}" -ge "${Log_Levels[DEBUG]}" ]] && funcname=" ${FUNCNAME[1]}() - " || funcname=" "
-	[[ "${curlogfilelevelno}" -ge "${Log_Levels[DEBUG]}" ]] && logfilefuncname="${FUNCNAME[1]}() - " || logfilefuncname=" "
-
-	if [[ "${curlevelno}" -ge "${levelno}" ]]; then
-		# If we're in a terminal, use colors:
-		tput setaf "${colorno:-}" 2>/dev/null
-		echo "${level:-}:${funcname:-}${*:-}" >&2
-		tput sgr0 2>/dev/null
+	if [[ "${SBATCH_CLUSTERS:-}" == "klone" ]]; then
+		if [[ -z "${APPTAINER_CACHEDIR:-}" ]] && [[ -d "/gscratch/scrubbed" ]]; then
+			APPTAINER_CACHEDIR="/gscratch/scrubbed/${USER}/cache/apptainer"
+			mkdir -p "${APPTAINER_CACHEDIR}" || { log ERROR "Failed to create APPTAINER_CACHEDIR \"${APPTAINER_CACHEDIR}"\"; exit 1; }
+		fi
+		SRUN_CPUS_PER_TASK="${SRUN_CPUS_PER_TASK:-1}" # %% Number of CPUs to request per task (default: `1`)
+		SBATCH_MEM="${SBATCH_MEM:-4G}"                # %% Amount of memory to request (default: (4G))
+		SBATCH_TIME="${SBATCH_TIME:-4:00:00}"         # %% Amount of time to request (default: (4:00:00))
 	fi
-
-	if [[ "${curlogfilelevelno}" -ge "${levelno}" ]]; then
-		echo "${level}:${logfilefuncname}${*:-}" >>"${HYAKVNC_LOG_FILE:-/dev/null}"
-	fi
-}
+	mkdir -p "${HYAKVNC_SLURM_OUTPUT_DIR}" || { log ERROR "Failed to create HYAKVNC_SLURM_OUTPUT_DIR \"${HYAKVNC_SLURM_OUTPUT_DIR}\""; exit 1; }
+fi
 
 # ## Update functions:
 
@@ -313,7 +294,7 @@ function hyakvnc_autoupdate() {
 	}
 
 	if [[ -t 0 ]]; then # Check if we're running interactively
-		while true; do   # Ask user if they want to update
+		while true; do     # Ask user if they want to update
 			local choice
 			read -r -p "Would you like to update hyakvnc? [y/n] [x to disable]: " choice
 			case "${choice}" in
@@ -387,55 +368,130 @@ function expand_slurm_node_range() {
 	echo "${result}" && return 0
 }
 
-# get_slurm_job_info()
-# Get info about a SLURM job, given a list of job IDs
-# Arguments: <user> [<jobid>]
-function get_slurm_job_info() {
-	[[ $# -eq 0 ]] && {
-		log ERROR "User or Job ID must be specified"
-		return 1
-	}
+# slurm_list_partitions()
+# List SLURM partitions
+#
+# Arguments:
+# 	--cluster <name>: Cluster to list partitions for
+#	--user <name>: User to list partitions for
+#	--account <name>: Account to list partitions for
+#	--max_count <n>: Maximum number of partitions to list
+#
+# stdout: List of partitions
+# Returns: 0 if successful, 1 otherwise
+function slurm_list_partitions() {
+	check_command sacctmgr ERROR || return 1
+	local cluster account partitions max_count user
 
-	local user="${1:-${USER:-}}"
-	[[ -z "${user}" ]] && {
-		log ERROR "User must be specified"
-		return 1
-	}
-	shift
-	local squeue_format_fields='%i %j %a %P %u %T %M %l %C %m %D %N'
-	squeue_format_fields="${squeue_format_fields// /\t}" # Replace spaces with tab
-	local squeue_args=(--noheader --user "${user}" --format "${squeue_format_fields}")
+	while true; do
+		case "${1:-}" in
+			--cluster)
+				shift || { log ERROR "$1 requires an argument"; return 1; }
+				cluster="$1" ;;
+			--user)
+				shift || { log ERROR "$1 requires an argument"; return 1; }
+				user="$1" ;;
+			--account)
+				shift || { log ERROR "$1 requires an argument"; return 1; }
+				account="$1" ;;
+			--max-count)
+				shift || { log ERROR "$1 requires an argument"; return 1; }
+				max_count="$1" ;;
+			*) break ;;
+		esac
+	done
 
-	local jobids="${*:-}"
-	if [[ -n "${jobids}" ]]; then
-		jobids="${jobids//,/ }" # Replace commas with spaces
-		squeue_args+=(--job "${jobids}")
+	[[ -z "${user:=${USER:-}}" ]] && { log ERROR "No user specified"; return 1; }
+
+	local sacctmgr_args=(show --noheader --parsable2 --associations user "${user:-}" format=qos)
+
+	# Add filters if specified:
+	[[ -n "${account:-}" ]] && sacctmgr_args+=(where "account=${account}")
+	[[ -n "${cluster:-}" ]] && sacctmgr_args+=("cluster=${cluster}")
+
+	# Get partitions:
+	partitions="$(sacctmgr "${sacctmgr_args[@]}" | tr ',' '\n' | sort | uniq | head -n "${max_count:-0}")" || { log ERROR "sacctmgr failed with code $?"; return 1; }
+	[[ -n "${partitions:-}" ]] || { log ERROR "No partitions found"; return 1; }
+
+	# If running on klone, process the partition names as required (see `hyakalloc`)
+	if [[ "${cluster:-}" == "klone" ]] && [[ -n "${partitions:-}" ]]; then
+		partitions="$(echo "${partitions:-}" | klone_read_qos | sort | uniq || true)"
 	fi
-	squeue "${squeue_args[@]}"
+
+	# Return the partitions:
+	echo "${partitions}"
+	return 0
 }
 
-# get_squeue_job_status()
-# Get the status of a SLURM job, given a job ID
-# Arguments: <jobid>
-function get_squeue_job_status() {
-	local jobid="${1:-}"
-	[[ -z "${jobid}" ]] && {
-		log ERROR "Job ID must be specified"
-		return 1
-	}
-	squeue -j "${1}" -h -o '%T' || {
-		log ERROR "Failed to get status for job ${jobid}"
-		return 1
-	}
+# slurm_list_clusters()
+# List SLURM clusters
+#
+# Arguments:
+# 	--max_count <n>  Maximum number of clusters to list (optional)
+# stdout: List of clusters
+# Returns: 0 if successful, 1 otherwise
+function slurm_list_clusters() {
+	check_command sacctmgr ERROR || return 1
+	local clusters max_count
+	local sacctmgr_args=(show cluster --noheader --parsable2 --associations format=Cluster)
+
+	while true; do
+		case "${1:-}" in
+			--max-count)
+				shift || { log ERROR "$1 requires an argument"; return 1; }
+				max_count="$1" ;;
+			*) break ;;
+		esac
+		shift
+	done
+
+	clusters="$(sacctmgr "${sacctmgr_args[@]}" | tr ',' '\n' | sort | uniq | head -n "${max_count:-0}")" || { log ERROR "sacctmgr failed to list clusters with code $?"; return 1; }
+	[[ -n "${clusters:-}" ]] || { log ERROR "No clusters found"; return 1; }
+	echo "${clusters:-}"
+	return 0
 }
 
-# get_slurm_hyak_qos()
+# slurm_get_default_account()
+# Get the default SLURM account
+#
+# Arguments:
+# 	--cluster <name>: Cluster to get the default account for
+#	--user <name>: User to get the default account for (default: $USER)
+# stdout: Default account
+# Returns: 0 if successful, 1 otherwise
+function slurm_get_default_account() {
+	check_command sacctmgr ERROR || return 1
+	local user
+	local default_account
+	local sacctmgr_args=(--noheader --parsable2 --associations format=defaultaccount)
+
+	while true; do
+		case "${1:-}" in
+			--cluster)
+				shift || { log ERROR "$1 requires an argument"; return 1; }
+				sacctmgr_args+=("cluster=$1") ;;
+			--user)
+				shift || { log ERROR "$1 requires an argument"; return 1; }
+				user="$1" ;;
+			*) break ;;
+		esac
+		shift
+	done
+
+	[[ -z "${user:=${USER:-}}" ]] && { log ERROR "No user specified"; return 1; }
+	default_account="$(sacctmgr show user "${user}" "${sacctmgr_args[@]}" | tr ',' '\n' | sort | uniq | head -n 1)" || { log ERROR "sacctmgr failed with code $?"; return 1; }
+	[[ -n "${default_account:-}" ]] || { log ERROR "No default account found"; return 1; }
+	echo "${default_account}"
+	return 0
+}
+
+# klone_read_qos()
 # Return the correct QOS on Hyak for the given partition on hyak
+# Logic copied from hyakalloc's hyakqos.py:QosResource.__init__():
 # Arguments: <partition>
-function get_slurm_hyak_qos() {
-	# Logic copied from hyakalloc's hyakqos.py:QosResource.__init__():
-	local qos_name qos_suffix
-	qos_name="${1:-}"
+# shellcheck disable=SC2120
+function klone_read_qos() {
+	local qos_name="${1:-$(</dev/stdin)}"
 	[[ -z "${qos_name:-}" ]] && return 1
 	if [[ "${qos_name}" == *-* ]]; then
 		qos_suffix="${qos_name#*-}" # Extract portion after the first "-"
@@ -450,63 +506,61 @@ function get_slurm_hyak_qos() {
 	fi
 }
 
+function klone_slurm_list_partitions() {
+	local partitions result
+	partitions="$(slurm_list_partitions --cluster klone "$@")" || return 1
+	[[ -n "${partitions:-}" ]] || return 0
+	result="$(echo "${partitions:-}" | klone_read_qos | sort | uniq)" || return 1
+	[[ -n "${result:-}" ]] || return 1
+	echo "${result}"
+}
+
 # hyakvnc_config_init()
 # Initialize the hyakvnc configuration
 # Arguments: None
 function hyakvnc_config_init() {
-	mkdir -p "${HYAKVNC_DIR}/jobs" "${HYAKVNC_SLURM_OUTPUT_DIR}" || {
-		log ERROR "Failed to create HYAKVNC jobs directory ${HYAKVNC_DIR}/jobs"
-		return 1
-	}
+	[[ -z "${HYAKVNC_JOBS_DIR:-}" ]] && { log ERROR "\$HYAKVNC_JOBS_DIR is not set. Can't initialize configuration."; return 1; }
+	mkdir -p "${HYAKVNC_JOBS_DIR}" || { log ERROR "Failed to create \$HYAKVMC_JOBS_DIR \"${HYAKVMC_JOBS_DIR:-}\""; return 1; }
 
-	mkdir -p "${HYAKVNC_SLURM_OUTPUT_DIR}" || {
-		log ERROR "Failed to create HYAKVNC jobs directory ${HYAKVNC_DIR}/jobs"
-		return 1
-	}
+	case "${HYAKVNC_BACKEND:-}" in
+		slurm)
+			check_command squeue || return 1
+			mkdir -p "${HYAKVNC_SLURM_OUTPUT_DIR}" || {
+				log ERROR "Failed to create HYAKVNC jobs directory ${HYAKVNC_DIR}/jobs"
+				return 1
+			}
 
-	if ! check_command squeue; then
-		log ERROR "SLURM is not installed! Can't initialize configuration."
-		return 1
-	fi
+			if [[ -z "${SBATCH_CLUSTERS:-}" ]]; then
+				SBATCH_CLUSTERS=$(slurm_list_clusters --max-count 1) || { log ERROR "Failed to get SLURM clusters"; return 1; }
+			fi
 
-	# Set default SLURM cluster, accont, and partition if empty:
-	if [[ -z "${HYAKVNC_SLURM_CLUSTER}" ]]; then
-		HYAKVNC_SLURM_CLUSTER="$(sacctmgr show cluster -nPs format=Cluster)" || {
-			log ERROR "Failed to get default SLURM account"
+			if [[ -z "${SBATCH_ACCOUNT}" ]]; then
+				SBATCH_ACCOUNT="$(slurm_get_default_account --user "${USER}" --cluster "${SBATCH_CLUSTERS}")" || { log ERROR "Failed to get default SLURM account"; return 1; }
+			fi
+
+			if [[ -z "${SBATCH_PARTITION:-}" ]]; then
+				local list_partition_cmd=slurm_list_partitions
+				[[ "${SBATCH_CLUSTERS:-}" == "klone" ]] && list_partition_cmd=klone_slurm_list_partitions
+
+				SBATCH_PARTITION=$("${list_partition_cmd}" --user "${USER}" --account "${SBATCH_ACCOUNT}" --cluster "${SBATCH_CLUSTERS}" --max-count 1) || { log ERROR "Failed to get SLURM partitions"; unset SBATCH_PARTITION; }
+			fi
+
+			;;
+
+		apptainer) ;;
+
+		*)
+			log ERROR "Unknown \$HYAKVNC_BACKEND: \"${HYAKVNC_BACKEND:-}\""
 			return 1
-		}
-	fi
-	export SBATCH_CLUSTERS="${HYAKVNC_SLURM_CLUSTER:-}" && log TRACE "Set SBATCH_CLUSTERS to ${SBATCH_CLUSTERS}"
+			;;
+	esac
 
-	if [[ -z "${HYAKVNC_SLURM_ACCOUNT}" ]]; then
-		# Get the default account for the cluster. Uses grep to get first non-whitespace line:
-		HYAKVNC_SLURM_ACCOUNT=$(sacctmgr show user -nPs "${USER}" format=defaultaccount where cluster="${HYAKVNC_SLURM_CLUSTER}" | grep -o -m 1 -E '\S+') || {
-			log ERROR "Failed to get default account"
-			return 1
-		}
-	fi
-	export SBATCH_ACCOUNT="${HYAKVNC_SLURM_ACCOUNT:-}" && log TRACE "Set SBATCH_ACCOUNT to ${SBATCH_ACCOUNT}"
-
-	if [[ -z "${HYAKVNC_SLURM_PARTITION:-}" ]]; then
-		HYAKVNC_SLURM_PARTITION=$(sacctmgr show -nPs user "${USER}" format=qos where account="${HYAKVNC_SLURM_ACCOUNT}" cluster="${HYAKVNC_SLURM_CLUSTER}" | grep -o -m 1 -E '\S+') || {
-			log ERROR "Failed to get SLURM partitions for user ${USER} on account ${HYAKVNC_SLURM_ACCOUNT} on cluster ${HYAKVNC_SLURM_CLUSTER}"
-			return 1
-		}
-		# Get the first partition:
-		HYAKVNC_SLURM_PARTITION="${HYAKVNC_SLURM_PARTITION%%,*}"
-		[[ -z "${HYAKVNC_SLURM_PARTITION}" ]] && {
-			log ERROR "Failed to get default SLURM partition"
-			return 1
-		}
-		HYAKVNC_SLURM_PARTITION=$(get_slurm_hyak_qos "${HYAKVNC_SLURM_PARTITION}") || {
-			log ERROR "Failed to get SLURM partition for ${HYAKVNC_SLURM_PARTITION}"
-			return 1
-		}
-	fi
-	export SBATCH_PARTITION="${HYAKVNC_SLURM_PARTITION:-}" && log TRACE "Set SBATCH_PARTITION to ${SBATCH_PARTITION}"
-
-	# shellcheck disable=SC2046
-	export $(compgen -v HYAKVNC_) # Export all HYAKVNC_ variables
+	# Export relevant variables:
+	[[ -n "${!APPTAINER_@}" ]] && export "${!APPTAINER_@}"           # Export all SBATCH_ variables
+	[[ -n "${!APPTAINERENV_@}" ]] && export "${!APPTAINERENV_@}"     # Export all SBATCH_ variables
+	[[ -n "${!SINGULARITY_@}" ]] && export "${!SINGULARITY_@}"       # Export all SBATCH_ variables
+	[[ -n "${!SINGULARITYENV_@}" ]] && export "${!SINGULARITYENV_@}" # Export all SBATCH_ variables
+	[[ -n "${!HYAKVNC_@}" ]] && export "${!HYAKVNC_@}"               # Export all SBATCH_ variables
 }
 
 # stop_hyakvnc_session()
@@ -538,9 +592,9 @@ function stop_hyakvnc_session() {
 	log DEBUG "Stopping VNC session for job ${jobid}"
 	local jobdir pid tmpdirname
 	jobdir="${HYAKVNC_DIR}/jobs/${jobid}"
-	if [[ -d "${jobdir}" ]]; then
+	if [[ -d "${HYAKVNC_JOB_DIR}" ]]; then
 		local pidfile
-		for pidfile in "${jobdir}/vnc/"*"${HYAKVNC_VNC_DISPLAY}".pid; do
+		for pidfile in "${HYAKVNC_JOB_DIR}/vnc/"*"${HYAKVNC_VNC_DISPLAY}".pid; do
 			if [[ -r "${pidfile:-}" ]]; then
 				read -r pid <"${pidfile}"
 				[[ -z "${pid:-}" ]] && {
@@ -551,14 +605,14 @@ function stop_hyakvnc_session() {
 				break
 			fi
 		done
-		if [[ -r "${jobdir}/tmpdirname" ]]; then
+		if [[ -r "${HYAKVNC_JOB_DIR}/tmpdirname" ]]; then
 			read -r tmpdirname <"${pidfile}"
-			[[ -z "${tmpdirname}" ]] && log WARN "Failed to get tmpdirname from ${jobdir}/tmpdirname"
+			[[ -z "${tmpdirname}" ]] && log WARN "Failed to get tmpdirname from ${HYAKVNC_JOB_DIR}/tmpdirname"
 			srun --quiet --jobid "${jobid}" rm -rf "${tmpdirname}" || log WARN "Failed to remove container /tmp directory at ${tmpdirname} job ${jobid}"
 		fi
-		[[ -n "${no_rm}" ]] || rm -rf "${jobdir}" && log DEBUG "Removed VNC directory ${jobdir}"
+		[[ -n "${no_rm}" ]] || rm -rf "${HYAKVNC_JOB_DIR}" && log DEBUG "Removed VNC directory ${HYAKVNC_JOB_DIR}"
 	else
-		log WARN "Job directory ${jobdir} does not exist"
+		log WARN "Job directory ${HYAKVNC_JOB_DIR} does not exist"
 	fi
 
 	if [[ -n "${should_cancel}" ]]; then
@@ -628,7 +682,7 @@ function print_connection_info() {
 
 	# Check that the job directory exists
 	[[ -d "${jobdir:=${HYAKVNC_DIR}/jobs/${jobid}}" ]] || {
-		log ERROR "Job directory ${jobdir} does not exist"
+		log ERROR "Job directory ${HYAKVNC_JOB_DIR} does not exist"
 		return 1
 	}
 
@@ -703,23 +757,6 @@ EOF
 
 }
 
-# cleanup_launched_jobs_and_exit()
-# Cancel any jobs that were launched and exit
-function cleanup_launched_jobs_and_exit() {
-	local jobdir jobid
-	log WARN "Interrupted. Cleaning up and exiting!"
-	# Cancel any jobs that were launched:
-	for jobid in "${Launched_JobIDs[@]}"; do
-		jobdir="${HYAKVNC_DIR}/jobs/${jobid}"
-		log WARN "Cancelling launched job ${jobid}"
-		scancel "${jobid}" || log ERROR "scancel failed to cancel job ${jobid}"
-		[[ -d "${jobdir}" ]] && rm -rf "${jobdir}" && log DEBUG "Removed job directory ${jobdir}"
-	done
-	kill -TERM %tail 2>/dev/null                        # Stop following the SLURM log file
-	trap - SIGINT SIGTERM SIGHUP SIGABRT SIGQUIT ERR EXIT # Remove traps
-	exit 1
-}
-
 # # Apptainer utility functions:
 
 # ghcr_get_oras_sif()
@@ -730,7 +767,7 @@ function cleanup_launched_jobs_and_exit() {
 # Returns: 0 if successful, 1 if not or if an error occurred
 # Prints: The token to stdout
 function ghcr_get_oras_sif() {
-	check_command curl || return 1  # Check if curl is installed
+	check_command curl || return 1    # Check if curl is installed
 	check_command python3 || return 1 # Check if python3 is installed
 	local url output_path
 	[[ -z "${url:=${1:-}}" ]] && {
@@ -837,20 +874,16 @@ Description:
 
 Options:
 	-h, --help	Show this help message and exit
+	-d, --debug	Enable debug logging
 	-c, --container	Path to container image (required)
-	-A, --account	Slurm account to use (default: ${HYAKVNC_SLURM_ACCOUNT})
-	-p, --partition	Slurm partition to use (default: ${HYAKVNC_SLURM_PARTITION})
-	-C, --cpus	Number of CPUs to request (default: ${HYAKVNC_SLURM_CPUS})
-	-m, --mem	Amount of memory to request (default: ${HYAKVNC_SLURM_MEM})
-	-t, --timelimit	Slurm timelimit to use (default: ${HYAKVNC_SLURM_TIMELIMIT})
-	-g, --gpus	Number of GPUs to request (default: ${HYAKVNC_SLURM_GPUS})
 
-Advanced options:
+Apptainer options:
 	--no-ghcr-oras-preload	Don't preload ORAS GitHub Container Registry images
+	--apptainer-args	Any arguments after this will be passed to apptainer.
 
-Extra arguments:
-	Any extra arguments will be passed to apptainer run.
-	See 'apptainer run --help' for more information.
+SLURM options (available when running on SLURM login node):
+	Any arguments after the above options will be passed to sbatch.
+	See 'sbatch --help' for more information.
 
 Examples:
 	# Create a VNC session using the container ~/containers/mycontainer.sif
@@ -859,417 +892,287 @@ Examples:
 	hyakvnc create -c oras://ghcr.io/maouw/hyakvnc_apptainer/hyakvnc-vncserver-ubuntu22.04:latest
 	# Use the SLURM account escience, the partition gpu-a40, 4 CPUs, 1GB of memory, 1 GPU, and 1 hour of time:
 	hyakvnc create -c ~/containers/mycontainer.sif -A escience -p gpu-a40 -C 4 -m 1G -t 1:00:00 -g 1
-
 EOF
 }
 
 # cmd_create()
 function cmd_create() {
-	local apptainer_start_args=()
-	local sbatch_args=(--parsable)
-	local container_basename container_name start tailpid
-	# <TODO> If a job ID was specified, don't launch a new job
-	# <TODO> If a job ID was specified, check that the job exists and is running
-
+	local apptainer_args=()
+	local sbatch_args=()
+	local container_basename container_name
+	local instance_err_log
 	# Parse arguments:
-	while true; do
+	while (($# > 0)); do
 		case ${1:-} in
+			--?*=* | -?*=*) # Handle --flag=value args
+				set -- "${1%%=*}" "${1#*=}" "${@:2}"
+				continue
+				;;
 			-h | --help)
 				help_create
 				return 0
 				;;
 			-d | --debug) # Debug mode
-				shift
 				export HYAKVNC_LOG_LEVEL="DEBUG"
 				;;
 			-c | --container)
-				shift
-				[[ -z "${1:-}" ]] && {
-					log ERROR "-c | --container requires a non-empty option argument"
-					exit 1
-				}
+				shift || { log ERROR "$1 requires an argument"; return 1; }
 				export HYAKVNC_APPTAINER_CONTAINER="${1:-}"
-				shift
-				;;
-			-A | --account)
-				[[ -z "${1:-}" ]] && {
-					log ERROR "-A | --account requires a non-empty option argument"
-					exit 1
-				}
-				shift
-				export HYAKVNC_SLURM_ACCOUNT="${1:-}"
-				shift
-				;;
-			-p | --partition)
-				shift
-				[[ -z "${1:-}" ]] && {
-					log ERROR "-p | --partition requires a non-empty option argument"
-					exit 1
-				}
-				export HYAKVNC_SLURM_PARTITION="${1:-}"
-				shift
-				;;
-			-C | --cpus)
-				shift
-				[[ -z "${1:-}" ]] && {
-					log ERROR "--cpus requires a non-empty option argument"
-					exit 1
-				}
-				export HYAKVNC_SLURM_CPUS="${1:-}"
-				shift
-				;;
-			-m | --mem)
-				shift
-				[[ -z "${1:-}" ]] && {
-					log ERROR "--mem requires a non-empty option argument"
-					exit 1
-				}
-				export HYAKVNC_SLURM_MEM="${1:-}"
-				shift
-				;;
-			-t | --timelimit)
-				shift
-				[[ -z "${1:-}" ]] && {
-					log ERROR "--mem requires a non-empty option argument"
-					exit 1
-				}
-				export HYAKVNC_SLURM_TIMELIMIT="${1:-}"
-				shift
-				;;
-			-g | --gpus)
-				shift
-				[[ -z "${1:-}" ]] && {
-					log ERROR "--mem requires a non-empty option argument"
-					exit 1
-				}
-				export HYAKVNC_SLURM_GPUS="${1:-}"
-				shift
 				;;
 			--no-ghcr-oras-preload) # Don't preload ORAS GitHub Container Registry images
-				shift
+				shift || { log ERROR "$1 requires an argument"; return 1; }
 				export HYAKVNC_APPTAINER_GHCR_ORAS_PRELOAD=0
 				;;
-			--) # Args to pass to Apptainer
+			--apptainer-args) # Args to pass to Apptainer
 				shift
-				if [[ -z "${HYAKVNC_APPTAINER_ADD_ARGS:-}" ]]; then
-					export HYAKVNC_APPTAINER_ADD_ARGS="${HYAKVNC_APPTAINER_ADD_ARGS:-} ${*:-}"
-				else
-					export HYAKVNC_APPTAINER_ADD_ARGS="${*:-}"
-				fi
-				break
+				while (($# > 0)); do
+					[[ "${1:-}" == "--" ]] && break
+					apptainer_args+=("${1:-}")
+					shift
+				done
 				;;
-			-*)
-				log ERROR "Unknown option: ${1:-}\n"
-				exit 1
+			--)
+				if [[ "${HYAKVNC_BACKEND:-}" == "slurm" ]]; then
+					shift
+					while (($# > 0)); do
+						[[ "${1:-}" == "--" ]] && break
+						sbatch_args+=("${1:-}")
+						shift
+					done
+				fi
 				;;
 			*)
 				break
 				;;
 		esac
+		shift
 	done
 
-	# Check that container is specified:
-	[[ -z "${HYAKVNC_APPTAINER_CONTAINER}" ]] && {
-		log ERROR "Container image must be specified"
-		exit 1
-	}
-	container_basename="$(basename "${HYAKVNC_APPTAINER_CONTAINER}")"
-	if case "${HYAKVNC_APPTAINER_CONTAINER}" in library://* | docker://* | shub://* | oras://* | http://* | https://*) true ;; *) false ;; esac; then
-		log DEBUG "Container image ${HYAKVNC_APPTAINER_CONTAINER} is a URL"
-		# Add a tag if none is specified:
-		[[ "${container_basename}" =~ .*:.* ]] || HYAKVNC_APPTAINER_CONTAINER="${HYAKVNC_APPTAINER_CONTAINER}:latest"
-	else
-		# Check that container is specified
-		[[ ! -e "${HYAKVNC_APPTAINER_CONTAINER:-}" ]] && {
-			log ERROR "Container image at ${HYAKVNC_APPTAINER_CONTAINER} does not exist	"
-			exit 1
-		}
-		# Check that the container is readable:
-		[[ ! -r "${HYAKVNC_APPTAINER_CONTAINER:-}" ]] && {
-			log ERROR "Container image ${HYAKVNC_APPTAINER_CONTAINER} is not readable"
-			exit 1
-		}
-	fi
+	[[ -z "${HYAKVNC_APPTAINER_CONTAINER}" ]] && { log ERROR "Container image must be specified"; return 1; }
+	container_basename="$(basename "${HYAKVNC_APPTAINER_CONTAINER}")" || { log ERROR "Failed to get container basename from \"${HYAKVNC_APPTAINER_CONTAINER}\""; return 1; }
+	[[ -z "${container_basename}" ]] && { log ERROR "The basename for the container \"${HYAKVNC_APPTAINER_CONTAINER}\"" is empty; return 1; }
 
-	[[ -z "${container_basename}" ]] && {
-		log ERROR "Failed to get container basename from ${HYAKVNC_APPTAINER_CONTAINER}"
-		exit 1
-	}
-	container_name="${container_basename//\.@(sif|simg|img|sqsh)/}"
-	[[ -z "${container_name}" ]] && {
-		log ERROR "Failed to get container name from ${container_basename}"
-		exit 1
-	}
+	case "${HYAKVNC_APPTAINER_CONTAINER}" in
+		library://* | docker://* | shub://* | oras://* | http://* | https://*)
+			log TRACE "Container image \"${HYAKVNC_APPTAINER_CONTAINER}\" is a URL"
 
-	# If /gscratch/scrubbed exists (i.e., running on Klone) and APPTAINER_CACHEDIR is not set to a directory under /gscratch or /tmp, warn the user and ask if they want to set it to a directory under /gscratch/scrubbed :
-	if [[ -d "/gscratch/scrubbed" ]] && [[ "${APPTAINER_CACHEDIR:-}" != /gscratch/* ]] && [[ "${APPTAINER_CACHEDIR:-}" != /tmp/* ]]; then
-		log WARN "APPTAINER_CACHEDIR is not set to a directory under /gscratch or /tmp. This may cause problems with storage space."
+			# Add a tag if none is specified:
+			[[ "${container_basename}" =~ .*:.* ]] || HYAKVNC_APPTAINER_CONTAINER="${HYAKVNC_APPTAINER_CONTAINER}:latest"
 
-		# Check if running interactively:
-		if [[ -t 0 ]]; then
-			local choice1 choice2 newcachedir
-			newcachedir="/gscratch/scrubbed/${USER}/.cache/apptainer"
+			;;& # Fallthrough
+		oras://*)
+			if [[ "${HYAKVNC_APPTAINER_CONTAINER}" =~ ^oras:// ]] && [[ "${HYAKVNC_APPTAINER_GHCR_ORAS_PRELOAD:-1}" == 1 ]]; then
+				local oras_cache_dir
+				oras_cache_dir="${APPTAINER_CACHEDIR:-${HOME}/.apptainer/cache}/oras"
+				if mkdir -p "${oras_cache_dir}"; then
+					log INFO "Preloading ORAS image for \"${HYAKVNC_APPTAINER_CONTAINER}\""
+					ghcr_get_oras_sif "${HYAKVNC_APPTAINER_CONTAINER}" "${APPTAINER_CACHEDIR}/cache/oras" || log ERROR "Failed to preload ORAS image for \"${HYAKVNC_APPTAINER_CONTAINER}\". Apptainer will try to download the image by itself. If you don't want to preload ORAS images, use the --no-ghcr-oras-preload option."
+				else
+					log ERROR "Failed to create ORAS cache directory \"${oras_cache_dir}\""
+				fi
+			fi
+			;;
 
+		*)
+			[[ ! -f "${HYAKVNC_APPTAINER_CONTAINER:-}" ]] || [[ ! -r "${HYAKVNC_APPTAINER_CONTAINER:-}" ]] && { log ERROR "Cannot read Apptainer image at \"${HYAKVNC_APPTAINER_CONTAINER}\""; return 1; }
+			;;
+	esac
+
+	[[ -z "${container_name:=${container_basename%\.@(sif|simg|img|sqsh)}}" ]] && { log ERROR "Failed to get container name from name \"${container_basename}\""; return 1; }
+
+	apptainer_args+=("--bind" "${HOME}:/home-${USER}")
+
+	# Set job name:
+	export HYAKVNC_JOB_NAME="${HYAKVNC_JOB_NAME:-${HYAKVNC_JOB_PREFIX:-hyakvnc-}${container_name}}"
+
+	# Export relevant variables:
+	[[ -n "${!APPTAINER_@}" ]] && export "${!APPTAINER_@}"           # Export all SBATCH_ variables
+	[[ -n "${!APPTAINERENV_@}" ]] && export "${!APPTAINERENV_@}"     # Export all SBATCH_ variables
+	[[ -n "${!SINGULARITY_@}" ]] && export "${!SINGULARITY_@}"       # Export all SBATCH_ variables
+	[[ -n "${!SINGULARITYENV_@}" ]] && export "${!SINGULARITYENV_@}" # Export all SBATCH_ variables
+	[[ -n "${!HYAKVNC_@}" ]] && export "${!HYAKVNC_@}"               # Export all SBATCH_ variables
+
+	# Backend-specific initialization:
+	case "${HYAKVNC_BACKEND:-}" in
+		apptainer)
+			local timestr
+			timestr=$(date --utc '+%Y%m%d%H%M%S') || { log ERROR "Failed to get date"; timestr=0; }
+			HYAKVNC_JOB_DIR=$(mktemp --tmpdir="${HYAKVNC_JOBS_DIR}" --directory "${timestr:-0}-XXX") || { log ERROR "Failed to create job directory"; return 1; }
+
+			HYAKVNC_JOB_ID=$(basename "${HYAKVNC_JOB_DIR}")
+			export HYAKVNC_JOB_DIR HYAKVNC_JOB_ID
+
+			log DEBUG "Job directory: \"${HYAKVNC_JOB_DIR}\""
+
+			mkdir -p "${HYAKVNC_JOB_DIR}/vnc" || { log ERROR "Failed to create job directory ${HYAKVNC_JOB_DIR}"; return 1; }
+
+			apptainer_args+=("--bind" "${HYAKVNC_JOB_DIR}/vnc:/vnc")
+
+			HYAKVNC_JOB_TMPDIR="$(mktemp -d --suffix "_hyakvnc_tmp_${HYAKVNC_JOB_ID}")" || { log ERROR "Failed to create temporary directory"; return 1; }
+			apptainer_args+=("--bind" "${HYAKVNC_JOB_TMPDIR}:/tmp")
+			apptainer_args+=("${HYAKVNC_APPTAINER_CONTAINER}")
+			apptainer_args+=("${HYAKVNC_JOB_ID}")
+
+			log DEBUG "Launching job with command: \"apptainer instance start ${apptainer_args[*]}\""
+
+			# shellcheck disable=SC2016
+			[[ -z "${XNOTRAP:-}" ]] && trap 'log WARN "Interrupted while running \"${BASH_COMMAND:-}\". Cleaning up and exiting!"; apptainer instance stop "${HYAKVNC_JOB_ID}" && [[ -n "${HYAKVNC_JOB_DIR:-}" ]] && [[ -d "${HYAKVNC_JOB_DIR}" ]] && rm -rf "${HYAKVNC_JOB_DIR}" && log INFO "Removed job directory ${HYAKVNC_JOB_DIR}"; trap - SIGINT SIGTSTP ERR EXIT; exit 1' SIGINT SIGTSTP ERR EXIT
+			apptainer instance start "${apptainer_args[@]}" || { log ERROR "Failed to launch job"; return 1; }
+
+			# Wait for job to start running by monitoring the output of squeue:
+			log INFO "Waiting for job ${HYAKVNC_JOB_ID} (\"${HYAKVNC_JOB_NAME}\") to start"
+
+			# Get the path to the instance log file:
+			instance_err_log="$(apptainer instance list -l "${HYAKVNC_JOB_ID}" | grep -m 1 -oE '\/.*\.err$' || true)"
+			;;
+
+		slurm)
+			# Set sbatch arguments or environment variables
+			export SBATCH_JOB_NAME="${HYAKVNC_JOB_NAME}"
+			apptainer_args+=("--bind" "${HOME}:/home-${USER}")
+			apptainer_args+=("--bind" "\"\${jobtmp}:/tmp\"") # jobtmp will be set by the sbatch script via mktemp()
+			apptainer_args+=("--bind" "${HYAKVNC_JOBS_DIR}/\${SLURM_JOB_ID}/vnc:/vnc")
+
+			if [[ "${SBATCH_CLUSTERS:-}" == "klone" ]]; then
+				[[ -d "/mmfs1" ]] && apptainer_args+=("--bind" "/mmfs1")
+				[[ -d "/gscratch" ]] && apptainer_args+=("--bind" "/gscratch")
+				[[ -d "/data" ]] && apptainer_args+=("--bind" "/data")
+			fi
+
+			[[ -n "${SBATCH_GPUS:-}" ]] && export APPTAINER_NV=1
+
+			# Set sbatch exported environment variables
+			if [[ -z "${SBATCH_EXPORT:-}" ]]; then
+				local -a sbatch_export_additions=()
+				[[ -n "${SRUN_CPUS_PER_TASK:-}" ]] && sbatch_export_additions+=("${SRUN_CPUS_PER_TASK}")
+				[[ -n "${!APPTAINER_@}" ]] && sbatch_export_additions+=("${!APPTAINER_@}")
+				[[ -n "${!APPTAINERENV_@}" ]] && sbatch_export_additions+=("${!APPTAINERENV_@}")
+				[[ -n "${!SINGULARITY_@}" ]] && sbatch_export_additions+=("${!SINGULARITY_@}")
+				[[ -n "${!SINGULARITYENV_@}" ]] && sbatch_export_additions+=("${!SINGULARITYENV_@}")
+				[[ -n "${!HYAKVNC_@}" ]] && sbatch_export_additions+=("${!HYAKVNC_@}")
+				sbatch_export_additions+=("NONE")
+				SBATCH_EXPORT="${sbatch_export_additions[*]}" # Set SBATCH_EXPORT to the union of SRUN_CPUS_PER_TASK and APPTAINER_ and APPTAINERENV_ and SINGULARITY_ and SINGULARITYENV_ and HYAKVNC_ variables, plus the --export=NONE option
+				SBATCH_EXPORT="${SBATCH_EXPORT// /,}"         # Replace spaces with commas
+				export SBATCH_EXPORT
+			fi
+
+			apptainer_args+=("${HYAKVNC_APPTAINER_CONTAINER}")
+
+			# Append desired arguments to the sbatch command:
+			sbatch_args+=(--wrap)
+
+			sbatch_args+=(
+				"mkdir -p \"${HYAKVNC_JOBS_DIR}/\${SLURM_JOB_ID}/vnc\" && jobtmp=\"\$(mktemp -d --suffix _hyakvnc_tmp_\${SLURM_JOB_ID})\" && echo \"\${jobtmp}\" > \"${HYAKVNC_JOBS_DIR}/\${SLURM_JOB_ID}/tmpdirname\" && apptainer run ${apptainer__args[*]}"
+			)
+
+			log DEBUG "Launching job with command: sbatch ${sbatch_args[*]}"
+
+			sbatch_result=$(sbatch "${sbatch_args[@]}") || { log ERROR "Failed to launch job"; return 1; }
+
+			# Quit if no job ID was returned:
+			[[ -z "${sbatch_result:-}" ]] && { log ERROR "Failed to launch job - no result from sbatch" && return 1; }
+
+			# Parse job ID and cluster from sbatch result (semicolon separated):
+			export HYAKVNC_JOB_ID="${sbatch_result%%;*}}"
+			[[ -z "${HYAKVNC_JOB_ID:-}" ]] && { log ERROR "Failed to parse job ID for newly launched job"; return 1; }
+
+			export HYAKVNC_JOB_DIR="${HYAKVNC_JOBS_DIR}/${HYAKVNC_JOB_ID}"
+
+			log DEBUG "Job directory: \"${HYAKVNC_JOB_DIR}\""
+
+			# Wait for sbatch job to start running by monitoring the output of squeue:
+			log INFO "Waiting for job ${HYAKVNC_JOB_ID} (\"${HYAKVNC_JOB_NAME}\") to start"
+
+			# shellcheck disable=SC2016
+			[[ -z "${XNOTRAP:-}" ]] && 'log WARN "Interrupted while running \"${BASH_COMMAND:-}\". Cleaning up and exiting!"; scancel --quiet "${HYAKVNC_JOB_ID}" && [[ -n "${HYAKVNC_JOB_DIR:-}" ]] && [[ -d "${HYAKVNC_JOB_DIR}" ]] && rm -rf "${HYAKVNC_JOB_DIR}" && log INFO "Removed job directory ${HYAKVNC_JOB_DIR}"; trap - RETURN SIGINT SIGTSTP ERR EXIT; return 1' RETURN SIGINT SIGTSTP ERR EXIT
+
+			local starttime="${SECONDS:-0}"
 			while true; do
-				read -rp "Would you like to set APPTAINER_CACHEDIR to \"${newcachedir}\" (Recommended)? (y/n): " choice1
-				case "${choice1}" in
-					y | Y)
-						log INFO "Creating ${newcachedir}"
-						mkdir -p "${newcachedir}" || {
-							log WARN "Failed to create directory ${newcachedir}"
-							return 1
-						}
-						choice1=y # Set choice1 to y so we can use it in the next case statement
-						export APPTAINER_CACHEDIR="${newcachedir}"
-						break
+				if ((SECONDS - starttime > HYAKVNC_SLURM_SUBMIT_TIMEOUT)); then
+					log ERROR "Timed out waiting for job ${HYAKVNC_JOB_ID} to start"
+					return 1
+				fi
+				sleep 1
+				local squeue_result
+				squeue_result=$(squeue --job "${HYAKVNC_JOB_ID}" --format "%T" --noheader || true)
+				case "${squeue_result:-}" in
+					SIGNALING | PENDING | CONFIGURING | STAGE_OUT | SUSPENDED | REQUEUE_HOLD | REQUEUE_FED | RESV_DEL_HOLD | STOPPED | RESIZING | REQUEUED)
+						log TRACE "Job ${HYAKVNC_JOB_ID} is in a state that could potentially run: ${squeue_result}"
+						sleep 1
+						continue
 						;;
-					n | N)
-						log WARN "Not setting APPTAINER_CACHEDIR."
+					RUNNING)
+						log DEBUG "Job ${HYAKVNC_JOB_ID} is \"${squeue_result}\""
 						break
-
 						;;
 					*)
-						log ERROR "Invalid choice ${choice1:-}."
+						log ERROR "Job ${HYAKVNC_JOB_ID} is in unexpected state \"${squeue_result}\""
+						return 1
 						;;
 				esac
 			done
 
-			if [[ "${choice1}" == "y" ]]; then
-
-				# Check if the user wants to add the directory to their shell's startup file:
-				while true; do
-					read -rp "Would you like to add APPTAINER_CACHEDIR to your shell's startup file to persist this setting? (y/n): " choice2
-					case "${choice2}" in
-						y | Y)
-							# Check if using ZSH:
-							if [[ -n "${ZSH_VERSION:-}" ]]; then
-								if [[ -w "${HOME}/.zshenv}" ]]; then
-									echo "export APPTAINER_CACHEDIR=\"${newcachedir}\"" >>"${HOME}/.zshenv" && log INFO "Added APPTAINER_CACHEDIR to ~/.zshenv"
-								else
-									echo "export APPTAINER_CACHEDIR=\"${newcachedir}\"" >>"${ZDOTDIR:-${HOME}}/.zshrc" && log INFO "Added APPTAINER_CACHEDIR to ${ZDOTDIR:-~}/.zshrc"
-								fi
-							# Check if using Bash:
-							elif [[ -n "${BASH_VERSION:-}" ]]; then
-								echo "export APPTAINER_CACHEDIR=\"${newcachedir}\"" >>"${HOME}/.bashrc" && log INFO "Added APPTAINER_CACHEDIR to ~/.bashrc"
-							# Write to ~/.profile if we can't determine shell type:
-							else
-								log INFO "Could not determine shell type. Adding APPTAINER_CACHEDIR to ~/.profile."
-								echo "export APPTAINER_CACHEDIR=\"${newcachedir}\"" >>"${HOME}/.profile" && log INFO "Added APPTAINER_CACHEDIR to ~/.profile"
-							fi
-							break
-							;;
-
-						n | N)
-							log WARN "Not adding APPTAINER_CACHEDIR to your shell's startup file. You may need to do this again in the future."
-							break
-							;;
-						*)
-							log ERROR "Invalid choice ${choice2:-}."
-							;;
-					esac
-				done
-			fi
-		fi
-	fi
-
-	case "${HYAKVNC_APPTAINER_CONTAINER}" in
-		oras://*)
-			# Preload ORAS images if requested:
-			if [[ "${HYAKVNC_APPTAINER_GHCR_ORAS_PRELOAD:-1}" == 1 ]]; then
-				local oras_cache_dir oras_image_path
-				oras_cache_dir="${APPTAINER_CACHEDIR:-${HOME}/.apptainer/cache}/cache/oras"
-				if mkdir -p "${oras_cache_dir}"; then
-					log INFO "Preloading ORAS image for \"${HYAKVNC_APPTAINER_CONTAINER}\""
-					oras_image_path="$(ghcr_get_oras_sif "${HYAKVNC_APPTAINER_CONTAINER}" "${APPTAINER_CACHEDIR}/cache/oras" || true)"
-					[[ -z "${oras_image_path:-}" ]] && log ERROR "hyakvnc failed to preload ORAS image for \"${HYAKVNC_APPTAINER_CONTAINER:-}\" on its own. Apptainer will try to download the image by itself. If you don't want to preload ORAS images, use the --no-ghcr-oras-preload option."
-				else
-					log ERROR "Failed to create directory ${oras_cache_dir}."
+			# Wait for job to create its directory:
+			log TRACE "Waiting for job ${HYAKVNC_JOB_ID} to create its directory at ${HYAKVNC_JOB_DIR}"
+			starttime="${SECONDS:-0}"
+			while true; do
+				if ((SECONDS - starttime > HYAKVNC_DEFAULT_TIMEOUT)); then
+					log ERROR "Timed out waiting for job to create its directory at ${HYAKVNC_JOB_DIR}"
+					return 1
 				fi
-			fi
-			;;
-		*) ;;
-	esac
-
-	export HYAKVNC_SLURM_JOB_NAME="${HYAKVNC_SLURM_JOB_PREFIX}${container_name}"
-	export SBATCH_JOB_NAME="${HYAKVNC_SLURM_JOB_NAME}" && log TRACE "Set SBATCH_JOB_NAME to ${SBATCH_JOB_NAME}"
-
-	# Set sbatch arguments or environment variables:
-	#   CPUs has to be specified as a sbatch argument because it's not settable by environment variable:
-	[[ -n "${HYAKVNC_SLURM_CPUS:-}" ]] && sbatch_args+=(--cpus-per-task "${HYAKVNC_SLURM_CPUS}") && log TRACE "Set --cpus-per-task to ${HYAKVNC_SLURM_CPUS}"
-
-	[[ -n "${HYAKVNC_SLURM_TIMELIMIT:-}" ]] && export SBATCH_TIMELIMIT="${HYAKVNC_SLURM_TIMELIMIT}" && log TRACE "Set SBATCH_TIMELIMIT to ${SBATCH_TIMELIMIT}"
-	[[ -n "${HYAKVNC_SLURM_JOB_NAME:-}" ]] && export SBATCH_JOB_NAME="${HYAKVNC_SLURM_JOB_NAME}" && log TRACE "Set SBATCH_JOB_NAME to ${SBATCH_JOB_NAME}"
-	[[ -n "${HYAKVNC_SLURM_GPUS:-}" ]] && export SBATCH_GPUS="${HYAKVNC_SLURM_GPUS}" && log TRACE "Set SBATCH_GPUS to ${SBATCH_GPUS}"
-	[[ -n "${HYAKVNC_SLURM_MEM:-}" ]] && export SBATCH_MEM="${HYAKVNC_SLURM_MEM}" && log TRACE "Set SBATCH_MEM to ${SBATCH_MEM}"
-	[[ -n "${HYAKVNC_SLURM_OUTPUT:-}" ]] && export SBATCH_OUTPUT="${HYAKVNC_SLURM_OUTPUT}" && log TRACE "Set SBATCH_OUTPUT to ${SBATCH_OUTPUT}"
-	[[ -n "${HYAKVNC_SLURM_ACCOUNT:-}" ]] && export SBATCH_ACCOUNT="${HYAKVNC_SLURM_ACCOUNT}" && log TRACE "Set SBATCH_ACCOUNT to ${SBATCH_ACCOUNT}"
-	[[ -n "${HYAKVNC_SLURM_PARTITION:-}" ]] && export SBATCH_PARTITION="${HYAKVNC_SLURM_PARTITION}" && log TRACE "Set SBATCH_PARTITION to ${SBATCH_PARTITION}"
-
-	# Set up the jobs directory:
-	local alljobsdir jobdir
-	alljobsdir="${HYAKVNC_DIR}/jobs"
-	mkdir -p "${alljobsdir}" || {
-		log ERROR "Failed to create directory ${alljobsdir}"
-		exit 1
-	}
-	mkdir -p "${HYAKVNC_SLURM_OUTPUT_DIR}" || {
-		log ERROR "Failed to create directory ${HYAKVNC_SLURM_OUTPUT_DIR}"
-		exit 1
-	}
-
-	apptainer_start_args+=("run" "--app" "${HYAKVNC_APPTAINER_APP_VNCSERVER}")
-	apptainer_start_args+=("--writable-tmpfs")
-	[[ -n "${HYAKVNC_APPTAINER_ADD_ARGS:-}" ]] && apptainer_start_args+=("${HYAKVNC_APPTAINER_ADD_ARGS[@]}")
-
-	case "${HYAKVNC_APPTAINER_CLEANENV:-}" in
-		1 | true | yes | y | Y | TRUE | YES)
-			apptainer_start_args+=("--cleanenv")
-			;;
-		*) ;;
-	esac
-
-	# Final command should look like:
-	# sbatch -A escience -c 4 --job-name hyakvnc-x -p gpu-a40 --output sjob2.txt --mem=4G --time=1:00:00 --wrap "mkdir -vp $HOME/.hyakvnc/jobs/\$SLURM_JOB_ID/{tmp,vnc} && apptainer run --app vncserver -B \"$HOME/.hyakvnc/jobs/\$SLURM_JOB_ID/tmp:/tmp\" -B \"$HOME/.hyakvnc/jobs/\$SLURM_JOB_ID/vnc:/vnc\" --cleanenv --writable-tmpfs /mmfs1/home/altan/gdata/containers/ubuntu22.04_turbovnc.sif
-
-	# Add binds to VNC dirs:
-	apptainer_start_args+=("--bind" "\"${alljobsdir}/\${SLURM_JOB_ID}/vnc:/vnc\"")
-	apptainer_start_args+=("--bind" "\"\${jobtmp}:/tmp\"") # jobtmp will be set by the sbatch script via mktemp()
-
-	# Set up extra bind paths:
-	[[ -n "${HYAKVNC_APPTAINER_ADD_BINDPATHS:-}" ]] && apptainer_start_args+=("--bind" "\"${HYAKVNC_APPTAINER_ADD_BINDPATHS}\"")
-
-	# Add the container path to the apptainer command:
-	apptainer_start_args+=("\"${HYAKVNC_APPTAINER_CONTAINER}\"")
-
-	# Append desired arguments to the sbatch command:
-	sbatch_args+=(--wrap)
-	sbatch_args+=("mkdir -p \"${alljobsdir}/\${SLURM_JOB_ID}/vnc\" && jobtmp=\$(mktemp -d --suffix _hyakvnc_tmp_\${SLURM_JOB_ID}) && echo \"\$jobtmp\" > \"${alljobsdir}/\${SLURM_JOB_ID}/tmpdirname\" && \"${HYAKVNC_APPTAINER_BIN}\" ${apptainer_start_args[*]}")
-
-	# Trap signals to clean up the job if the user exits the script:
-	[[ -z "${XNOTRAP:-}" ]] && trap cleanup_launched_jobs_and_exit SIGINT SIGTERM SIGHUP SIGABRT SIGQUIT ERR EXIT
-
-	log DEBUG "Launching job with command: sbatch ${sbatch_args[*]}"
-
-	sbatch_result=$(sbatch "${sbatch_args[@]}") || {
-		log ERROR "Failed to launch job"
-		exit 1
-	}
-
-	# Quit if no job ID was returned:
-	[[ -z "${sbatch_result:-}" ]] && {
-		log ERROR "Failed to launch job - no result from sbatch"
-		exit 1
-	}
-
-	# Parse job ID and cluster from sbatch result (semicolon separated):
-	launched_jobid="${sbatch_result%%;*}"
-	[[ -z "${launched_jobid:-}" ]] && {
-		log ERROR "Failed to parse job ID for newly launched job"
-		exit 1
-	}
-
-	# Add the job ID to the list of launched jobs:
-	Launched_JobIDs+=("${launched_jobid}")
-
-	jobdir="${alljobsdir}/${launched_jobid}"
-	log DEBUG "Job directory: ${jobdir}"
-
-	# Wait for sbatch job to start running by monitoring the output of squeue:
-	log INFO "Waiting for job ${launched_jobid} (\"${HYAKVNC_SLURM_JOB_NAME}\") to start"
-	start=${EPOCHSECONDS:-}
-	while true; do
-		if ((EPOCHSECONDS - start > HYAKVNC_SLURM_SUBMIT_TIMEOUT)); then
-			log ERROR "Timed out waiting for job ${launched_jobid} to start"
-			exit 1
-		fi
-		sleep 1
-		squeue_result=$(squeue --job "${launched_jobid}" --format "%T" --noheader || true)
-		case "${squeue_result:-}" in
-			SIGNALING | PENDING | CONFIGURING | STAGE_OUT | SUSPENDED | REQUEUE_HOLD | REQUEUE_FED | RESV_DEL_HOLD | STOPPED | RESIZING | REQUEUED)
-				log TRACE "Job ${launched_jobid} is in a state that could potentially run: ${squeue_result}"
 				sleep 1
-				continue
-				;;
-			RUNNING)
-				log DEBUG "Job ${launched_jobid} is ${squeue_result}"
+				[[ ! -d "${HYAKVNC_JOB_DIR}" ]] && {
+					log TRACE "Job directory does not exist yet"
+					continue
+				}
 				break
-				;;
-			*)
-				log ERROR "Job ${launched_jobid} is in unexpected state ${squeue_result}"
-				exit 1
-				;;
-		esac
-	done
+			done
 
-	log TRACE "Waiting for job ${launched_jobid} to create its directory at ${jobdir}"
-	start=${EPOCHSECONDS:-}
-	while true; do
-		if ((EPOCHSECONDS - start > HYAKVNC_DEFAULT_TIMEOUT)); then
-			log ERROR "Timed out waiting for job to create its directory at ${jobdir}"
-			exit 1
-		fi
-		sleep 1
-		[[ ! -d "${jobdir}" ]] && {
-			log TRACE "Job directory does not exist yet"
-			continue
-		}
-		break
-	done
+			# Link the SLURM log file to the job directory:
+			instance_err_log="${HYAKVNC_SLURM_OUTPUT_DIR}/${HYAKVNC_JOB_ID}.out"
+			;;
+		*) log ERROR "Unsupported \$HYAKVNC_BACKEND backend \"${HYAKVNC_BACKEND}\""; return 1 ;;
+	esac
 
-	ln -s "${HYAKVNC_SLURM_OUTPUT_DIR}/job-${launched_jobid}.out" "${jobdir}/slurm.log" || log WARN "Could not link ${HYAKVNC_SLURM_OUTPUT_DIR}/job-${launched_jobid}.out" to "${jobdir}/slurm.log"
-
-	if check_log_level "${HYAKVNC_LOG_LEVEL}" DEBUG; then
-		echo "Streaming log from ${jobdir}/slurm.log"
-		tail -n 1 -f "${jobdir}/slurm.log" --pid=$$ 2>/dev/null | sed --unbuffered 's/^/DEBUG: slurm.log: /' & # Follow the SLURM log file in the background
-		tailpid=$!
+	if [[ -n "${instance_err_log:-}" ]] && [[ -r "${instance_err_log}" ]]; then
+		HYAKVNC_JOB_ERR_LOG="${HYAKVNC_JOB_DIR}/job.log"
+		ln -s "${instance_err_log}" "${HYAKVNC_JOB_ERR_LOG}" || { log WARN "Could not link \"${instance_err_log}\" to \"${HYAKVNC_JOB_DIR}/err.log\""; unset HYAKVNC_JOB_ERR_LOG; }
+	else
+		log WARN "Could not find instance log file"
 	fi
 
-	case "${HYAKVNC_APPTAINER_CONTAINER}" in
-		library://* | docker://* | shub://* | oras://* | http://* | https://*)
-			local protocol="${HYAKVNC_APPTAINER_CONTAINER#*://}"
-			if [[ -n "${protocol:-}" ]]; then
-				# Wait for the container to start downloading:
-				log INFO "Downloading ${HYAKVNC_APPTAINER_CONTAINER}..."
-				until grep -q -iE '(Download|cached).*image' "${jobdir}/slurm.log"; do
-					sleep 1
-				done
-				# Wait for the container to stop downloading:
-				# shellcheck disable=SC2016
-				srun --jobid "${launched_jobid}" --output /dev/null sh -c 'while pgrep -u $USER -fia '"'"'^.*apptainer.*jobs/'"${launched_jobid}"'.*'"${protocol}""'"' | grep -v "^$$"; do sleep 1; done' || log WARN "Couldn't poll for container download process for ${HYAKVNC_APPTAINER_CONTAINER}"
-			fi
-			;;
-		*) ;;
-	esac
+	if [[ -n "${HYAKVNC_JOB_ERR_LOG:-}" ]] && [[ -f "${HYAKVNC_JOB_ERR_LOG}" ]] && [[ -r "${HYAKVNC_JOB_ERR_LOG}" ]] && check_log_level "${HYAKVNC_LOG_LEVEL}" DEBUG; then
+		log INFO "Streaming log from \"${HYAKVNC_JOB_ERR_LOG}\""
+		tail -n 1 -f "${HYAKVNC_JOB_ERR_LOG}" --pid=$$ 2>/dev/null | sed --unbuffered "s/^/${HYAKVNC_JOB_ID}: /" & # Follow the log file in the background
+		tailpid=$!
+		trap 'trap - EXIT; kill -9 "${tailpid}" 2>/dev/null' EXIT
+	fi
 
 	log INFO "Waiting for VNC server to start..."
+
 	# Wait for socket to become available:
-	log DEBUG "Waiting for job ${launched_jobid} to create its socket file at ${jobdir}/vnc/socket.uds"
-	start=${EPOCHSECONDS:-}
+	log DEBUG "Waiting for job to create its socket file at ${HYAKVNC_JOB_DIR}/vnc/socket.uds"
+
+	local starttime="${SECONDS:-0}"
 	while true; do
-		if ((EPOCHSECONDS - start > HYAKVNC_DEFAULT_TIMEOUT)); then
+		if ((SECONDS - starttime > HYAKVNC_DEFAULT_TIMEOUT)); then
 			log ERROR "Timed out waiting for job to open its directories"
-			exit 1
+			return 1
 		fi
 		sleep 1
-		[[ ! -d "${jobdir}" ]] && log TRACE "Job directory does not exist yet" && continue
-		[[ ! -e "${jobdir}/vnc/socket.uds" ]] && log TRACE "Job socket does not exist yet" && continue
-		[[ ! -S "${jobdir}/vnc/socket.uds" ]] && log TRACE "Job socket is not a socket" && continue
-		[[ ! -r "${jobdir}/vnc/vnc.log" ]] && log TRACE "VNC log file not readable yet" && continue
-
+		[[ ! -d "${HYAKVNC_JOB_DIR}" ]] && log TRACE "Job directory does not exist yet" && continue
+		[[ ! -e "${HYAKVNC_JOB_DIR}/vnc/socket.uds" ]] && log TRACE "Job socket does not exist yet" && continue
+		[[ ! -S "${HYAKVNC_JOB_DIR}/vnc/socket.uds" ]] && log TRACE "Job socket is not a socket" && continue
+		[[ ! -r "${HYAKVNC_JOB_DIR}/vnc/vnc.log" ]] && log TRACE "VNC log file not readable yet" && continue
 		break
 	done
 
-	grep -q '^xstartup.turbovnc: Executing' <(timeout "${HYAKVNC_DEFAULT_TIMEOUT}" tail -f "${jobdir}/vnc/vnc.log" || true)
+	# Wait for VNC server to start by monitoring the VNC log file:
+	grep -q '^xstartup.turbovnc: Executing' <(timeout "${HYAKVNC_DEFAULT_TIMEOUT}" tail -f "${HYAKVNC_JOB_DIR}/vnc/vnc.log" || true)
 
 	log INFO "VNC server started"
-	# Get details about the Xvnc process:
-	print_connection_info -j "${launched_jobid}" || {
-		log ERROR "Failed to print connection info for job ${launched_jobid}"
-		return 1
-	}
 	# Stop trapping the signals:
 	[[ -z "${XNOTRAP:-}" ]] && trap - SIGINT SIGTERM SIGHUP SIGABRT SIGQUIT ERR EXIT
-	kill -9 "${tailpid}" 2>/dev/null # Stop following the SLURM log file
 	return 0
 }
 
@@ -1328,12 +1231,12 @@ function cmd_status() {
 	# Loop over directories in ${HYAKVNC_DIR}/jobs
 	squeue_args=(--me --states=RUNNING --noheader --format '%j %i')
 	[[ -n "${running_jobid:-}" ]] && squeue_args+=(--job "${running_jobid}")
-	running_jobids=$(squeue "${squeue_args[@]}" | grep -E "^${HYAKVNC_SLURM_JOB_PREFIX}" | grep -oE '[0-9]+$') || {
-		log WARN "Found no running job IDs with names that match the set job name prefix ${HYAKVNC_SLURM_JOB_PREFIX}"
+	running_jobids=$(squeue "${squeue_args[@]}" | grep -E "^${HYAKVNC_JOB_PREFIX}" | grep -oE '[0-9]+$') || {
+		log WARN "Found no running job IDs with names that match the set job name prefix ${HYAKVNC_JOB_PREFIX}"
 		return 1
 	}
 	[[ -z "${running_jobids:-}" ]] && {
-		log WARN "Found no running job IDs with names that match the prefix ${HYAKVNC_SLURM_JOB_PREFIX}"
+		log WARN "Found no running job IDs with names that match the prefix ${HYAKVNC_JOB_PREFIX}"
 		return 1
 	}
 
@@ -1348,16 +1251,16 @@ function cmd_status() {
 			continue
 		}
 		jobdir="${HYAKVNC_DIR}/jobs/${running_jobid}"
-		[[ ! -d "${jobdir}" ]] && {
-			log WARN "Job directory ${jobdir} does not exist"
+		[[ ! -d "${HYAKVNC_JOB_DIR}" ]] && {
+			log WARN "Job directory ${HYAKVNC_JOB_DIR} does not exist"
 			continue
 		}
-		[[ ! -e "${jobdir}/vnc/socket.uds" ]] && {
-			log WARN "Job socket not found at ${jobdir}/vnc/socket.uds"
+		[[ ! -e "${HYAKVNC_JOB_DIR}/vnc/socket.uds" ]] && {
+			log WARN "Job socket not found at ${HYAKVNC_JOB_DIR}/vnc/socket.uds"
 			continue
 		}
-		[[ ! -S "${jobdir}/vnc/socket.uds" ]] && {
-			log WARN "Job socket at ${jobdir}/vnc/socket.uds is not a socket"
+		[[ ! -S "${HYAKVNC_JOB_DIR}/vnc/socket.uds" ]] && {
+			log WARN "Job socket at ${HYAKVNC_JOB_DIR}/vnc/socket.uds is not a socket"
 			continue
 		}
 		echo "HyakVNC job ${running_jobid} is running on node ${running_job_node}"
@@ -1433,14 +1336,14 @@ function cmd_stop() {
 	fi
 
 	if [[ -n "${all}" ]]; then
-		jobids=$(squeue --me --format '%j %i' --noheader | grep -E "^${HYAKVNC_SLURM_JOB_PREFIX}" | grep -oE '[0-9]+$') || log WARN "Found no running job IDs with names that match the prefix ${HYAKVNC_SLURM_JOB_PREFIX}"
+		jobids=$(squeue --me --format '%j %i' --noheader | grep -E "^${HYAKVNC_JOB_PREFIX}" | grep -oE '[0-9]+$') || log WARN "Found no running job IDs with names that match the prefix ${HYAKVNC_JOB_PREFIX}"
 	fi
 
 	if [[ -z "${jobids}" ]]; then
 		if [[ -t 0 ]]; then
 			echo "Reading available job IDs to select from a menu"
-			running_jobids=$(squeue --me --noheader --format '%j %i' | grep -E "^${HYAKVNC_SLURM_JOB_PREFIX}" | grep -oE '[0-9]+$') || {
-				log WARN "Found no running jobs  with names that match the prefix ${HYAKVNC_SLURM_JOB_PREFIX}"
+			running_jobids=$(squeue --me --noheader --format '%j %i' | grep -E "^${HYAKVNC_JOB_PREFIX}" | grep -oE '[0-9]+$') || {
+				log WARN "Found no running jobs  with names that match the prefix ${HYAKVNC_JOB_PREFIX}"
 				return 1
 			}
 			PS3="Enter a number: "
@@ -1517,8 +1420,8 @@ function cmd_show() {
 	if [[ -z "${jobid:-}" ]]; then
 		if [[ -t 0 ]]; then
 			echo "Reading available job IDs to select from a menu"
-			running_jobids=$(squeue --me --noheader --format '%j %i' --states RUNNING | grep -E "^${HYAKVNC_SLURM_JOB_PREFIX}" | grep -oE '[0-9]+$') || {
-				log WARN "Found no running jobs with names that match the prefix ${HYAKVNC_SLURM_JOB_PREFIX}"
+			running_jobids=$(squeue --me --noheader --format '%j %i' --states RUNNING | grep -E "^${HYAKVNC_JOB_PREFIX}" | grep -oE '[0-9]+$') || {
+				log WARN "Found no running jobs with names that match the prefix ${HYAKVNC_JOB_PREFIX}"
 				return 1
 			}
 			PS3="Enter a number: "
@@ -1531,8 +1434,8 @@ function cmd_show() {
 		log ERROR "Must specify running job IDs"
 		return 1
 	}
-	running_jobids=$(squeue --me --job "${jobid}" --noheader --format '%j %i' | grep -E "^${HYAKVNC_SLURM_JOB_PREFIX}" | grep -oE '[0-9]+$') || {
-		log WARN "Found no running job for job ${jobid} with names that match the prefix ${HYAKVNC_SLURM_JOB_PREFIX}"
+	running_jobids=$(squeue --me --job "${jobid}" --noheader --format '%j %i' | grep -E "^${HYAKVNC_JOB_PREFIX}" | grep -oE '[0-9]+$') || {
+		log WARN "Found no running job for job ${jobid} with names that match the prefix ${HYAKVNC_JOB_PREFIX}"
 		return 1
 	}
 	print_connection_info -j "${jobid}" || {
@@ -1835,7 +1738,7 @@ function main() {
 			fi
 			;;
 		*)
-			hyakvnc_config_init || exit 1                                     # Fill in default values for config variables or exit if config can't be initialized
+			hyakvnc_config_init || exit 1                                        # Fill in default values for config variables or exit if config can't be initialized
 			hyakvnc_autoupdate "${orig_args:-}" || log TRACE "Didn't autoupdate" # Don't exit if didn't autoupdate
 			;;
 	esac
