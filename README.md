@@ -168,20 +168,15 @@ The following variables are available:
 - HYAKVNC_LOG_FILE: Log file to use (default: `$HYAKVNC_DIR/hyakvnc.log`)
 - HYAKVNC_LOG_LEVEL: Log level to use for interactive output (default: `INFO`)
 - HYAKVNC_LOG_FILE_LEVEL: Log level to use for log file output (default: `DEBUG`)
+- HYAKVNC_BACKEND: Backend to use (default: (`klone` if running on Hyak Klone cluster, `apptainer` otherwise))
+- HYAKVNC_JOB_PREFIX: Prefix to use for hyakvnc job names (default: `hyakvnc-`)
 - HYAKVNC_JOBS_DIR: Directory to store job data (default: `$HYAKVNC_DIR/jobs`)
 - HYAKVNC_CHECK_UPDATE_FREQUENCY: How often to check for updates in `[d]`ays or `[m]`inutes (default: `0` for every time. Use `1d` for daily, `10m` for every 10 minutes, etc. `-1` to disable.)
-- HYAKVNC_SSH_HOST: Default SSH host to use for connection strings (default: (autodetected))
 - HYAKVNC_DEFAULT_TIMEOUT: Seconds to wait for most commands to complete before timing out (default: `30`)
-- HYAKVNC_BACKEND: Backend to use (default: (autodetected, can be `klone`, `apptainer`))
 - HYAKVNC_SSH_HOST: Default SSH host to use for connection strings (default: `localhost` if backend is apptainer or docker, `klone.hyak.uw.edu` if backend is `klone`)
 - HYAKVNC_VNC_PASSWORD: Password to use for new VNC sessions (default: `password`)
 - HYAKVNC_VNC_DISPLAY: VNC display to use (default: `:1`)
 - HYAKVNC_APPTAINER_CONTAINERS_DIR: Directory to look for apptainer containers (default: (none))
-- HYAKVNC_APPTAINER_GHCR_ORAS_PRELOAD: Whether to preload SIF files from the ORAS GitHub Container Registry (default: `0`)
-- HYAKVNC_APPTAINER_BIN: Name of apptainer binary (default: `apptainer`)
-- HYAKVNC_APPTAINER_CONTAINER: Path to container image to use (default: (none; set by `--container` option))
-- HYAKVNC_APPTAINER_APP_VNCSERVER: Name of app in the container that starts the VNC session (default: `vncserver`)
-- HYAKVNC_JOB_PREFIX: Prefix to use for hyakvnc job names (default: `hyakvnc-`)
 
 ## License
 
